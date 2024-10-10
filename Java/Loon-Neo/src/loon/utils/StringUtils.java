@@ -20,8 +20,11 @@
  */
 package loon.utils;
 
+import java.util.Iterator;
+
 import loon.LSysException;
 import loon.LSystem;
+import loon.utils.ObjectMap.Keys;
 
 /**
  * 字符串处理用工具类
@@ -76,6 +79,49 @@ final public class StringUtils extends CharUtils {
 		b.append(format.substring(p));
 
 		return b.toString();
+	}
+
+	/**
+	 * 过滤指定字符串中的键值对为ObjectMap中数据
+	 * 
+	 * @sample ObjectMap<String, String> test = new ObjectMap<String, String>();
+	 *         test.put("key1", "abc"); test.put("key2", "efg");
+	 *         System.out.println(StringUtils.formatVars("key1 is ${key1},key2 is
+	 *         ${key2}", test));
+	 * 
+	 * @param <K>
+	 * @param <V>
+	 * @param format
+	 * @param flag
+	 * @param params
+	 * @return
+	 */
+	public static <K, V> String formatVars(String format, String flag, ObjectMap<K, V> params) {
+		String context = format;
+		if (params != null) {
+			Keys<K> keys = params.keys();
+			for (Iterator<K> it = keys.iterator(); it.hasNext();) {
+				K key = it.next();
+				if (key != null) {
+					context = replace(context, flag + LSystem.DELIM_START + key + LSystem.DELIM_END,
+							HelperUtils.toStr(params.get(key)));
+				}
+			}
+		}
+		return context;
+	}
+
+	/**
+	 * 过滤指定字符串中的键值对为ObjectMap中数据,过滤标志对象以$开头
+	 * 
+	 * @param <K>
+	 * @param <V>
+	 * @param format
+	 * @param params
+	 * @return
+	 */
+	public static <K, V> String formatVars(String format, ObjectMap<K, V> params) {
+		return formatVars(format, "$", params);
 	}
 
 	public static String format(float v) {
@@ -2778,6 +2824,38 @@ final public class StringUtils extends CharUtils {
 			str.append(ch);
 		}
 		return str.toString();
+	}
+
+	public static CharSequence getRoot(final CharSequence cur, final CharSequence ch) {
+		for (int i = 0; i < cur.length(); i++) {
+			int idx = i + 1;
+			if (cur.subSequence(i, idx).equals(ch)) {
+				return cur.subSequence(0, i);
+			}
+		}
+		return cur;
+	}
+
+	public static CharSequence getBranch(final CharSequence cur, final CharSequence ch) {
+		for (int i = 0; i < cur.length(); i++) {
+			int idx = i + 1;
+			if (cur.subSequence(i, idx).equals(ch)) {
+				return cur.subSequence(idx, idx + cur.length() - i - 1);
+			}
+		}
+		return cur;
+	}
+
+	public static CharSequence getLastBranch(final CharSequence cur, final CharSequence ch) {
+		int i = cur.length() - 1;
+		while (i >= 0) {
+			int idx = i + 1;
+			if (cur.subSequence(i, idx).equals(ch)) {
+				return cur.subSequence(idx, idx + cur.length() - i - 1);
+			}
+			i--;
+		}
+		return cur;
 	}
 
 	public static String byteArrayToString(final byte[] array) {
