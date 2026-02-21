@@ -1180,10 +1180,10 @@ static inline int fix_font_char_size(const uint32_t ch, float fontSize, int size
         return newSize + 1;
     }
     if (is_digit_char(ch)) {
-      return newSize += 2;
+      return newSize += 1;
     } else if (is_lowercase(ch)) {
-        if (0x0069 == ch || 0x006A == ch || 0x0072 == ch) {
-            return newSize;
+        if (0x0061 == ch || 0x0064 == ch || 0x0066 == ch || 0x0069 == ch || 0x006A == ch || 0x0072 == ch || 0x0074 == ch || 0x0076 == ch) {
+            return newSize + 1;
         }
         return newSize += 2;
     } else if (is_uppercase(ch)) {

@@ -1038,7 +1038,7 @@ static inline bool is_min_en_char(uint32_t codepoint) {
 	switch (codepoint) {
 	case 0x0069:
 	case 0x006A: 
-	case 0x006C: 
+	case 0x006C:
 	case 0x0049:
 		return true;
 	default:
@@ -1158,7 +1158,7 @@ static inline int get_char_size_subpixel(stbtt_fontinfo* font, uint32_t codepoin
 		w = w / 2 + (pixel_size / 10) + 1;
 		updated = true;
 	}else if (is_min_cn_char(codepoint)) {
-		w = w / 2 + (float)ceil(pixel_size / 2.35f);
+		w = w / 2 + (float)ceil(pixel_size / 2.15f);
 		updated = true;
 	}
 	if (!updated) {
@@ -1637,8 +1637,8 @@ void Load_STB_DrawString(const int64_t handle, const char* text, const float fon
 	stbtt_GetFontVMetrics(font, &ascent, &descent, &lineGap);
 	int maxBaseLine = float_to_int_threshold(ascent * scale);
 	
-	int img_w = (int)ceilf(max_width) + 4;
-	int img_h = (int)ceilf(total_height) + 4;
+	int img_w = (int)ceilf(max_width) + 12;
+	int img_h = (int)ceilf(total_height) + 12;
 
 	const int length = img_w * img_h;
 	
@@ -1696,7 +1696,7 @@ void Load_STB_DrawString(const int64_t handle, const char* text, const float fon
 
 			for (int py = 0; py < gh; py++) {
 				for (int px = 0; px < gw; px++) {
-					int dst_index = (dst_y + py) * img_w + (dst_x + px + 1);
+					int dst_index = (dst_y + py - 1) * img_w + (dst_x + px + 1);
 					if (dst_index < 0 || dst_index >= length) {
 						continue;
 					}
