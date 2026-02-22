@@ -253,7 +253,7 @@ public final class STBFont implements LRelease {
 
 	public FontData drawString(String text, float fontScale, int color) {
 		final int maxFontSize = (int) (fontScale * fontScale);
-		final int size = MathUtils.iceil((maxFontSize * text.length()) + (fontScale * text.length() * 24));
+		final int size = MathUtils.iceil((maxFontSize * text.length()) + (fontScale * text.length() * 36));
 		int[] outpixels = new int[size];
 		STBCall.drawString(_fontHandle, text, MathUtils.iceil(fontScale), color, _outsize, outpixels);
 		final FontData result = new FontData();

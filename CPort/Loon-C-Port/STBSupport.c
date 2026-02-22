@@ -1034,11 +1034,41 @@ int Load_STB_GetCodepointHMetrics(const int64_t handle, const int point)
 	return height;
 }
 
-static inline bool is_min_en_char(uint32_t codepoint) {
+static inline bool is_min_num_char(uint32_t codepoint) {
+	switch (codepoint) {
+	case 0x0031:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static inline bool is_min_en_char_lv1(uint32_t codepoint) {
+	switch (codepoint) {
+	case 0x004C:
+	case 0x006C:
+	case 0x0068:
+	case 0x0073:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static inline bool is_min_en_char_lv2(uint32_t codepoint) {
 	switch (codepoint) {
 	case 0x0069:
 	case 0x006A: 
 	case 0x006C:
+	case 0x0072:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static inline bool is_min_en_char_lv3(uint32_t codepoint) {
+	switch (codepoint) {
 	case 0x0049:
 		return true;
 	default:
@@ -1046,13 +1076,13 @@ static inline bool is_min_en_char(uint32_t codepoint) {
 	}
 }
 
-static inline bool is_min_cn_char(uint32_t codepoint) {
+static inline bool is_min_cn_char_lv1(uint32_t codepoint) {
 	switch (codepoint) {
 	case 0x4E00:
-	case 0x4E8C: 
-	case 0x4E09: 
-	case 0x4EBA:
+	case 0x4E09:
 	case 0x4E0D:
+	case 0x4E8C: 
+	case 0x4EBA:
 	case 0x5168:
 	case 0x5341: 
 	case 0x56DE:
@@ -1063,11 +1093,22 @@ static inline bool is_min_cn_char(uint32_t codepoint) {
 	case 0x53E3: 
 	case 0x5DDD:
 	case 0x5C71:
+	case 0x5F53:
+	case 0x65E0:
 	case 0x65E5: 
 	case 0x7530:
 	case 0x76EE: 
-	case 0x81EA: 
 	case 0x80FD:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static inline bool is_min_cn_char_lv2(uint32_t codepoint) {
+	switch (codepoint) {
+	case 0x4E2D:
+	case 0x81EA:
 		return true;
 	default:
 		return false;
@@ -1139,6 +1180,7 @@ static inline int get_char_size_subpixel(stbtt_fontinfo* font, uint32_t codepoin
 
 	float w = fmaxf(draw_width, logical_width);
 	float h = draw_height;
+	float half_width = pixel_size / 2.0f;
 
 	if (pixel_size < 20.0f) {
 		int rounded_w = (int)roundf(w);
@@ -1154,11 +1196,26 @@ static inline int get_char_size_subpixel(stbtt_fontinfo* font, uint32_t codepoin
 	if (is_flag_symbol(codepoint)) {
 		w = w / 2 + (pixel_size / 5);
 		updated = true;
-	}else if (is_min_en_char(codepoint)) {
+	}else if (is_min_num_char(codepoint)) {
 		w = w / 2 + (pixel_size / 10) + 1;
 		updated = true;
-	}else if (is_min_cn_char(codepoint)) {
+	}else if (is_min_en_char_lv1(codepoint)) {
+		w = w / 2 + (pixel_size / 10) + 3;
+		updated = true;
+	}else if (is_min_en_char_lv2(codepoint)) {
+		w = w / 2 + (pixel_size / 10) + 1;
+		if (w < half_width) {
+			w += 1.0f;
+		}
+		updated = true;
+	}else if (is_min_en_char_lv3(codepoint)) {
+		w = w / 2 + (pixel_size / 10) - 2;
+		updated = true;
+	}else if (is_min_cn_char_lv1(codepoint)) {
 		w = w / 2 + (float)ceil(pixel_size / 2.15f);
+		updated = true;
+	}else if (is_min_cn_char_lv2(codepoint)) {
+		w = w / 2 + (float)ceil(pixel_size / 2.35f);
 		updated = true;
 	}
 	if (!updated) {
@@ -1210,7 +1267,6 @@ static inline int get_char_size_subpixel(stbtt_fontinfo* font, uint32_t codepoin
 			line_width += float_to_int_threshold(stbtt_GetCodepointKernAdvance(fontinfo->info, cp, text[i + 1]) * scale);
 		}
 	}
-
 	if (line_width > max_width) max_width = line_width;
 	total_height += line_height;
 	rect[0] = max_width;
@@ -1335,6 +1391,9 @@ static float MeasureTextWidth(const stbtt_fontinfo* font, float pixel_height, co
 			int advance, lsb;
 			stbtt_GetCodepointHMetrics(font, cp, &advance, &lsb);
 			width += (int)fix_font_char_size(cp, pixel_height,(int)(advance * scale));
+			if (is_lowercase(cp) || is_digit_char(cp)) {
+				width -= 1;
+			}
 		}
 		prev_cp = cp;
 		count++;
@@ -1637,8 +1696,8 @@ void Load_STB_DrawString(const int64_t handle, const char* text, const float fon
 	stbtt_GetFontVMetrics(font, &ascent, &descent, &lineGap);
 	int maxBaseLine = float_to_int_threshold(ascent * scale);
 	
-	int img_w = (int)ceilf(max_width) + 12;
-	int img_h = (int)ceilf(total_height) + 12;
+	int img_w = (int)ceilf(max_width) + 18;
+	int img_h = (int)ceilf(total_height) + 18;
 
 	const int length = img_w * img_h;
 	
