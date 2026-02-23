@@ -115,8 +115,7 @@ public class CGraphics extends Graphics {
 			texWidth = srcWidth;
 			GLUtils.bindTexture(gl, tex);
 			gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0, srcPixelFormat, texWidth, texHeight, 0, srcPixelFormat,
-					GL20.GL_UNSIGNED_BYTE,
-					hasAlpha ? img.convertPixmapToByteBuffer() : img.convertPixmapToRGBByteBuffer());
+					GL20.GL_UNSIGNED_BYTE, convertToByteBuffer(img, hasAlpha));
 			gl.checkError("updateTexture");
 			return;
 		}
@@ -131,8 +130,12 @@ public class CGraphics extends Graphics {
 				copyArea(texImage, 0, 0, 1, height, texWidth - 1, 0);
 				copyArea(texImage, width - 1, 0, 1, height, 1, 0);
 			}
-			ByteBuffer source = hasAlpha ? texImage.convertPixmapToBilinearByteBuffer()
-					: texImage.convertPixmapToBilinearRGBByteBuffer();
+			ByteBuffer source = null;
+			if (!tex.isDrawCanvas() && !tex.isImageCanvas()) {
+				source = convertToBilinearByteBuffer(_csetting, texImage, hasAlpha);
+			} else {
+				source = convertToByteBuffer(texImage, hasAlpha);
+			}
 			if (texImage != null) {
 				texImage.close();
 				texImage = null;
@@ -144,16 +147,26 @@ public class CGraphics extends Graphics {
 		} else {
 			ByteBuffer source = null;
 			if (!tex.isDrawCanvas() && !tex.isImageCanvas()) {
-				source = hasAlpha ? img.convertPixmapToByteBuffer() : img.convertPixmapToRGBByteBuffer();
+				source = convertToBilinearByteBuffer(_csetting, img, hasAlpha);
 			} else {
-				source = hasAlpha ? img.convertPixmapToBilinearByteBuffer()
-						: img.convertPixmapToBilinearRGBByteBuffer();
+				source = convertToByteBuffer(img, hasAlpha);
 			}
 			GLUtils.bindTexture(gl, tex);
 			gl.glTexImage2D(GL20.GL_TEXTURE_2D, 0, srcPixelFormat, width, height, 0, srcPixelFormat,
 					GL20.GL_UNSIGNED_BYTE, source);
 			gl.checkError("updateTexture");
 		}
+	}
+
+	private final static ByteBuffer convertToByteBuffer(Pixmap img, boolean hasAlpha) {
+		return hasAlpha ? img.convertPixmapToByteBuffer() : img.convertPixmapToRGBByteBuffer();
+	}
+
+	private final static ByteBuffer convertToBilinearByteBuffer(CSetting setting, Pixmap img, boolean hasAlpha) {
+		if (setting == null || !setting.convertImageBilinear) {
+			return hasAlpha ? img.convertPixmapToByteBuffer() : img.convertPixmapToRGBByteBuffer();
+		}
+		return hasAlpha ? img.convertPixmapToBilinearByteBuffer() : img.convertPixmapToBilinearRGBByteBuffer();
 	}
 
 }

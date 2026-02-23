@@ -93,6 +93,8 @@ public final class CGame extends LGame {
 		public boolean onlyGamepad = false;
 
 		public boolean convertGamepadToKeys = true;
+		
+		public boolean convertImageBilinear = false;
 
 		public int qualityModel = QUALITY_HIGH;
 

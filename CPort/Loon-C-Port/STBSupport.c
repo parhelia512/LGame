@@ -1623,7 +1623,7 @@ void Load_STB_DrawChar(const int64_t handle, const int32_t codepoint, const floa
 	uint8_t b = color & 0xFF;
 	for (int py = 0; py < gh; py++) {
 		for (int px = 0; px < gw; px++) {
-			int dst_index = (int)((dst_y + py) * img_w + (dst_x + px));
+			int dst_index = (int)((dst_y + py - 1) * img_w + (dst_x + px + 1));
 			if (dst_index < 0 || dst_index >= length) {
 				continue;
 			}
