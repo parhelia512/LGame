@@ -2861,6 +2861,23 @@ const char* GetSystemProperty(const char* key)
 	return "";
 }
 
+const char* Load_SDL_GetSystemLanguage() {
+	SDL_Locale* locales = SDL_GetPreferredLocales();
+	if (!locales) {
+		return "unknown";
+	}
+	const char* language = locales[0].language ? locales[0].language : "unknown";
+	const char* country = locales[0].country ? locales[0].country : "";
+	static char locale_str[64];
+	if (country[0] != '\0') {
+		snprintf(locale_str, sizeof(locale_str), "%s-%s", language, country);
+	}
+	else {
+		snprintf(locale_str, sizeof(locale_str), "%s", language);
+	}
+	return locale_str;
+}
+
 const char* Load_SDL_GetPreferredLocales()
 {
 	SDL_Locale* locales = SDL_GetPreferredLocales();

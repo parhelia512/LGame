@@ -174,6 +174,9 @@ public final class SDLCall {
 
 	@Import(name = "Load_SDL_RW_FileToBytes")
 	public final static native long LoadRWFileToBytes(String fileName, byte[] outBytes);
+	
+	@Import(name = "Load_SDL_GetSystemLanguage")
+	public final static native String getSystemLanguage();
 
 	@Import(name = "Load_SDL_GetPreferredLocales")
 	public final static native String getPreferredLocales();

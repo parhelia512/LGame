@@ -38,6 +38,7 @@ import loon.cport.bridge.SDLSurface;
 import loon.cport.bridge.SDLWindowFlags;
 import loon.events.InputMake;
 import loon.geom.RectF;
+import loon.utils.Language;
 import loon.utils.MathUtils;
 
 public final class CGame extends LGame {
@@ -93,7 +94,7 @@ public final class CGame extends LGame {
 		public boolean onlyGamepad = false;
 
 		public boolean convertGamepadToKeys = true;
-		
+
 		public boolean convertImageBilinear = false;
 
 		public int qualityModel = QUALITY_HIGH;
@@ -387,6 +388,10 @@ public final class CGame extends LGame {
 
 	public boolean isSingleAppLocked() {
 		return _appLocked;
+	}
+
+	public Language getLanguage() {
+		return Language.toLanguage(SDLCall.getSystemLanguage());
 	}
 
 	@Override

@@ -1135,12 +1135,36 @@ static inline bool is_digit_char(uint32_t ch) {
         (ch >= 0xFF10 && ch <= 0xFF19);   
 }
 
-static inline bool is_lowercase(char c) {
-    return (c >= 'a' && c <= 'z');
+static inline bool is_lowercase(uint32_t ch) {
+    if (ch >= 0x61 && ch <= 0x7A) {
+        return true;
+    }
+    if ((ch >= 0x00E0 && ch <= 0x00FF)) {
+        return true;
+    }
+    if (ch >= 0x0430 && ch <= 0x044F) {
+        return true;
+    }
+    if (ch >= 0x03B1 && ch <= 0x03C9) {
+        return true;
+    }
+    return false;
 }
 
-static inline bool is_uppercase(char c) {
-    return (c >= 'A' && c <= 'Z');
+static inline bool is_uppercase(uint32_t ch) {
+    if (ch >= 0x41 && ch <= 0x5A) {
+        return true;
+    }
+    if ((ch >= 0x00C0 && ch <= 0x00D6) || (ch >= 0x00D8 && ch <= 0x00DE)) {
+        return true;
+    }
+    if (ch >= 0x0410 && ch <= 0x042F) {
+        return true;
+    }
+    if (ch >= 0x0391 && ch <= 0x03A9) {
+        return true;
+    }
+    return false;
 }
 
 static inline bool is_other_char(uint32_t ch) {
@@ -1180,9 +1204,9 @@ static inline int fix_font_char_size(const uint32_t ch, float fontSize, int size
         return newSize + 1;
     }
     if (is_digit_char(ch)) {
-      return newSize + 1;
+        return newSize + 1;
     } else if (is_lowercase(ch)) {
-        if (0x0061 == ch || 0x0064 == ch || 0x0066 == ch || 0x0069 == ch || 0x006A == ch || 0x006C == ch || 0x0072 == ch || 0x0074 == ch || 0x0076 == ch) {
+        if (0x0061 == ch || 0x0064 == ch || 0x0065 == ch || 0x0066 == ch || 0x0069 == ch || 0x006A == ch || 0x006C == ch || 0x0072 == ch || 0x0074 == ch || 0x0076 == ch) {
             return newSize + 1;
         }
         return newSize + 2;
@@ -1195,9 +1219,9 @@ static inline int fix_font_char_size(const uint32_t ch, float fontSize, int size
         }
         return newSize + 1;
     } else if (is_symbol(ch)) {
-        return newSize + 1;
+        return newSize + 2;
     }
-    return newSize + 2;
+    return newSize + 3;
 }
 
 static inline void fill_pixels_u8(uint8_t* pixels, size_t length, uint8_t v) {
@@ -1343,6 +1367,8 @@ void Load_SDL_GL_SwapWindowHandle(const int64_t handle);
 int Load_SDL_WindowWidth();
 
 int Load_SDL_WindowHeight();
+
+const char* Load_SDL_GetSystemLanguage();
 
 const char* Load_SDL_GetPreferredLocales();
 

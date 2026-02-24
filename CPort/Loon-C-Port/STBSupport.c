@@ -1046,7 +1046,6 @@ static inline bool is_min_num_char(uint32_t codepoint) {
 static inline bool is_min_en_char_lv1(uint32_t codepoint) {
 	switch (codepoint) {
 	case 0x004C:
-	case 0x006C:
 	case 0x0068:
 	case 0x0073:
 		return true;
@@ -1057,7 +1056,6 @@ static inline bool is_min_en_char_lv1(uint32_t codepoint) {
 
 static inline bool is_min_en_char_lv2(uint32_t codepoint) {
 	switch (codepoint) {
-	case 0x0069:
 	case 0x006A: 
 	case 0x006C:
 	case 0x0072:
@@ -1070,6 +1068,7 @@ static inline bool is_min_en_char_lv2(uint32_t codepoint) {
 static inline bool is_min_en_char_lv3(uint32_t codepoint) {
 	switch (codepoint) {
 	case 0x0049:
+	case 0x0069:
 		return true;
 	default:
 		return false;
@@ -1181,6 +1180,7 @@ static inline int get_char_size_subpixel(stbtt_fontinfo* font, uint32_t codepoin
 	float w = fmaxf(draw_width, logical_width);
 	float h = draw_height;
 	float half_width = pixel_size / 2.0f;
+	float one_quarter_width = half_width / 2.0f;
 
 	if (pixel_size < 20.0f) {
 		int rounded_w = (int)roundf(w);
@@ -1197,19 +1197,19 @@ static inline int get_char_size_subpixel(stbtt_fontinfo* font, uint32_t codepoin
 		w = w / 2 + (pixel_size / 5);
 		updated = true;
 	}else if (is_min_num_char(codepoint)) {
-		w = w / 2 + (pixel_size / 10) + 1;
+		w = w / 2 + (pixel_size / 10) + 1.5f;
 		updated = true;
 	}else if (is_min_en_char_lv1(codepoint)) {
-		w = w / 2 + (pixel_size / 10) + 3;
+		w = w / 2 + (pixel_size / 10) + 3.0f;
 		updated = true;
 	}else if (is_min_en_char_lv2(codepoint)) {
-		w = w / 2 + (pixel_size / 10) + 1;
+		w = w / 2 + (pixel_size / 10) + 1.5f;
 		if (w < half_width) {
 			w += 1.0f;
 		}
 		updated = true;
 	}else if (is_min_en_char_lv3(codepoint)) {
-		w = w / 2 + (pixel_size / 10) - 2;
+		w = w / 2 + (pixel_size / 10) - 2.0f;
 		updated = true;
 	}else if (is_min_cn_char_lv1(codepoint)) {
 		w = w / 2 + (float)ceil(pixel_size / 2.15f);
@@ -1219,11 +1219,36 @@ static inline int get_char_size_subpixel(stbtt_fontinfo* font, uint32_t codepoin
 		updated = true;
 	}
 	if (!updated) {
-		*out_w = (float)ceil(fix_font_char_size(codepoint, pixel_size, (int)floor(w)));
+		w = (float)ceil(fix_font_char_size(codepoint, pixel_size, (int)floor(w)));
+		if (is_lowercase(codepoint)) {
+			if (w < half_width - 4) {
+				w = half_width - 4;
+			}
+		}
+		else if (is_uppercase(codepoint)) {
+			if (w < half_width - 2) {
+				w = half_width - 2;
+			}
+		}
+		else if (is_cjk(codepoint)) {
+			if (w < pixel_size - 4) {
+				w = pixel_size - 4;
+			}
+		}
+		else if (w < one_quarter_width) {
+			w = one_quarter_width;
+		}
 	}
 	else {
-		*out_w = (float)ceil(w);
+		w = (float)ceil(w);
+		if (is_uppercase(codepoint) && w <= one_quarter_width / 2.0f + 1.0f) {
+				w = one_quarter_width + 2;
+		}
+		else if (w < one_quarter_width) {
+			w = one_quarter_width;
+		}
 	}
+	*out_w = w;
 	*out_h = h;
 	*out_baseline_offset = baseline_offset;
 
