@@ -8,7 +8,7 @@ import loon.LSetting;
 
 import loon.canvas.Canvas;
 import loon.canvas.Image;
-
+import loon.utils.Language;
 
 public class JavaANGame extends LGame {
 
@@ -203,6 +203,17 @@ public class JavaANGame extends LGame {
         return this.asyn;
     }
 
+	@Override
+	public Language lang() {
+		java.util.Locale locale = java.util.Locale.getDefault();
+		return new Language(locale.getLanguage(), locale.getCountry(), locale.getVariant());
+	}
+
+	@Override
+	public JavaANSocketClient networkClient() {
+		return new JavaANSocketClient();
+	}
+	
     @Override
     public JavaANGraphics graphics() {
         return this.graphics;

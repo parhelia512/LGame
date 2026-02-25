@@ -26,7 +26,9 @@ import java.util.concurrent.Executors;
 import loon.Asyn;
 import loon.LGame;
 import loon.LSetting;
+import loon.NetworkClient;
 import loon.Support;
+import loon.utils.Language;
 import loon.utils.reply.Act;
 
 import org.robovm.apple.coregraphics.CGRect;
@@ -155,6 +157,17 @@ public class RoboVMGame extends LGame {
 	@Override
 	public RoboVMLog log() {
 		return log;
+	}
+
+	@Override
+	public NetworkClient networkClient() {
+		return new RoboVMSocketClient();
+	}
+
+	@Override
+	public Language lang() {
+		java.util.Locale locale = java.util.Locale.getDefault();
+		return new Language(locale.getLanguage(), locale.getCountry(), locale.getVariant());
 	}
 
 	@Override

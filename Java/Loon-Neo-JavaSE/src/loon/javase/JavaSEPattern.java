@@ -26,11 +26,11 @@ import loon.canvas.Pattern;
 
 class JavaSEPattern extends Pattern {
 
-  final TexturePaint paint;
+	final TexturePaint paint;
 
-  public JavaSEPattern (boolean repeatX, boolean repeatY, TexturePaint paint) {
-    super(repeatX, repeatY);
-    assert paint != null;
-    this.paint = paint;
-  }
+	public JavaSEPattern(boolean repeatX, boolean repeatY, TexturePaint paint) {
+		super(repeatX, repeatY);
+		assert paint != null;
+		this.paint = paint;
+	}
 }

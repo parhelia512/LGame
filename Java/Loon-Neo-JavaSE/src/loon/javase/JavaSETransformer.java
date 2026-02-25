@@ -24,7 +24,6 @@ import java.awt.image.BufferedImage;
 
 import loon.canvas.Image;
 
-public interface JavaSETransformer extends Image.BitmapTransformer
-{
-  BufferedImage transform(BufferedImage image);
+public interface JavaSETransformer extends Image.BitmapTransformer {
+	BufferedImage transform(BufferedImage image);
 }

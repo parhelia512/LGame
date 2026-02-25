@@ -47,7 +47,7 @@ class JavaSELog extends Log {
 
 	@Override
 	public void onError(Throwable e) {
-		//if happen error the game repaint have to stop here
-		//LSystem.AUTO_REPAINT = false;
+		// if happen error the game repaint have to stop here
+		// LSystem.AUTO_REPAINT = false;
 	}
 }

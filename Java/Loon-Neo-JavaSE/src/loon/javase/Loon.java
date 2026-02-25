@@ -94,7 +94,8 @@ public class Loon implements Platform {
 	}
 
 	@Override
-	public void sysDialog(final SysInput.ClickEvent event,final String title,final String text,final String ok,final String cancel) {
+	public void sysDialog(final SysInput.ClickEvent event, final String title, final String text, final String ok,
+			final String cancel) {
 		if (game == null) {
 			event.cancel();
 			return;

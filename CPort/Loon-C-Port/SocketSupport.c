@@ -294,106 +294,172 @@ int64_t GetURLFileSize(const char* url)
 
 int Load_Socket_Init()
 {
-#if defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
-    WSADATA wsa;
-    return WSAStartup(MAKEWORD(2, 2), &wsa);
-#elif defined(__SWITCH__)
-    socketInitializeDefault();
-    nxlinkStdio();
-    return 0;
-#elif defined(__ORBIS__) || defined(__PROSPERO__)
-    sceNetInit();
-    return 0;
-#else
-    return 0;
-#endif
+    #if defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
+        WSADATA wsa;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return -1;
+        return 0;
+    #elif defined(__SWITCH__)
+        return socketInitializeDefault();
+    #elif defined(__3DS__) || defined(__WIIU__)
+        return socInit(NULL, 0);
+    #elif defined(__ORBIS__) || defined(__PROSPERO__) || defined(__VITA__)
+        return sceNetInit();
+    #elif defined(__PSP__)
+        if (sceNetInit() != 0) return -1;
+        if (sceNetInetInit() != 0) return -2;
+        return 0;
+    #else
+        return 0; 
+    #endif
 }
 
-void Load_Socket_Free()
-{
-#if defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
+void Load_Socket_Free() {
+#if defined(__PSP__)
+    sceNetInetTerm();
+    sceNetTerm();
+#elif defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
     WSACleanup();
 #elif defined(__SWITCH__)
     socketExit();
-#elif defined(__ORBIS__) || defined(__PROSPERO__)
+#elif defined(__3DS__) || defined(__WIIU__)
+    socExit();
+#elif defined(__ORBIS__) || defined(__PROSPERO__) || defined(__VITA__)
     sceNetTerm();
 #endif
 }
 
-void Load_Socket_Close(socket_t sock)
-{
-    #if defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
-        closesocket(sock);
-    #else
-        close(sock);
-    #endif
+void Load_Socket_Close(socket_t sock) {
+#if defined(__PSP__)
+    sceNetInetClose(sock);
+#elif defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
+    closesocket(sock);
+#else
+    close(sock);
+#endif
 }
 
-socket_t Load_Create_Server(int port)
-{
-    socket_t server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) return -1;
-    int opt = 1;
+socket_t Load_Connect_Server(int port) {
 #if defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        return SOCKET_ERR_INIT;
+    }
+    socket_t server_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#elif defined(__PSP__)
+    if (sceNetInit() != 0 || sceNetInetInit() != 0) {
+        return SOCKET_ERR_INIT;
+    }
+    socket_t server_fd = sceNetInetSocket(AF_INET, SOCK_STREAM, 0);
 #else
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    socket_t server_fd = socket(AF_INET, SOCK_STREAM, 0);
+#endif
+    if (server_fd < 0) return SOCKET_ERR_INIT;
+    int opt = 1;
+#if defined(__PSP__)
+    sceNetInetSetsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+#else
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
 #endif
     struct sockaddr_in addr = { 0 };
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons(port);
+#if defined(__PSP__)
+    if (sceNetInetBind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        SS_ClientClose(server_fd);
+        return SOCKET_ERR_CONNECT;
+    }
+    if (sceNetInetListen(server_fd, 5) < 0) {
+        SS_ClientClose(server_fd);
+        return SOCKET_ERR_CONNECT;
+    }
+#else
     if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         Load_Socket_Close(server_fd);
-        return -1;
+        return SOCKET_ERR_CONNECT;
     }
     if (listen(server_fd, 5) < 0) {
         Load_Socket_Close(server_fd);
-        return -1;
+        return SOCKET_ERR_CONNECT;
     }
+#endif
     return server_fd;
 }
 
-socket_t Load_Create_Client(const char* ip, int port)
-{
+socket_t Load_Connect_Client(const char* host, int port) {
+#if defined(__PSP__)
+    socket_t sock = sceNetInetSocket(AF_INET, SOCK_STREAM, 0);
+#else
     socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
+#endif
     if (sock < 0) return -1;
     struct sockaddr_in addr = { 0 };
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
-    if (inet_pton(AF_INET, ip, &addr.sin_addr) <= 0) {
-        Load_Socket_Close(sock);
-        return -1;
+#if defined(__PSP__)
+    addr.sin_addr.s_addr = sceNetInetAddr(host);
+    if (addr.sin_addr.s_addr == -1) {
+        sceNetInetClose(sock);
+        return -2;
+    }
+    if (sceNetInetConnect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        sceNetInetClose(sock);
+        return -3;
+    }
+#else
+    if (inet_pton(AF_INET, host, &addr.sin_addr) <= 0) {
+#if defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
+        closesocket(sock);
+#else
+        close(sock);
+#endif
+        return -2;
     }
     if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        Load_Socket_Close(sock);
-        return -1;
+#if defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
+        closesocket(sock);
+#else
+        close(sock);
+#endif
+        return -3;
     }
+#endif
     return sock;
 }
 
-socket_t Load_Create_LinkServerToClient(socket_t server_fd)
-{
+socket_t Load_Create_LinkServerToClient(socket_t server_fd) {
     struct sockaddr_in client_addr;
-    #if defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
-        int client_len = sizeof(client_addr);
-    #else
-        socklen_t client_len = sizeof(client_addr);
-    #endif
-        socket_t client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
+#if defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
+    int client_len = sizeof(client_addr);
+    socket_t client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
+#elif defined(__PSP__)
+    int client_len = sizeof(client_addr);
+    socket_t client_fd = sceNetInetAccept(server_fd, (struct sockaddr*)&client_addr, &client_len);
+#else
+    socklen_t client_len = sizeof(client_addr);
+    socket_t client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
+#endif
     return client_fd;
 }
 
-int Load_Socket_Send(socket_t sock, const char* msg, const int flags)
-{
-    return send(sock, msg, (int)strlen(msg), flags);
+int Load_Socket_Send(socket_t sock, const uint8_t* data, int len) {
+#if defined(__PSP__)
+    return sceNetInetSend(sock, (const char*)data, len, 0);
+#elif defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
+    return send(sock, (const char*)data, len, 0);
+#else
+    return send(sock, (const char*)data, len, 0);
+#endif
 }
 
-int Load_Socket_Recv(socket_t sock, char* buf, int bufsize)
-{
-    int bytes = recv(sock, buf, bufsize - 1, 0);
-    if (bytes > 0) buf[bytes] = '\0';
-    return bytes;
+int Load_Socket_Recv(socket_t sock, uint8_t* buf, int bufsize) {
+#if defined(__PSP__)
+    return sceNetInetRecv(sock, buf, bufsize, 0);
+#elif defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
+    return recv(sock, (char*)buf, bufsize, 0);
+#else
+    return recv(sock, buf, bufsize, 0);
+#endif
 }
 
 void Load_Socket_FirstIP(char* out_ip, int out_size, int prefer_ipv6)
@@ -481,4 +547,21 @@ void Load_Socket_FirstIP(char* out_ip, int out_size, int prefer_ipv6)
     freeifaddrs(ifaddr);
 #endif
     return;
+}
+
+int Load_Socket_Timeout(socket_t sock, int recv_timeout_ms, int send_timeout_ms) {
+#if defined(_WIN32)
+    DWORD rcv = recv_timeout_ms, snd = send_timeout_ms;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&rcv, sizeof(rcv)) < 0) return SOCKET_ERR_TIMEOUT;
+    if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char*)&snd, sizeof(snd)) < 0) return SOCKET_ERR_TIMEOUT;
+#else
+    struct timeval tv;
+    tv.tv_sec = recv_timeout_ms / 1000;
+    tv.tv_usec = (recv_timeout_ms % 1000) * 1000;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) return SOCKET_ERR_TIMEOUT;
+    tv.tv_sec = send_timeout_ms / 1000;
+    tv.tv_usec = (send_timeout_ms % 1000) * 1000;
+    if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) return SOCKET_ERR_TIMEOUT;
+#endif
+    return SOCKET_OK;
 }

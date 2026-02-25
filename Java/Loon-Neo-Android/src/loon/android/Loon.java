@@ -52,6 +52,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Rect;
@@ -66,6 +67,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.WindowMetrics;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 
@@ -422,9 +424,29 @@ public abstract class Loon extends Activity implements AndroidBase, Platform, La
 	protected DisplayMetrics getSysDisplayMetrices() {
 		DisplayMetrics dm = new DisplayMetrics();
 		try {
-			getWindowManager().getDefaultDisplay().getMetrics(dm);
+			DisplayMetrics base = getApplicationContext().getResources().getDisplayMetrics();
+			dm.density = base.density;
+			dm.densityDpi = base.densityDpi;
+			dm.scaledDensity = base.scaledDensity;
+			dm.xdpi = base.xdpi;
+			dm.ydpi = base.ydpi;
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+				WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+				if (wm != null) {
+					WindowMetrics metrics = wm.getCurrentWindowMetrics();
+					Rect bounds = metrics.getBounds();
+					dm.widthPixels = bounds.width();
+					dm.heightPixels = bounds.height();
+				} else {
+					dm.widthPixels = base.widthPixels;
+					dm.heightPixels = base.heightPixels;
+				}
+			} else {
+				dm.widthPixels = base.widthPixels;
+				dm.heightPixels = base.heightPixels;
+			}
 		} catch (Throwable cause) {
-			cause.printStackTrace();
+			dm = Resources.getSystem().getDisplayMetrics();
 		}
 		return dm;
 	}

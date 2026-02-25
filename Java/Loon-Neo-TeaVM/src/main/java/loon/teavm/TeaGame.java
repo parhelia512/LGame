@@ -25,16 +25,19 @@ import java.util.ArrayList;
 import org.teavm.jso.JSBody;
 import org.teavm.jso.JSExceptions;
 import org.teavm.jso.JSObject;
+import org.teavm.jso.browser.Navigator;
 import org.teavm.jso.browser.Window;
 
 import loon.Asyn;
 import loon.LGame;
 import loon.LSetting;
 import loon.LSystem;
+import loon.NetworkClient;
 import loon.Support;
 import loon.geom.Vector2f;
 import loon.jni.NativeSupport;
 import loon.teavm.Loon.OrientationLockType;
+import loon.utils.Language;
 import loon.utils.StringUtils;
 
 public class TeaGame extends LGame {
@@ -295,6 +298,20 @@ public class TeaGame extends LGame {
 	@Override
 	public TeaAssets assets() {
 		return assets;
+	}
+
+	@Override
+	public NetworkClient networkClient() {
+		return new TeaSocketClient();
+	}
+
+	@Override
+	public Language lang() {
+		String langTag = Navigator.getLanguage();
+		String[] parts = langTag.split("-");
+		String lang = parts.length > 0 ? parts[0] : "";
+		String country = parts.length > 1 ? parts[1] : "";
+		return new Language(lang, country);
 	}
 
 	@Override

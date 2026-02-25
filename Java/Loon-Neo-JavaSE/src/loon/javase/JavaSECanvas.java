@@ -171,7 +171,7 @@ class JavaSECanvas extends Canvas {
 		isDirty = true;
 		return this;
 	}
-	
+
 	public Canvas fillOval(float x, float y, float w, float h) {
 		currentState().prepareFill(g2d);
 		g2d.fillOval(MathUtils.floor(x), MathUtils.floor(y), MathUtils.floor(w), MathUtils.floor(h));
@@ -198,7 +198,7 @@ class JavaSECanvas extends Canvas {
 		isDirty = true;
 		return this;
 	}
-	
+
 	@Override
 	public Canvas drawLine(float x0, float y0, float x1, float y1) {
 		currentState().prepareStroke(g2d);

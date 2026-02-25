@@ -24,12 +24,14 @@ import loon.Asyn;
 import loon.LGame;
 import loon.LSetting;
 import loon.LSystem;
+import loon.NetworkClient;
 import loon.Support;
 import loon.geom.Vector2f;
 import loon.html5.gwt.Loon.OrientationLockType;
 import loon.html5.gwt.preloader.LocalAssetResources;
 import loon.jni.NativeSupport;
 import loon.jni.TimerCallback;
+import loon.utils.Language;
 
 import com.google.gwt.animation.client.AnimationScheduler;
 import com.google.gwt.animation.client.AnimationScheduler.AnimationCallback;
@@ -38,6 +40,7 @@ import com.google.gwt.core.client.GWT;
 import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.dom.client.Element;
 import com.google.gwt.dom.client.Style.Cursor;
+import com.google.gwt.i18n.client.LocaleInfo;
 import com.google.gwt.user.client.Timer;
 import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.ui.Panel;
@@ -339,6 +342,20 @@ public final class GWTGame extends LGame {
 	@Override
 	public GWTAssets assets() {
 		return assets;
+	}
+
+	@Override
+	public Language lang() {
+		String localeName = LocaleInfo.getCurrentLocale().getLocaleName();
+		String[] parts = localeName.split("_");
+		String lang = parts.length > 0 ? parts[0] : "";
+		String country = parts.length > 1 ? parts[1] : "";
+		return new Language(lang, country);
+	}
+
+	@Override
+	public NetworkClient networkClient() {
+		return new GWTSocketClient();
 	}
 
 	@Override

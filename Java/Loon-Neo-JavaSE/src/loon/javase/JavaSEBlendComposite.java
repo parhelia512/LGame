@@ -29,81 +29,74 @@ import java.awt.image.WritableRaster;
 
 public class JavaSEBlendComposite implements Composite {
 
-  public static final JavaSEBlendComposite Multiply = new JavaSEBlendComposite(new Blender() {
-    @Override
-    protected int blend (int srcA, int srcR, int srcG, int srcB,
-                         int dstA, int dstR, int dstG, int dstB, float alpha) {
-      return compose(srcA + dstA - (srcA*dstA)/255,
-                     (srcR * dstR) >> 8,
-                     (srcG * dstG) >> 8,
-                     (srcB * dstB) >> 8,
-                     dstA, dstR, dstG, dstB, alpha);
-    }
-  });
+	public static final JavaSEBlendComposite Multiply = new JavaSEBlendComposite(new Blender() {
+		@Override
+		protected int blend(int srcA, int srcR, int srcG, int srcB, int dstA, int dstR, int dstG, int dstB,
+				float alpha) {
+			return compose(srcA + dstA - (srcA * dstA) / 255, (srcR * dstR) >> 8, (srcG * dstG) >> 8,
+					(srcB * dstB) >> 8, dstA, dstR, dstG, dstB, alpha);
+		}
+	});
 
-  private final Blender blender;
-  private final float alpha;
+	private final Blender blender;
+	private final float alpha;
 
-  private final CompositeContext context = new CompositeContext() {
-    @Override
-    public void compose(Raster src, Raster dstIn, WritableRaster dstOut) {
-      int width = Math.min(src.getWidth(), dstIn.getWidth());
-      int height = Math.min(src.getHeight(), dstIn.getHeight());
-      int[] srcPixels = new int[width], dstPixels = new int[width];
-      for (int yy = 0; yy < height; yy++) {
-        src.getDataElements(0, yy, width, 1, srcPixels);
-        dstIn.getDataElements(0, yy, width, 1, dstPixels);
-        blender.blend(srcPixels, dstPixels, width, alpha);
-        dstOut.setDataElements(0, yy, width, 1, dstPixels);
-      }
-    }
+	private final CompositeContext context = new CompositeContext() {
+		@Override
+		public void compose(Raster src, Raster dstIn, WritableRaster dstOut) {
+			int width = Math.min(src.getWidth(), dstIn.getWidth());
+			int height = Math.min(src.getHeight(), dstIn.getHeight());
+			int[] srcPixels = new int[width], dstPixels = new int[width];
+			for (int yy = 0; yy < height; yy++) {
+				src.getDataElements(0, yy, width, 1, srcPixels);
+				dstIn.getDataElements(0, yy, width, 1, dstPixels);
+				blender.blend(srcPixels, dstPixels, width, alpha);
+				dstOut.setDataElements(0, yy, width, 1, dstPixels);
+			}
+		}
 
-    @Override
-    public void dispose() {
+		@Override
+		public void dispose() {
 
-    }
-  };
+		}
+	};
 
-  public JavaSEBlendComposite derive(float alpha) {
-    return (alpha == this.alpha) ? this : new JavaSEBlendComposite(blender, alpha);
-  }
+	public JavaSEBlendComposite derive(float alpha) {
+		return (alpha == this.alpha) ? this : new JavaSEBlendComposite(blender, alpha);
+	}
 
-  @Override
-  public CompositeContext createContext(ColorModel srcColorModel, ColorModel dstColorModel,
-                                        RenderingHints hints) {
-    return context; 
-  }
+	@Override
+	public CompositeContext createContext(ColorModel srcColorModel, ColorModel dstColorModel, RenderingHints hints) {
+		return context;
+	}
 
-  protected JavaSEBlendComposite(Blender blender) {
-    this(blender, 1f);
-  }
+	protected JavaSEBlendComposite(Blender blender) {
+		this(blender, 1f);
+	}
 
-  protected JavaSEBlendComposite(Blender blender, float alpha) {
-    this.blender = blender;
-    this.alpha = alpha;
-  }
+	protected JavaSEBlendComposite(Blender blender, float alpha) {
+		this.blender = blender;
+		this.alpha = alpha;
+	}
 
-  protected static abstract class Blender {
-    public void blend (int[] srcPixels, int[] dstPixels, int width, float alpha) {
-      for (int xx = 0; xx < width; xx++) {
-        int srcARGB = srcPixels[xx], dstARGB = dstPixels[xx];
-        int srcA = (srcARGB >> 24) & 0xFF, dstA = (dstARGB >> 24) & 0xFF;
-        int srcR = (srcARGB >> 16) & 0xFF, dstR = (dstARGB >> 16) & 0xFF;
-        int srcG = (srcARGB >>  8) & 0xFF, dstG = (dstARGB >>  8) & 0xFF;
-        int srcB = (srcARGB      ) & 0xFF, dstB = (dstARGB      ) & 0xFF;
-        dstPixels[xx] = blend(srcA, srcR, srcG, srcB, dstA, dstR, dstG, dstB, alpha);
-      }
-    }
+	protected static abstract class Blender {
+		public void blend(int[] srcPixels, int[] dstPixels, int width, float alpha) {
+			for (int xx = 0; xx < width; xx++) {
+				int srcARGB = srcPixels[xx], dstARGB = dstPixels[xx];
+				int srcA = (srcARGB >> 24) & 0xFF, dstA = (dstARGB >> 24) & 0xFF;
+				int srcR = (srcARGB >> 16) & 0xFF, dstR = (dstARGB >> 16) & 0xFF;
+				int srcG = (srcARGB >> 8) & 0xFF, dstG = (dstARGB >> 8) & 0xFF;
+				int srcB = (srcARGB) & 0xFF, dstB = (dstARGB) & 0xFF;
+				dstPixels[xx] = blend(srcA, srcR, srcG, srcB, dstA, dstR, dstG, dstB, alpha);
+			}
+		}
 
-    protected abstract int blend (int srcA, int srcR, int srcG, int srcB,
-                                  int dstA, int dstR, int dstG, int dstB, float alpha);
+		protected abstract int blend(int srcA, int srcR, int srcG, int srcB, int dstA, int dstR, int dstG, int dstB,
+				float alpha);
 
-    protected int compose (int a, int r, int g, int b, int dstA, int dstR, int dstG, int dstB,
-                           float alpha) {
-      return ((0xFF & (int) (dstA + (a - dstA) * alpha)) << 24 |
-              (0xFF & (int) (dstR + (r - dstR) * alpha)) << 16 |
-              (0xFF & (int) (dstG + (g - dstG) * alpha)) <<  8 |
-              (0xFF & (int) (dstB + (b - dstB) * alpha)));
-    }
-  }
+		protected int compose(int a, int r, int g, int b, int dstA, int dstR, int dstG, int dstB, float alpha) {
+			return ((0xFF & (int) (dstA + (a - dstA) * alpha)) << 24 | (0xFF & (int) (dstR + (r - dstR) * alpha)) << 16
+					| (0xFF & (int) (dstG + (g - dstG) * alpha)) << 8 | (0xFF & (int) (dstB + (b - dstB) * alpha)));
+		}
+	}
 }

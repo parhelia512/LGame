@@ -35,6 +35,7 @@ import loon.opengl.LSTRFont;
 import loon.opengl.Mesh;
 import loon.opengl.TextureSource;
 import loon.utils.IntMap;
+import loon.utils.Language;
 import loon.utils.ObjectMap;
 import loon.utils.PathUtils;
 import loon.utils.StringUtils;
@@ -1102,6 +1103,8 @@ public abstract class LGame implements LRelease {
 
 	public abstract Asyn asyn();
 
+	public abstract NetworkClient networkClient();
+	
 	public abstract Graphics graphics();
 
 	public abstract InputMake input();
@@ -1114,6 +1117,8 @@ public abstract class LGame implements LRelease {
 
 	public abstract Accelerometer accel();
 
+	public abstract Language lang();
+	
 	public LProcess process() {
 		return processImpl;
 	}

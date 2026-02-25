@@ -28,10 +28,12 @@ import java.util.concurrent.Executors;
 import loon.Clipboard;
 import loon.LGame;
 import loon.LSetting;
+import loon.NetworkClient;
 import loon.Platform;
 import loon.canvas.Canvas;
 import loon.opengl.Mesh;
 import loon.se.window.JavaSEAppCanvas;
+import loon.utils.Language;
 import loon.utils.StringUtils;
 
 public class JavaSEGame extends LGame {
@@ -343,6 +345,17 @@ public class JavaSEGame extends LGame {
 	@Override
 	public JavaSEAsyn asyn() {
 		return this.asyn;
+	}
+
+	@Override
+	public NetworkClient networkClient() {
+		return new JavaSESocketClient();
+	}
+
+	@Override
+	public Language lang() {
+		java.util.Locale locale = java.util.Locale.getDefault();
+		return new Language(locale.getLanguage(), locale.getCountry(), locale.getVariant());
 	}
 
 	@Override

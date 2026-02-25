@@ -39,13 +39,11 @@ public class JavaSEImage extends ImageImpl {
 
 	protected BufferedImage buffer;
 
-	public JavaSEImage(Graphics gfx, Scale scale, BufferedImage buffer,
-			String source) {
+	public JavaSEImage(Graphics gfx, Scale scale, BufferedImage buffer, String source) {
 		super(gfx, scale, buffer.getWidth(), buffer.getHeight(), source, buffer);
 	}
 
-	public JavaSEImage(JavaSEGame game, boolean async, int preWidth,
-			int preHeight, String source) {
+	public JavaSEImage(JavaSEGame game, boolean async, int preWidth, int preHeight, String source) {
 		super(game, async, Scale.ONE, preWidth, preHeight, source);
 	}
 
@@ -57,36 +55,30 @@ public class JavaSEImage extends ImageImpl {
 	public Pattern createPattern(boolean repeatX, boolean repeatY) {
 		assert buffer != null : "Cannot generate a pattern from unready image.";
 		Rectangle2D rect = new Rectangle2D.Float(0, 0, width(), height());
-		return new JavaSEPattern(repeatX, repeatY, new TexturePaint(buffer,
-				rect));
+		return new JavaSEPattern(repeatX, repeatY, new TexturePaint(buffer, rect));
 	}
 
 	@Override
 	public Image transform(BitmapTransformer xform) {
-		return new JavaSEImage(gfx, scale,
-				((JavaSETransformer) xform).transform(buffer), source);
+		return new JavaSEImage(gfx, scale, ((JavaSETransformer) xform).transform(buffer), source);
 	}
 
 	@Override
 	public void draw(Object ctx, float x, float y, float w, float h) {
 		Graphics2D gfx = (Graphics2D) ctx;
-		gfx.drawImage(buffer, MathUtils.ifloor(x), MathUtils.ifloor(y),
-				MathUtils.ifloor(w), MathUtils.ifloor(h), null);
+		gfx.drawImage(buffer, MathUtils.ifloor(x), MathUtils.ifloor(y), MathUtils.ifloor(w), MathUtils.ifloor(h), null);
 	}
 
 	@Override
-	public void draw(Object ctx, float dx, float dy, float dw, float dh,
-			float sx, float sy, float sw, float sh) {
+	public void draw(Object ctx, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh) {
 		float f = scale().factor;
 		sx *= f;
 		sy *= f;
 		sw *= f;
 		sh *= f;
 		Graphics2D gfx = (Graphics2D) ctx;
-		gfx.drawImage(buffer, MathUtils.ifloor(dx), MathUtils.ifloor(dy),
-				MathUtils.ifloor(dw), MathUtils.ifloor(dh),
-				MathUtils.ifloor(sx), MathUtils.ifloor(sy),
-				MathUtils.ifloor(sw), MathUtils.ifloor(sh), null);
+		gfx.drawImage(buffer, MathUtils.ifloor(dx), MathUtils.ifloor(dy), MathUtils.ifloor(dw), MathUtils.ifloor(dh),
+				MathUtils.ifloor(sx), MathUtils.ifloor(sy), MathUtils.ifloor(sw), MathUtils.ifloor(sh), null);
 	}
 
 	public void getLight(Image buffer, int v) {
@@ -140,15 +132,13 @@ public class JavaSEImage extends ImageImpl {
 		return pixels;
 	}
 
-	public int[] getPixels(int offset, int stride, int x, int y, int width,
-			int height) {
+	public int[] getPixels(int offset, int stride, int x, int y, int width, int height) {
 		int pixels[] = new int[width * height];
 		buffer.getRGB(x, y, width, height, pixels, offset, stride);
 		return pixels;
 	}
 
-	public int[] getPixels(int pixels[], int offset, int stride, int x, int y,
-			int width, int height) {
+	public int[] getPixels(int pixels[], int offset, int stride, int x, int y, int width, int height) {
 		buffer.getRGB(x, y, width, height, pixels, offset, stride);
 		return pixels;
 	}
@@ -157,8 +147,7 @@ public class JavaSEImage extends ImageImpl {
 		buffer.setRGB(0, 0, width, height, pixels, 0, width);
 	}
 
-	public void setPixels(int[] pixels, int offset, int stride, int x, int y,
-			int width, int height) {
+	public void setPixels(int[] pixels, int offset, int stride, int x, int y, int width, int height) {
 		buffer.setRGB(x, y, width, height, pixels, offset, stride);
 	}
 
@@ -188,17 +177,15 @@ public class JavaSEImage extends ImageImpl {
 	}
 
 	@Override
-	public void getRGB(int startX, int startY, int width, int height,
-			int[] rgbArray, int offset, int scanSize) {
-		if (width <= 0 || height <= 0){
+	public void getRGB(int startX, int startY, int width, int height, int[] rgbArray, int offset, int scanSize) {
+		if (width <= 0 || height <= 0) {
 			return;
 		}
 		buffer.getRGB(startX, startY, width, height, rgbArray, offset, scanSize);
 	}
 
-	public void setRGB(int startX, int startY, int width, int height, int[] rgbArray,
-			int offset, int scansize) {
-		if (width <= 0 || height <= 0){
+	public void setRGB(int startX, int startY, int width, int height, int[] rgbArray, int offset, int scansize) {
+		if (width <= 0 || height <= 0) {
 			return;
 		}
 		setPixels(rgbArray, offset, scansize, startX, startY, width, height);
@@ -221,8 +208,7 @@ public class JavaSEImage extends ImageImpl {
 
 	@Override
 	protected Object createErrorBitmap(int rawWidth, int rawHeight) {
-		BufferedImage bufferimage = new BufferedImage(rawWidth, rawHeight,
-				BufferedImage.TYPE_INT_ARGB_PRE);
+		BufferedImage bufferimage = new BufferedImage(rawWidth, rawHeight, BufferedImage.TYPE_INT_ARGB_PRE);
 		Graphics2D g = bufferimage.createGraphics();
 		try {
 			g.setColor(java.awt.Color.red);
@@ -241,11 +227,9 @@ public class JavaSEImage extends ImageImpl {
 		return buffer.getColorModel().hasAlpha();
 	}
 
-
 	@Override
 	public Image getSubImage(int x, int y, int width, int height) {
-		return new JavaSEImage(gfx, scale, buffer.getSubimage(x, y, width,
-				height), TextureSource.RenderCanvas);
+		return new JavaSEImage(gfx, scale, buffer.getSubimage(x, y, width, height), TextureSource.RenderCanvas);
 	}
 
 	@Override

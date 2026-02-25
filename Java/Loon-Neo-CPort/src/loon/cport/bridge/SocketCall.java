@@ -53,21 +53,24 @@ public final class SocketCall {
 	public final static native int socketClose(int socket);
 
 	@Import(name = "Load_Socket_Send")
-	public final static native int socketSend(int sock, char[] msg, int flags);
+	public final static native int socketSend(int sock, byte[] msg, int len);
 
 	@Import(name = "Load_Socket_Recv")
-	public final static native int socketRecv(int sock, char[] msg, int bufsize);
+	public final static native int socketRecv(int sock, byte[] msg, int bufsize);
 
 	@Import(name = "Load_Socket_FirstIP")
 	public final static native void socketFirstIP(char[] outips, int outsize, int preferipv6);
 
-	@Import(name = "Load_Create_Server")
-	public final static native int createServer(int port);
+	@Import(name = "Load_Connect_Server")
+	public final static native int connectServer(int port);
 
-	@Import(name = "Load_Create_Client")
-	public final static native int createClient(String ip, int port);
+	@Import(name = "Load_Connect_Client")
+	public final static native int connectClient(String host, int port);
 
 	@Import(name = "Load_Create_LinkServerToClient")
 	public final static native int linkServerToClient(int server);
+
+	@Import(name = "Load_Socket_Timeout")
+	public final static native int socketTimeout(int sock, int recv_timeout_ms, int send_timeout_ms);
 
 }

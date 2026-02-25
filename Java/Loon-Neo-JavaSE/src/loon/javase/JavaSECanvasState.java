@@ -58,23 +58,19 @@ class JavaSECanvasState {
 	float alpha;
 
 	JavaSECanvasState() {
-		this(0xff000000, 0xffffffff, null, null, new AffineTransform(), 1.0f,
-				LineCap.SQUARE, LineJoin.MITER, 10.0f, NOCLIP,
-				Composite.SRC_OVER, 1);
+		this(0xff000000, 0xffffffff, null, null, new AffineTransform(), 1.0f, LineCap.SQUARE, LineJoin.MITER, 10.0f,
+				NOCLIP, Composite.SRC_OVER, 1);
 	}
 
 	JavaSECanvasState(JavaSECanvasState toCopy) {
-		this(toCopy.fillColor, toCopy.strokeColor, toCopy.fillGradient,
-				toCopy.fillPattern, toCopy.transform, toCopy.strokeWidth,
-				toCopy.lineCap, toCopy.lineJoin, toCopy.miterLimit,
-				toCopy.clipper, toCopy.composite, toCopy.alpha);
+		this(toCopy.fillColor, toCopy.strokeColor, toCopy.fillGradient, toCopy.fillPattern, toCopy.transform,
+				toCopy.strokeWidth, toCopy.lineCap, toCopy.lineJoin, toCopy.miterLimit, toCopy.clipper,
+				toCopy.composite, toCopy.alpha);
 	}
 
-	JavaSECanvasState(int fillColor, int strokeColor,
-			JavaSEGradient fillGradient, JavaSEPattern fillPattern,
-			AffineTransform transform, float strokeWidth, LineCap lineCap,
-			LineJoin lineJoin, float miterLimit, Clipper clipper,
-			Composite composite, float alpha) {
+	JavaSECanvasState(int fillColor, int strokeColor, JavaSEGradient fillGradient, JavaSEPattern fillPattern,
+			AffineTransform transform, float strokeWidth, LineCap lineCap, LineJoin lineJoin, float miterLimit,
+			Clipper clipper, Composite composite, float alpha) {
 		this.fillColor = fillColor;
 		this.strokeColor = strokeColor;
 		this.fillGradient = fillGradient;
@@ -94,21 +90,18 @@ class JavaSECanvasState {
 	}
 
 	void prepareStroke(Graphics2D gfx) {
-		gfx.setStroke(new BasicStroke(strokeWidth, convertLineCap(),
-				convertLineJoin(), miterLimit));
+		gfx.setStroke(new BasicStroke(strokeWidth, convertLineCap(), convertLineJoin(), miterLimit));
 		gfx.setColor(convertColor(strokeColor));
 		clipper.setClip(gfx);
 		gfx.setComposite(convertComposite(composite, alpha));
 	}
 
 	void prepareFill(Graphics2D gfx) {
-		if (fillGradient != null){
+		if (fillGradient != null) {
 			gfx.setPaint(fillGradient.paint);
-		}
-		else if (fillPattern != null){
+		} else if (fillPattern != null) {
 			gfx.setPaint(fillPattern.paint);
-		}
-		else{
+		} else {
 			gfx.setPaint(convertColor(fillColor));
 		}
 		clipper.setClip(gfx);
@@ -124,8 +117,7 @@ class JavaSECanvasState {
 		return new Color(r, g, b, a);
 	}
 
-	private java.awt.Composite convertComposite(Canvas.Composite composite,
-			float alpha) {
+	private java.awt.Composite convertComposite(Canvas.Composite composite, float alpha) {
 		switch (composite) {
 		case DST_ATOP:
 			return AlphaComposite.DstAtop.derive(alpha);

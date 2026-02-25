@@ -26,6 +26,7 @@ import loon.LSetting;
 import loon.LSystem;
 import loon.Support;
 import loon.events.SysInputFactory;
+import loon.utils.Language;
 import loon.utils.json.JsonImpl;
 import android.content.Intent;
 import android.net.Uri;
@@ -222,6 +223,17 @@ public class AndroidGame extends LGame {
 	@Override
 	public AndroidAsyn asyn() {
 		return syn;
+	}
+
+	@Override
+	public Language lang() {
+		java.util.Locale locale = java.util.Locale.getDefault();
+		return new Language(locale.getLanguage(), locale.getCountry(), locale.getVariant());
+	}
+
+	@Override
+	public AndroidSocketClient networkClient() {
+		return new AndroidSocketClient();
 	}
 
 	@Override

@@ -37,6 +37,7 @@ import loon.canvas.Pixmap;
 import loon.events.KeyMake;
 import loon.geom.Dimension;
 import loon.jni.NativeSupport;
+import loon.utils.Language;
 import loon.utils.Scale;
 import loon.utils.reply.Port;
 
@@ -264,6 +265,17 @@ public class JavaSEGame extends LGame {
 	@Override
 	public JavaSEAsyn asyn() {
 		return asyn;
+	}
+
+	@Override
+	public NetworkClient networkClient() {
+		return new JavaSESocketClient();
+	}
+
+	@Override
+	public Language lang() {
+		java.util.Locale locale = java.util.Locale.getDefault();
+		return new Language(locale.getLanguage(), locale.getCountry(), locale.getVariant());
 	}
 
 	@Override

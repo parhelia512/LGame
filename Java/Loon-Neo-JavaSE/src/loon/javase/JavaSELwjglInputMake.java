@@ -65,15 +65,10 @@ public class JavaSELwjglInputMake extends JavaSEInputMake {
 	void update() {
 		super.update();
 		Keyboard.poll();
-		int flags = modifierFlags(
-				Keyboard.isKeyDown(Keyboard.KEY_LMENU)
-						|| Keyboard.isKeyDown(Keyboard.KEY_RMENU),
-				Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)
-						|| Keyboard.isKeyDown(Keyboard.KEY_RCONTROL),
-				Keyboard.isKeyDown(Keyboard.KEY_LMETA)
-						|| Keyboard.isKeyDown(Keyboard.KEY_RMETA),
-				Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)
-						|| Keyboard.isKeyDown(Keyboard.KEY_RSHIFT));
+		int flags = modifierFlags(Keyboard.isKeyDown(Keyboard.KEY_LMENU) || Keyboard.isKeyDown(Keyboard.KEY_RMENU),
+				Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL),
+				Keyboard.isKeyDown(Keyboard.KEY_LMETA) || Keyboard.isKeyDown(Keyboard.KEY_RMETA),
+				Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT));
 		while (Keyboard.next()) {
 			double time = (double) (Keyboard.getEventNanoseconds() / 1000000);
 			int keyCode = Keyboard.getEventKey();
@@ -86,12 +81,10 @@ public class JavaSELwjglInputMake extends JavaSEInputMake {
 		}
 		while (Mouse.next()) {
 			double time = (double) (Mouse.getEventNanoseconds() / 1000000);
-			Vector2f m = new Vector2f(Mouse.getEventX(), Display.getHeight()
-					- Mouse.getEventY() - 1);
+			Vector2f m = new Vector2f(Mouse.getEventX(), Display.getHeight() - Mouse.getEventY() - 1);
 			int btnIdx = Mouse.getEventButton();
 			int id = getButton(btnIdx);
-			emitMouseButton(time, m.x, m.y, id, Mouse.getEventButtonState(),
-					flags);
+			emitMouseButton(time, m.x, m.y, id, Mouse.getEventButtonState(), flags);
 		}
 	}
 

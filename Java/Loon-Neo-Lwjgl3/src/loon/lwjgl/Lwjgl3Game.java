@@ -71,6 +71,7 @@ import loon.canvas.Pixmap;
 import loon.events.KeyMake;
 import loon.geom.Dimension;
 import loon.jni.NativeSupport;
+import loon.utils.Language;
 import loon.utils.Scale;
 import loon.utils.reply.Port;
 
@@ -425,6 +426,17 @@ public class Lwjgl3Game extends LGame {
 	@Override
 	public Lwjgl3Asyn asyn() {
 		return asyn;
+	}
+
+	@Override
+	public Language lang() {
+		java.util.Locale locale = java.util.Locale.getDefault();
+		return new Language(locale.getLanguage(), locale.getCountry(), locale.getVariant());
+	}
+
+	@Override
+	public Lwjgl3SocketClient networkClient() {
+		return new Lwjgl3SocketClient();
 	}
 
 	@Override

@@ -30,6 +30,7 @@ import loon.LSetting;
 import loon.LSystem;
 import loon.LazyLoading;
 import loon.Log;
+import loon.NetworkClient;
 import loon.Save;
 import loon.Support;
 import loon.cport.bridge.NativeSupport;
@@ -390,10 +391,6 @@ public final class CGame extends LGame {
 		return _appLocked;
 	}
 
-	public Language getLanguage() {
-		return Language.toLanguage(SDLCall.getSystemLanguage());
-	}
-
 	@Override
 	public boolean isCPort() {
 		return true;
@@ -445,6 +442,16 @@ public final class CGame extends LGame {
 	@Override
 	public Asyn asyn() {
 		return _syn;
+	}
+
+	@Override
+	public NetworkClient networkClient() {
+		return new CSocketClient();
+	}
+
+	@Override
+	public Language lang() {
+		return Language.toLanguage(SDLCall.getSystemLanguage());
 	}
 
 	@Override

@@ -25,6 +25,7 @@ import loon.canvas.Image;
 import loon.events.InputMake;
 import loon.events.InputMakeImpl;
 import loon.opengl.Mesh;
+import loon.utils.Language;
 import loon.utils.ObjectMap;
 import loon.utils.TimeUtils;
 import loon.utils.reply.Act;
@@ -129,6 +130,11 @@ public class EmptyGame extends LGame {
 	}
 
 	@Override
+	public NetworkClient networkClient() {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
 	public Graphics graphics() {
 		throw new UnsupportedOperationException();
 	}
@@ -181,6 +187,13 @@ public class EmptyGame extends LGame {
 	@Override
 	public Clipboard clipboard() {
 		return clipboardDefault;
+	}
+
+	private Language langDefault = Language.getDefault();
+
+	@Override
+	public Language lang() {
+		return langDefault;
 	}
 
 	@Override

@@ -28,6 +28,7 @@ import loon.LSetting;
 import loon.Platform;
 import loon.canvas.Canvas;
 import loon.opengl.Mesh;
+import loon.utils.Language;
 import loon.utils.StringUtils;
 
 public class JavaFXGame extends LGame {
@@ -314,6 +315,17 @@ public class JavaFXGame extends LGame {
 	@Override
 	public JavaFXAsyn asyn() {
 		return this.asyn;
+	}
+
+	@Override
+	public Language lang() {
+		java.util.Locale locale = java.util.Locale.getDefault();
+		return new Language(locale.getLanguage(), locale.getCountry(), locale.getVariant());
+	}
+
+	@Override
+	public JavaFXSocketClient networkClient() {
+		return new JavaFXSocketClient();
 	}
 
 	@Override
