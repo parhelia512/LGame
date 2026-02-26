@@ -1211,9 +1211,6 @@ static inline int fix_font_char_size(const uint32_t ch, float fontSize, int size
         }
         return newSize + 2;
     } else if (is_uppercase(ch)) {
-        if (0x0049 == ch || 0x0054 == ch) {
-            return newSize;
-        }
         if (0x0041 == ch || 0x0052 == ch) {
             return newSize + 2;
         }

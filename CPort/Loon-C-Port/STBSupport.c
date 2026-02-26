@@ -1084,7 +1084,6 @@ static inline bool is_min_cn_char_lv1(uint32_t codepoint) {
 	case 0x4EBA:
 	case 0x5168:
 	case 0x5341: 
-	case 0x56DE:
 	case 0x5C0F: 
 	case 0x5927: 
 	case 0x5DE5: 
@@ -1107,6 +1106,7 @@ static inline bool is_min_cn_char_lv1(uint32_t codepoint) {
 static inline bool is_min_cn_char_lv2(uint32_t codepoint) {
 	switch (codepoint) {
 	case 0x4E2D:
+	case 0x56DE:
 	case 0x81EA:
 		return true;
 	default:

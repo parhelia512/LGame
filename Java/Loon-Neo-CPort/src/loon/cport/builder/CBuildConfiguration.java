@@ -57,7 +57,7 @@ public class CBuildConfiguration {
 	
 	public int minHeapSize = 64 * (1 << 20);
 
-	public int maxHeapSize = 1024 * (1 << 20);
+	public int maxHeapSize = 512 * (1 << 20);
 
 	public int minDirectBuffersSize = 4 * (1 << 20);
 

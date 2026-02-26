@@ -252,15 +252,13 @@ public final class LProcess implements LRelease {
 
 	private final void callUpdateable(final TArray<Updateable> list) {
 		synchronized (LProcess.class) {
-			synchronized (list) {
-				if (_loadcaches == null) {
-					_loadcaches = new TArray<Updateable>(list);
-				} else if (_loadcaches.size == list.size) {
-					_loadcaches.fill(list);
-				} else {
-					_loadcaches.clear();
-					_loadcaches.addAll(list);
-				}
+			if (_loadcaches == null) {
+				_loadcaches = new TArray<Updateable>(list);
+			} else if (_loadcaches.size == list.size) {
+				_loadcaches.fill(list);
+			} else {
+				_loadcaches.clear();
+				_loadcaches.addAll(list);
 			}
 			list.clear();
 		}
@@ -269,12 +267,10 @@ public final class LProcess implements LRelease {
 			if (r == null) {
 				continue;
 			}
-			synchronized (r) {
-				try {
-					r.action(null);
-				} catch (Throwable cause) {
-					LSystem.error("Updateable dispatch failure", cause);
-				}
+			try {
+				r.action(null);
+			} catch (Throwable cause) {
+				LSystem.error("Updateable dispatch failure", cause);
 			}
 		}
 	}
@@ -405,7 +401,7 @@ public final class LProcess implements LRelease {
 			return;
 		}
 		try {
-			synchronized (this) {
+			synchronized (LProcess.class) {
 				if (newScreen == null) {
 					this._isInstance = false;
 					throw new LSysException("Cannot create a [Screen] instance !");

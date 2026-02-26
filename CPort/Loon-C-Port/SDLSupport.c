@@ -2245,6 +2245,8 @@ bool Load_SDL_Update() {
 	SDL_Event event;
 	int axis = 0;
 	int touchId = -1;
+	int lastX = 0;
+	int lastY = 0;
 	int touchX = 0;
 	int touchY = 0;
 	if (g_initWidth == 0 || g_initHeight == 0) {
@@ -2275,9 +2277,14 @@ bool Load_SDL_Update() {
 			break;
 		case SDL_MOUSEMOTION:
 			if (!g_emulateTouch) {
-				g_touches[0] = 1;
-				g_touches[1] = event.motion.x;
-				g_touches[2] = event.motion.y;
+				if (event.motion.x != lastX || event.motion.y != lastY) {
+					g_touches[0] = 1;
+					g_touches[1] = event.motion.x;
+					g_touches[2] = event.motion.y;
+					g_touches[3] = event.motion.state;
+					lastX = event.motion.x;
+					lastY = event.motion.y;
+				}
 			}
 			break;
 		case SDL_MOUSEBUTTONDOWN:
@@ -2285,6 +2292,7 @@ bool Load_SDL_Update() {
 				g_touches[0] = 0;
 				g_touches[1] = event.button.x;
 				g_touches[2] = event.button.y;
+				g_touches[3] = SDL_BUTTON(event.button.button);
 			}
 			break;
 		case SDL_MOUSEBUTTONUP:
@@ -2292,6 +2300,7 @@ bool Load_SDL_Update() {
 				g_touches[0] = -1;
 				g_touches[1] = event.button.x;
 				g_touches[2] = event.button.y;
+				g_touches[3] = 0; 
 			}
 			break;
 		case SDL_FINGERMOTION:

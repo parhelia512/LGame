@@ -50,7 +50,7 @@ int get_remote_file_size_socket(const char* url, int64_t* size) {
 #ifdef _WIN32
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        return -3;
+        return SOCKET_ERR_CONNECT;
     }
 #endif
     struct addrinfo hints, * res;
@@ -61,7 +61,7 @@ int get_remote_file_size_socket(const char* url, int64_t* size) {
 #ifdef _WIN32
         WSACleanup();
 #endif
-        return -4;
+        return SOCKET_ERR_SEND;
     }
     int sock = (int)socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (sock < 0) {
@@ -69,7 +69,7 @@ int get_remote_file_size_socket(const char* url, int64_t* size) {
 #ifdef _WIN32
         WSACleanup();
 #endif
-        return -5;
+        return SOCKET_ERR_RECV;
     }
     if (connect(sock, res->ai_addr, (int)res->ai_addrlen) != 0) {
         close_socket(sock);
@@ -77,7 +77,7 @@ int get_remote_file_size_socket(const char* url, int64_t* size) {
 #ifdef _WIN32
         WSACleanup();
 #endif
-        return -6;
+        return SOCKET_ERR_TIMEOUT;
     }
     freeaddrinfo(res);
     char request[1024];
@@ -91,7 +91,7 @@ int get_remote_file_size_socket(const char* url, int64_t* size) {
 #ifdef _WIN32
         WSACleanup();
 #endif
-        return -7;
+        return SOCKET_ERR_NOMEM;
     }
     char buffer[BUFFER_SIZE];
     int bytes;
@@ -131,7 +131,7 @@ uint8_t* download_url_windows(const wchar_t* host, INTERNET_PORT port, const wch
     if (!hRequest) {
         WinHttpCloseHandle(hConnect);
         WinHttpCloseHandle(hSession);
-        *status_code = -3;
+        *status_code = SOCKET_ERR_CONNECT;
         return NULL;
     }
 
@@ -141,7 +141,7 @@ uint8_t* download_url_windows(const wchar_t* host, INTERNET_PORT port, const wch
         WinHttpCloseHandle(hRequest);
         WinHttpCloseHandle(hConnect);
         WinHttpCloseHandle(hSession);
-        *status_code = -4;
+        *status_code = SOCKET_ERR_SEND;
         return NULL;
     }
 
@@ -241,7 +241,7 @@ uint8_t* download_with_retry(
             run_sleep_ms(retry_delay_ms);
         }
     }
-    *status_code = -99;
+    *status_code = SOCKET_ERR_UNKNOWN;
     return NULL;
 }
 
@@ -296,7 +296,7 @@ int Load_Socket_Init()
 {
     #if defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
         WSADATA wsa;
-        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return -1;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return SOCKET_ERR_PARAM;
         return 0;
     #elif defined(__SWITCH__)
         return socketInitializeDefault();
@@ -305,8 +305,8 @@ int Load_Socket_Init()
     #elif defined(__ORBIS__) || defined(__PROSPERO__) || defined(__VITA__)
         return sceNetInit();
     #elif defined(__PSP__)
-        if (sceNetInit() != 0) return -1;
-        if (sceNetInetInit() != 0) return -2;
+        if (sceNetInit() != 0) return SOCKET_ERR_PARAM;
+        if (sceNetInetInit() != 0) return SOCKET_ERR_INIT;
         return 0;
     #else
         return 0; 
@@ -392,7 +392,7 @@ socket_t Load_Connect_Client(const char* host, int port) {
 #else
     socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
 #endif
-    if (sock < 0) return -1;
+    if (sock < 0) return SOCKET_ERR_PARAM;
     struct sockaddr_in addr = { 0 };
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
@@ -400,11 +400,11 @@ socket_t Load_Connect_Client(const char* host, int port) {
     addr.sin_addr.s_addr = sceNetInetAddr(host);
     if (addr.sin_addr.s_addr == -1) {
         sceNetInetClose(sock);
-        return -2;
+        return SOCKET_ERR_INIT;
     }
     if (sceNetInetConnect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         sceNetInetClose(sock);
-        return -3;
+        return SOCKET_ERR_CONNECT;
     }
 #else
     if (inet_pton(AF_INET, host, &addr.sin_addr) <= 0) {
@@ -413,7 +413,7 @@ socket_t Load_Connect_Client(const char* host, int port) {
 #else
         close(sock);
 #endif
-        return -2;
+        return SOCKET_ERR_INIT;
     }
     if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
 #if defined(_WIN32) || defined(_WIN64) || defined(_XBOX)
@@ -421,7 +421,7 @@ socket_t Load_Connect_Client(const char* host, int port) {
 #else
         close(sock);
 #endif
-        return -3;
+        return SOCKET_ERR_CONNECT;
     }
 #endif
     return sock;

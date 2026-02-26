@@ -6467,15 +6467,13 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 		return ((_scaleY == 1f) ? getY() : (getY() + getScreenHeight() / 2));
 	}
 
-	public ScreenAction getScreenAction() {
-		synchronized (this) {
-			if (_screenAction == null) {
-				_screenAction = new ScreenAction(this);
-			} else {
-				_screenAction.set(this);
-			}
-			return _screenAction;
+	public synchronized ScreenAction getScreenAction() {
+		if (_screenAction == null) {
+			_screenAction = new ScreenAction(this);
+		} else {
+			_screenAction.set(this);
 		}
+		return _screenAction;
 	}
 
 	public boolean isFlipX() {
@@ -8117,23 +8115,21 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 		return _systemManager.getSystem(systemType);
 	}
 
-	public Screen callEvent(EventAction e) {
+	public synchronized Screen callEvent(EventAction e) {
 		if (_curLockedCallEvent) {
 			return this;
 		}
 		_curLockedCallEvent = true;
-		synchronized (this) {
-			HelperUtils.callEventAction(e, this);
-		}
+		HelperUtils.callEventAction(e, this);
 		return this;
 	}
 
-	public Screen callEvent(Runnable e) {
+	public synchronized Screen callEvent(Runnable e) {
 		if (_curLockedCallEvent) {
 			return this;
 		}
 		_curLockedCallEvent = true;
-		synchronized (this) {
+		if (e != null) {
 			e.run();
 		}
 		return this;

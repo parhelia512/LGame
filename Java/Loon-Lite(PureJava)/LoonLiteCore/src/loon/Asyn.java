@@ -73,7 +73,7 @@ public abstract class Asyn {
 		}
 
 		private void dispatch() {
-			synchronized (this) {
+			synchronized (Asyn.class) {
 				running.addAll(pending);
 				pending.clear();
 			}

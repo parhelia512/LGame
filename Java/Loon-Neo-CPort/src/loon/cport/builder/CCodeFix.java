@@ -282,8 +282,11 @@ public class CCodeFix {
 				"   #if defined(__linux__) || defined(__APPLE__) || defined(__ANDROID__) || defined(__IOS__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__HAIKU__)\r\n"
 						+ "       #define TEAVM_UNIX 1\r\n" + "       #endif");
 		FileFix fix3 = new FileFix("core.h", "((char*) teavm_gc_cardTable)[offset] = 0;",
-				"char* result = ((char*)teavm_gc_cardTable);\r\n" + "   size_t off = (size_t)offset;\r\n"
-						+ "   if (result && off >=0) {\r\n" + "       result[off] = 0;\r\n" + "   }");
+				"int off = (int)offset;\r\n"
+				+ "    unsigned char* result = (unsigned char*)teavm_gc_cardTable;\r\n"
+				+ "    if (result != NULL && offset >= 0 && offset == (intptr_t)off) {\r\n"
+				+ "        result[off] = 0;\r\n"
+				+ "    }");
 		FileFix fix4 = new FileFix("config.h", "#pragma once", "#pragma once\r\n" + "#include \"SDLSupport.c\"\r\n"
 				+ "#include \"STBSupport.c\"\r\n" + "#include \"SocketSupport.c\"\r\n" + "#include \"gles2.c\"");
 		FileFix fix5 = new FileFix("uchar.h", "all", "#pragma once\r\n" + "#include <stddef.h>\r\n"

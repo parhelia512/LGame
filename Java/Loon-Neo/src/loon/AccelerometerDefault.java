@@ -97,34 +97,32 @@ public class AccelerometerDefault implements Accelerometer {
 		}
 	}
 
-	private final void onSensor(float[] values) {
-		synchronized (this) {
+	private synchronized final void onSensor(float[] values) {
 
-			long curTime = TimeUtils.millis();
+		long curTime = TimeUtils.millis();
 
-			currentX = values[0];
-			currentY = values[1];
-			currentZ = values[2];
+		currentX = values[0];
+		currentY = values[1];
+		currentZ = values[2];
 
-			onOrientation(currentX, currentY, currentZ);
+		onOrientation(currentX, currentY, currentZ);
 
-			if ((curTime - lastUpdate) > 30) {
-				long diffTime = (curTime - lastUpdate);
-				lastUpdate = curTime;
-				currenForce = MathUtils.abs(currentX + currentY + currentZ - lastX - lastY - lastZ) / diffTime * 10000;
+		if ((curTime - lastUpdate) > 30) {
+			long diffTime = (curTime - lastUpdate);
+			lastUpdate = curTime;
+			currenForce = MathUtils.abs(currentX + currentY + currentZ - lastX - lastY - lastZ) / diffTime * 10000;
 
-				if (currenForce > 500 && event != null) {
-					event.onShakeChanged(currenForce);
-				}
+			if (currenForce > 500 && event != null) {
+				event.onShakeChanged(currenForce);
 			}
+		}
 
-			lastX = currentX;
-			lastY = currentY;
-			lastZ = currentZ;
+		lastX = currentX;
+		lastY = currentY;
+		lastZ = currentZ;
 
-			if (event != null) {
-				event.onDirection(_direction, currentX, currentY, currentZ);
-			}
+		if (event != null) {
+			event.onDirection(_direction, currentX, currentY, currentZ);
 		}
 	}
 

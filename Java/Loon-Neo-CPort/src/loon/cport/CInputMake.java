@@ -193,24 +193,43 @@ public class CInputMake extends InputMake implements LRelease {
 			}
 		} else { // mouse
 			final int rawIndex = _touchData[0];
-			if (!(rawIndex == -1 && rawIndex == _previousTouchData[0])) {
-				final int touchX = _touchData[1];
-				final int touchY = _touchData[2];
-				_deltaX[0] = touchX - _previousTouchData[1];
-				_deltaY[0] = touchY - _previousTouchData[2];
-				_touchX[0] = touchX;
-				_touchY[0] = touchY;
-				_touched[0] = (rawIndex == 0);
-				_rawTouchIds[0] = -1;
-				if (rawIndex == -1) {
+			final int touchX = _touchData[1];
+			final int touchY = _touchData[2];
+			final int buttonState = (_touchData.length > 3) ? _touchData[3] : 0;
+			_deltaX[0] = touchX - _previousTouchData[1];
+			_deltaY[0] = touchY - _previousTouchData[2];
+			_touchX[0] = touchX;
+			_touchY[0] = touchY;
+			switch (rawIndex) {
+			case 0:
+				if (!_touched[0]) {
+					_touched[0] = true;
+					_rawTouchIds[0] = -1;
 					_wasJustTouched = true;
+					emitMouseButton(_currentEventTimeStamp, touchX, touchY, 0, true, 0);
 				}
-				if (rawIndex != 1) {
-					emitMouseButton(_currentEventTimeStamp, touchX, touchY, 0, (rawIndex == 0), 0);
-				} else if (touchX != _previousTouchData[1] || touchY != _previousTouchData[2]) {
-					emitMouseButton(_currentEventTimeStamp, touchX, touchY, -1, false, 0);
+				break;
+			case -1:
+				if (_previousTouchData[0] != -1) {
+					_touched[0] = false;
+					_rawTouchIds[0] = -1;
+					_wasJustTouched = false;
+					emitMouseButton(_currentEventTimeStamp, touchX, touchY, 0, false, 0);
 				}
+				break;
+			case 1:
+				if (touchX != _previousTouchData[1] || touchY != _previousTouchData[2]) {
+					if (_touched[0] && buttonState != 0) {
+						emitMouseButton(_currentEventTimeStamp, touchX, touchY, -1, true, 1);
+					} else {
+						emitMouseButton(_currentEventTimeStamp, touchX, touchY, -1, false, 2);
+					}
+				}
+				break;
 			}
+			_previousTouchData[0] = rawIndex;
+			_previousTouchData[1] = touchX;
+			_previousTouchData[2] = touchY;
 		}
 		System.arraycopy(_touchData, 0, _previousTouchData, 0, DEF_MAX_TOUCHES * 3);
 		if (!_onlyGamepad) {

@@ -171,7 +171,7 @@ public class CountdownTimer extends RealtimeProcess {
 	}
 
 	public CountdownTimer play(float second) {
-		synchronized (this) {
+		synchronized (CountdownTimer.class) {
 			this.set(second);
 			RealtimeProcessManager manager = RealtimeProcessManager.get();
 			manager.delete(getId());

@@ -134,7 +134,7 @@ public abstract class Bypass {
 
 	protected <T> void notify(final Notifier<T> notifier, final T a1, final T a2, final T a3) {
 		Cons lners;
-		synchronized (this) {
+		synchronized (Bypass.class) {
 			if (_listeners == DISPATCHING) {
 				_pendingRuns = append(_pendingRuns, new Runs() {
 					@Override
@@ -162,7 +162,7 @@ public abstract class Bypass {
 			}
 
 		} finally {
-			synchronized (this) {
+			synchronized (Bypass.class) {
 				_listeners = lners;
 			}
 			Runs run;

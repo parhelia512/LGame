@@ -235,7 +235,7 @@ public final class LSTRDictionary implements LRelease {
 	}
 
 	private void closeDict(final ArrayMap list) {
-		synchronized (list) {
+		synchronized (LSTRDictionary.class) {
 			for (int i = list.size() - 1; i > -1; i--) {
 				final Entry entry = list.getEntry(i);
 				if (entry != null) {

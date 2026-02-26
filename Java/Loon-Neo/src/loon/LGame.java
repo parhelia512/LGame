@@ -612,17 +612,12 @@ public abstract class LGame implements LRelease {
 	/**
 	 * 清空所有单独纹理批处理渲染器
 	 */
-	public void clearBatchCaches() {
-		IntMap<LTextureBatch> batchCaches;
-		synchronized (_texture_batch_pools) {
-			batchCaches = new IntMap<LTextureBatch>(_texture_batch_pools);
-		}
+	public synchronized void clearBatchCaches() {
+		IntMap<LTextureBatch> batchCaches = new IntMap<LTextureBatch>(_texture_batch_pools);
 		for (LTextureBatch bt : batchCaches.values()) {
 			if (bt != null) {
-				synchronized (bt) {
-					bt.close();
-					bt = null;
-				}
+				bt.close();
+				bt = null;
 			}
 		}
 		_texture_batch_pools.clear();
@@ -656,9 +651,7 @@ public abstract class LGame implements LRelease {
 		LTextureBatch pBatch = _texture_batch_pools.get(key);
 		if (pBatch == null) {
 			pBatch = batch;
-			synchronized (_texture_batch_pools) {
-				_texture_batch_pools.put(key, pBatch);
-			}
+			_texture_batch_pools.put(key, pBatch);
 		}
 		return pBatch;
 	}
@@ -680,17 +673,13 @@ public abstract class LGame implements LRelease {
 	 * @param closed
 	 * @return
 	 */
-	public LTextureBatch disposeBatchCache(final LTextureBatch batch, final boolean closed) {
-		synchronized (_texture_batch_pools) {
-			LTextureBatch pBatch = _texture_batch_pools.remove(batch.getTextureID());
-			if (closed && pBatch != null) {
-				synchronized (pBatch) {
-					pBatch.close();
-					pBatch = null;
-				}
-			}
-			return pBatch;
+	public synchronized LTextureBatch disposeBatchCache(final LTextureBatch batch, final boolean closed) {
+		LTextureBatch pBatch = _texture_batch_pools.remove(batch.getTextureID());
+		if (closed && pBatch != null) {
+			pBatch.close();
+			pBatch = null;
 		}
+		return pBatch;
 	}
 
 	/**
@@ -699,20 +688,18 @@ public abstract class LGame implements LRelease {
 	 * @param n
 	 * @param size
 	 */
-	public void resetMeshPool(final String n, final int size) {
+	public synchronized void resetMeshPool(final String n, final int size) {
 		String name = n + size;
-		synchronized (_texture_mesh_pools) {
-			Mesh mesh = _texture_mesh_pools.get(name);
-			if (mesh != null) {
-				mesh.close();
-				mesh = null;
-			}
-			_texture_mesh_pools.remove(name);
-			if (mesh == null || mesh.isClosed()) {
-				mesh = Mesh.create(false, size);
-				LSystem.resetIndices(size, mesh);
-				_texture_mesh_pools.put(name, mesh);
-			}
+		Mesh mesh = _texture_mesh_pools.get(name);
+		if (mesh != null) {
+			mesh.close();
+			mesh = null;
+		}
+		_texture_mesh_pools.remove(name);
+		if (mesh == null || mesh.isClosed()) {
+			mesh = Mesh.create(false, size);
+			LSystem.resetIndices(size, mesh);
+			_texture_mesh_pools.put(name, mesh);
 		}
 	}
 
@@ -723,17 +710,15 @@ public abstract class LGame implements LRelease {
 	 * @param size
 	 * @return
 	 */
-	public Mesh getMeshPool(final String n, final int size) {
+	public synchronized Mesh getMeshPool(final String n, final int size) {
 		String name = n + size;
-		synchronized (_texture_mesh_pools) {
-			Mesh mesh = _texture_mesh_pools.get(name);
-			if (mesh == null || mesh.isClosed()) {
-				mesh = Mesh.create(false, size);
-				LSystem.resetIndices(size, mesh);
-				_texture_mesh_pools.put(name, mesh);
-			}
-			return mesh;
+		Mesh mesh = _texture_mesh_pools.get(name);
+		if (mesh == null || mesh.isClosed()) {
+			mesh = Mesh.create(false, size);
+			LSystem.resetIndices(size, mesh);
+			_texture_mesh_pools.put(name, mesh);
 		}
+		return mesh;
 	}
 
 	/**
@@ -743,19 +728,17 @@ public abstract class LGame implements LRelease {
 	 * @param size
 	 * @return
 	 */
-	public Mesh getMeshTrianglePool(final String n, final int size, final int trisize) {
+	public synchronized Mesh getMeshTrianglePool(final String n, final int size, final int trisize) {
 		int code = 1;
 		code = LSystem.unite(code, size);
 		code = LSystem.unite(code, trisize);
 		String name = n + "tri" + code;
-		synchronized (_texture_mesh_pools) {
-			Mesh mesh = _texture_mesh_pools.get(name);
-			if (mesh == null || mesh.isClosed()) {
-				mesh = Mesh.createTriangle(false, size, trisize);
-				_texture_mesh_pools.put(name, mesh);
-			}
-			return mesh;
+		Mesh mesh = _texture_mesh_pools.get(name);
+		if (mesh == null || mesh.isClosed()) {
+			mesh = Mesh.createTriangle(false, size, trisize);
+			_texture_mesh_pools.put(name, mesh);
 		}
+		return mesh;
 	}
 
 	/**
@@ -764,22 +747,20 @@ public abstract class LGame implements LRelease {
 	 * @param n
 	 * @param size
 	 */
-	public void resetMeshTrianglePool(final String n, final int size, final int trisize) {
+	public synchronized void resetMeshTrianglePool(final String n, final int size, final int trisize) {
 		int code = 1;
 		code = LSystem.unite(code, size);
 		code = LSystem.unite(code, trisize);
 		String name = n + "tri" + code;
-		synchronized (_texture_mesh_pools) {
-			Mesh mesh = _texture_mesh_pools.get(name);
-			if (mesh != null) {
-				mesh.close();
-				mesh = null;
-			}
-			_texture_mesh_pools.remove(name);
-			if (mesh == null || mesh.isClosed()) {
-				mesh = Mesh.createTriangle(false, size, trisize);
-				_texture_mesh_pools.put(name, mesh);
-			}
+		Mesh mesh = _texture_mesh_pools.get(name);
+		if (mesh != null) {
+			mesh.close();
+			mesh = null;
+		}
+		_texture_mesh_pools.remove(name);
+		if (mesh == null || mesh.isClosed()) {
+			mesh = Mesh.createTriangle(false, size, trisize);
+			_texture_mesh_pools.put(name, mesh);
 		}
 	}
 
@@ -798,25 +779,21 @@ public abstract class LGame implements LRelease {
 	 * @param name
 	 * @param size
 	 */
-	public void disposeMeshPool(final String name, final int size) {
+	public synchronized void disposeMeshPool(final String name, final int size) {
 		String key = name + size;
-		synchronized (_texture_mesh_pools) {
-			Mesh mesh = _texture_mesh_pools.remove(key);
-			if (mesh != null) {
-				mesh.close();
-			}
+		Mesh mesh = _texture_mesh_pools.remove(key);
+		if (mesh != null) {
+			mesh.close();
 		}
 	}
 
 	/**
 	 * 注销全部MeshPool池中对象
 	 */
-	public void disposeMeshPool() {
-		synchronized (_texture_mesh_pools) {
-			for (Mesh mesh : _texture_mesh_pools.values()) {
-				if (mesh != null) {
-					mesh.close();
-				}
+	public synchronized void disposeMeshPool() {
+		for (Mesh mesh : _texture_mesh_pools.values()) {
+			if (mesh != null) {
+				mesh.close();
 			}
 		}
 		_texture_mesh_pools.clear();
@@ -828,15 +805,13 @@ public abstract class LGame implements LRelease {
 	 * @param id
 	 * @return
 	 */
-	public boolean containsTexture(final int id) {
-		synchronized (_texture_all_list) {
-			for (LTexture tex : _texture_all_list) {
-				if (tex.getID() == id) {
-					return true;
-				}
+	public synchronized boolean containsTexture(final int id) {
+		for (LTexture tex : _texture_all_list) {
+			if (tex.getID() == id) {
+				return true;
 			}
-			return false;
 		}
+		return false;
 	}
 
 	/**
@@ -845,12 +820,10 @@ public abstract class LGame implements LRelease {
 	 * @param id
 	 * @return
 	 */
-	protected boolean delTexture(final int id) {
-		synchronized (_texture_all_list) {
-			for (LTexture tex : _texture_all_list) {
-				if (tex.getID() == id) {
-					return _texture_all_list.remove(tex);
-				}
+	protected synchronized boolean delTexture(final int id) {
+		for (LTexture tex : _texture_all_list) {
+			if (tex.getID() == id) {
+				return _texture_all_list.remove(tex);
 			}
 		}
 		return false;
@@ -861,23 +834,18 @@ public abstract class LGame implements LRelease {
 	 * 
 	 * @param tex2d
 	 */
-	protected void putTexture(final LTexture tex2d) {
+	protected synchronized void putTexture(final LTexture tex2d) {
 		if (tex2d != null && !tex2d.isClosed() && !tex2d.isChild() && !_texture_all_list.contains(tex2d)) {
-			synchronized (_texture_all_list) {
-				_texture_all_list.add(tex2d);
-			}
+			_texture_all_list.add(tex2d);
 		}
 	}
 
 	/**
 	 * 重载全部纹理
 	 */
-	public void reloadTexture() {
-		TArray<LTexture> texs = null;
-		synchronized (_texture_all_list) {
-			texs = new TArray<LTexture>(_texture_all_list);
-			_texture_all_list.clear();
-		}
+	public synchronized void reloadTexture() {
+		TArray<LTexture> texs = new TArray<LTexture>(_texture_all_list);
+		_texture_all_list.clear();
 		for (LTexture tex : texs) {
 			if (tex != null && !tex.isLoaded() && !tex.isClosed()) {
 				tex.reload();
@@ -1056,32 +1024,30 @@ public abstract class LGame implements LRelease {
 	 * @param config
 	 * @return
 	 */
-	public LTexture loadTexture(final String fileName, final Format config) {
+	public synchronized LTexture loadTexture(final String fileName, final Format config) {
 		if (StringUtils.isEmpty(fileName)) {
 			return null;
 		}
-		synchronized (_texture_lazys) {
-			final String key = fileName.trim().toLowerCase();
-			final ObjectMap<String, LTexture> texs = new ObjectMap<String, LTexture>(_texture_lazys);
-			LTexture texture = texs.get(key);
-			if (texture == null) {
-				for (LTexture tex : texs.values()) {
-					if (tex.tmpLazy != null && tex.tmpLazy.toLowerCase().equals(key.toLowerCase())) {
-						texture = tex;
-						break;
-					}
+		final String key = fileName.trim().toLowerCase();
+		final ObjectMap<String, LTexture> texs = new ObjectMap<String, LTexture>(_texture_lazys);
+		LTexture texture = texs.get(key);
+		if (texture == null) {
+			for (LTexture tex : texs.values()) {
+				if (tex.tmpLazy != null && tex.tmpLazy.toLowerCase().equals(key.toLowerCase())) {
+					texture = tex;
+					break;
 				}
 			}
-			if (texture != null && !texture.disposed()) {
-				texture._referenceCount++;
-				return texture;
-			}
-			texture = BaseIO.loadImage(fileName).onHaveToClose(true).createTexture(config);
-			texture.tmpLazy = fileName;
-			_texture_lazys.put(key, texture);
-			log().debug("Texture : " + fileName + " Loaded");
+		}
+		if (texture != null && !texture.disposed()) {
+			texture._referenceCount++;
 			return texture;
 		}
+		texture = BaseIO.loadImage(fileName).onHaveToClose(true).createTexture(config);
+		texture.tmpLazy = fileName;
+		_texture_lazys.put(key, texture);
+		log().debug("Texture : " + fileName + " Loaded");
+		return texture;
 	}
 
 	/**
@@ -1359,7 +1325,7 @@ public abstract class LGame implements LRelease {
 	public abstract Accelerometer accel();
 
 	public abstract Support support();
-	
+
 	public abstract Language lang();
 
 	public LProcess process() {
