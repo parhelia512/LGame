@@ -34,7 +34,7 @@ public class CBuildConfiguration {
 	public ArrayList<String> assetsClasspath = new ArrayList<String>();
 
 	public boolean shouldGenerateAssetFile = true;
-	
+
 	public boolean synRemoved = true;
 
 	public String cappPath = "";
@@ -54,14 +54,14 @@ public class CBuildConfiguration {
 	public String targetFileName = "run";
 
 	public BuildReflectionListener reflectionListener;
-	
-	public int minHeapSize = 64 * (1 << 20);
+
+	public int minHeapSize = 32 * (1 << 20);
 
 	public int maxHeapSize = 512 * (1 << 20);
 
-	public int minDirectBuffersSize = 4 * (1 << 20);
+	public int minDirectBuffersSize = 2 * (1 << 20);
 
-	public int maxDirectBuffersSize = 64 * (1 << 20);
-	
+	public int maxDirectBuffersSize = 32 * (1 << 20);
+
 	public boolean outputResources = true;
 }

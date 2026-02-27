@@ -1057,7 +1057,6 @@ static inline bool is_min_en_char_lv1(uint32_t codepoint) {
 static inline bool is_min_en_char_lv2(uint32_t codepoint) {
 	switch (codepoint) {
 	case 0x006A: 
-	case 0x006C:
 	case 0x0072:
 		return true;
 	default:
@@ -1069,6 +1068,7 @@ static inline bool is_min_en_char_lv3(uint32_t codepoint) {
 	switch (codepoint) {
 	case 0x0049:
 	case 0x0069:
+	case 0x006C:
 		return true;
 	default:
 		return false;
@@ -1195,27 +1195,67 @@ static inline int get_char_size_subpixel(stbtt_fontinfo* font, uint32_t codepoin
 	bool updated = false;
 	if (is_flag_symbol(codepoint)) {
 		w = w / 2 + (pixel_size / 5);
+		if (pixel_size < 20.0f && w < half_width) {
+			w += 1.0f;
+		}
+		else if (w < half_width) {
+			w += 0.5f;
+		}
 		updated = true;
 	}else if (is_min_num_char(codepoint)) {
 		w = w / 2 + (pixel_size / 10) + 1.5f;
+		if (pixel_size < 20.0f && w < half_width) {
+			w += 1.0f;
+		}
+		else if (w < half_width) {
+			w += 0.5f;
+		}
 		updated = true;
 	}else if (is_min_en_char_lv1(codepoint)) {
 		w = w / 2 + (pixel_size / 10) + 3.0f;
+		if (pixel_size < 20.0f && w < half_width) {
+			w += 1.0f;
+		}else if (w < half_width) {
+			w += 0.5f;
+		}
+		if (w < half_width - 2) {
+			w = half_width - 2;
+		}
 		updated = true;
 	}else if (is_min_en_char_lv2(codepoint)) {
-		w = w / 2 + (pixel_size / 10) + 1.5f;
-		if (w < half_width) {
+		w = w / 2 + (pixel_size / 10) + 1.0f;
+		if (pixel_size < 20.0f && w < half_width) {
 			w += 1.0f;
+		}
+		else if (w < half_width) {
+			w += 0.5f;
+		}
+		if (w < half_width - 2) {
+			w = half_width - 2;
 		}
 		updated = true;
 	}else if (is_min_en_char_lv3(codepoint)) {
-		w = w / 2 + (pixel_size / 10) - 2.0f;
+		w = w / 2 + (int)((pixel_size / 20.0f));
+		if (pixel_size >= 20.0f &&  w < half_width) {
+			w += 0.5f;
+			if (w < half_width - 2) {
+				w = half_width - 2;
+			}
+		}else {
+			w += 0.25f;
+		}
 		updated = true;
 	}else if (is_min_cn_char_lv1(codepoint)) {
 		w = w / 2 + (float)ceil(pixel_size / 2.15f);
+		if (w < half_width) {
+			w = half_width;
+		}
 		updated = true;
 	}else if (is_min_cn_char_lv2(codepoint)) {
 		w = w / 2 + (float)ceil(pixel_size / 2.35f);
+		if (w < half_width) {
+			w = half_width;
+		}
 		updated = true;
 	}
 	if (!updated) {
@@ -1237,6 +1277,10 @@ static inline int get_char_size_subpixel(stbtt_fontinfo* font, uint32_t codepoin
 		}
 		else if (w < one_quarter_width) {
 			w = one_quarter_width;
+		}
+		int limit = (int)(pixel_size / 3.0f + 0.5f);
+		if (w < limit) {
+			w = limit;
 		}
 	}
 	else {

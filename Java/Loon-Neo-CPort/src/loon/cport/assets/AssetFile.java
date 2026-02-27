@@ -34,9 +34,12 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 
+import loon.LSystem;
 import loon.cport.builder.AssetFilter;
 import loon.cport.builder.StreamUtils;
+import loon.utils.PathUtils;
 
 public class AssetFile {
 
@@ -119,6 +122,24 @@ public class AssetFile {
 				throw new RuntimeException("Cannot open a stream to a directory: " + file, ex);
 			}
 			throw new RuntimeException("Error reading file: " + file, ex);
+		}
+	}
+
+	public String readString() {
+		try {
+			if (!file.exists()) {
+				return LSystem.EMPTY;
+			}
+			if (file.isDirectory()) {
+				throw new RuntimeException("Cannot open a stream to a directory: " + file);
+			}
+			byte[] data;
+			try (FileInputStream fis = new FileInputStream(file)) {
+				data = fis.readAllBytes();
+			}
+			return new String(data, StandardCharsets.UTF_8);
+		} catch (Exception ex) {
+			return LSystem.EMPTY;
 		}
 	}
 
@@ -218,6 +239,10 @@ public class AssetFile {
 	public AssetFile child(String name) {
 		if (file.getPath().length() == 0) {
 			return new AssetFile(new File(name));
+		}
+		if (name.contains("/") || name.contains("\\")) {
+			String basePath = file.getAbsolutePath();
+			return new AssetFile(new File(PathUtils.normalizeCombinePaths(basePath, name)));
 		}
 		return new AssetFile(new File(file, name));
 	}

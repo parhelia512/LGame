@@ -254,19 +254,37 @@ public class CCodeFix {
 		public String fileName;
 
 		public final ObjectMap<String, String> fixContexts = new ObjectMap<String, String>();
+		public final ObjectMap<String, String[]> funReplacements = new ObjectMap<String, String[]>();
 
 		public boolean update = false;
 
 		public FileFix(String name, String src, String dst) {
-			fileName = name;
+			fileName = PathUtils.normalize(name);
 			if ("all".equalsIgnoreCase(src)) {
 				update = true;
 			}
 			putFixReplace(src, dst);
 		}
 
+		public FileFix(String name, String src, String[] dst) {
+			fileName = PathUtils.normalize(name);
+			putFunctionReplace(src, dst);
+		}
+
+		public void putFunctionReplace(String funName, String[] args) {
+			funReplacements.put(funName, args);
+		}
+
 		public void putFixReplace(String src, String dst) {
 			fixContexts.put(src, dst);
+		}
+
+		public boolean isReplaceFunction() {
+			return !funReplacements.isEmpty();
+		}
+
+		public boolean isReplaceFixCode() {
+			return !fixContexts.isEmpty();
 		}
 	}
 
@@ -282,11 +300,10 @@ public class CCodeFix {
 				"   #if defined(__linux__) || defined(__APPLE__) || defined(__ANDROID__) || defined(__IOS__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__HAIKU__)\r\n"
 						+ "       #define TEAVM_UNIX 1\r\n" + "       #endif");
 		FileFix fix3 = new FileFix("core.h", "((char*) teavm_gc_cardTable)[offset] = 0;",
-				"int off = (int)offset;\r\n"
-				+ "    unsigned char* result = (unsigned char*)teavm_gc_cardTable;\r\n"
-				+ "    if (result != NULL && offset >= 0 && offset == (intptr_t)off) {\r\n"
-				+ "        result[off] = 0;\r\n"
-				+ "    }");
+				"uintptr_t diff = (uintptr_t)object - (uintptr_t)teavm_gc_heapAddress;\r\n"
+						+ "    if (diff >= (uintptr_t)teavm_gc_availableBytes) {\r\n" + "        return;\r\n"
+						+ "    }\r\n" + "    unsigned char* result = (unsigned char*)teavm_gc_cardTable;\r\n"
+						+ "    result[offset] = 0;");
 		FileFix fix4 = new FileFix("config.h", "#pragma once", "#pragma once\r\n" + "#include \"SDLSupport.c\"\r\n"
 				+ "#include \"STBSupport.c\"\r\n" + "#include \"SocketSupport.c\"\r\n" + "#include \"gles2.c\"");
 		FileFix fix5 = new FileFix("uchar.h", "all", "#pragma once\r\n" + "#include <stddef.h>\r\n"
@@ -471,6 +488,30 @@ public class CCodeFix {
 		fixContexts.add(fix4);
 		fixContexts.add(fix5);
 		fixContexts.add(fix6);
+
+		FileFix fix7 = new FileFix("classes/org/teavm/runtime/GC.c", "meth_otr_GC_updatePointer",
+				new String[] { "void* teavm_local_1", " if (teavm_local_1 == NULL) {\r\n" + "        return NULL;\r\n"
+						+ "    }\r\n" + "    void* relocation = meth_otr_GC_getRelocation(teavm_local_1);\r\n"
+						+ "    if (relocation != NULL) {\r\n"
+						+ "        if ((uintptr_t)relocation >= (uintptr_t)teavm_gc_heapAddress &&\r\n"
+						+ "            (uintptr_t)relocation < (uintptr_t)teavm_gc_heapAddress + teavm_gc_availableBytes) {\r\n"
+						+ "            teavm_local_1 = TEAVM_FIELD(relocation, cls_otr_Relocation, fld_newAddress);\r\n"
+						+ "        } else {\r\n" + "            relocation = NULL;\r\n" + "        }\r\n" + "    }\r\n"
+						+ "    return teavm_local_1;" });
+		fix7.putFunctionReplace("meth_otr_GC_getRelocation", new String[] { "void* teavm_local_1",
+				" if ((uintptr_t)teavm_local_1 < (uintptr_t)teavm_gc_heapAddress ||\r\n"
+						+ "        (uintptr_t)teavm_local_1 >= (uintptr_t)teavm_gc_heapAddress + teavm_gc_availableBytes) {\r\n"
+						+ "        return NULL;\r\n" + "    }\r\n" + "    void* chunk = teavm_local_1;\r\n"
+						+ "    int32_t classRef = TEAVM_FIELD(chunk, cls_otr_FreeChunk, fld_classReference);\r\n"
+						+ "    if (!(classRef & 0x80000000)) {\r\n" + "        return NULL;\r\n" + "    }\r\n"
+						+ "    int32_t size = TEAVM_FIELD(chunk, cls_otr_FreeChunk, fld_size);\r\n"
+						+ "    int64_t relocationAddr = (((int64_t)classRef & 0xFFFFFFFF) << 33) |\r\n"
+						+ "                             (((int64_t)size & 0xFFFFFFFF) << 1);\r\n"
+						+ "    void* relocation = (void*)(intptr_t)relocationAddr;\r\n"
+						+ "    if ((uintptr_t)relocation < (uintptr_t)teavm_gc_heapAddress ||\r\n"
+						+ "        (uintptr_t)relocation >= (uintptr_t)teavm_gc_heapAddress + teavm_gc_availableBytes) {\r\n"
+						+ "        return NULL;\r\n" + "    }\r\n" + "    return relocation;" });
+		fixContexts.add(fix7);
 	}
 
 	public TArray<FileFix> getFixList() {
