@@ -238,16 +238,14 @@ public final class Session implements Bundle<String> {
 		return -1;
 	}
 
-	public String getActiveID() {
-		synchronized (_recordsList) {
-			for (int i = 0; i < _recordsList.size; i++) {
-				final RecordData record = _recordsList.get(i);
-				if (record.active) {
-					return record._name;
-				}
+	public synchronized String getActiveID() {
+		for (int i = 0; i < _recordsList.size; i++) {
+			final RecordData record = _recordsList.get(i);
+			if (record.active) {
+				return record._name;
 			}
-			return null;
 		}
+		return null;
 	}
 
 	public String set(int index, String vl) {
@@ -272,19 +270,17 @@ public final class Session implements Bundle<String> {
 		return set(name, 0, vl);
 	}
 
-	public Session set(String name, int index, String vl) {
+	public synchronized Session set(String name, int index, String vl) {
 		if (StringUtils.isEmpty(vl)) {
 			return this;
 		}
-		synchronized (_recordsList) {
-			RecordData record = (RecordData) _records.get(name);
-			if (record == null) {
-				record = new RecordData(name);
-				_records.put(name, record);
-				_recordsList.add(record);
-			}
-			record.set(index, vl);
+		RecordData record = (RecordData) _records.get(name);
+		if (record == null) {
+			record = new RecordData(name);
+			_records.put(name, record);
+			_recordsList.add(record);
 		}
+		record.set(index, vl);
 		return this;
 	}
 
@@ -312,20 +308,18 @@ public final class Session implements Bundle<String> {
 		return set(name, index, vl ? "1" : "0");
 	}
 
-	public Session add(String name, String vl) {
+	public synchronized Session add(String name, String vl) {
 		if (StringUtils.isEmpty(vl)) {
 			return this;
 		}
-		synchronized (_recordsList) {
-			RecordData record = (RecordData) _records.get(name);
-			if (record == null) {
-				record = new RecordData(name);
-				_records.put(name, record);
-				_recordsList.add(record);
-			}
-			int id = record.size();
-			record.set(id++, vl);
+		RecordData record = (RecordData) _records.get(name);
+		if (record == null) {
+			record = new RecordData(name);
+			_records.put(name, record);
+			_recordsList.add(record);
 		}
+		int id = record.size();
+		record.set(id++, vl);
 		return this;
 	}
 
@@ -341,14 +335,12 @@ public final class Session implements Bundle<String> {
 		return add(name, vl ? "1" : "0");
 	}
 
-	public String get(String name, int index) {
-		synchronized (_recordsList) {
-			final RecordData record = (RecordData) _records.get(name);
-			if (record == null) {
-				return null;
-			} else {
-				return record.get(index);
-			}
+	public synchronized String get(String name, int index) {
+		final RecordData record = (RecordData) _records.get(name);
+		if (record == null) {
+			return null;
+		} else {
+			return record.get(index);
 		}
 	}
 
@@ -404,15 +396,13 @@ public final class Session implements Bundle<String> {
 		return v ? v : result;
 	}
 
-	public Session delete(String name) {
-		synchronized (_recordsList) {
-			_records.remove(name);
-			for (int i = 0; i < _recordsList.size; i++) {
-				final RecordData record = _recordsList.get(i);
-				if (record._name.equals(name)) {
-					_recordsList.removeIndex(i);
-					i--;
-				}
+	public synchronized Session delete(String name) {
+		_records.remove(name);
+		for (int i = 0; i < _recordsList.size; i++) {
+			final RecordData record = _recordsList.get(i);
+			if (record._name.equals(name)) {
+				_recordsList.removeIndex(i);
+				i--;
 			}
 		}
 		return this;
@@ -443,14 +433,12 @@ public final class Session implements Bundle<String> {
 		return result == null ? defaultValue : result;
 	}
 
-	public int getCount(String name) {
-		synchronized (_recordsList) {
-			final RecordData record = (RecordData) _records.get(name);
-			if (record == null) {
-				return 0;
-			} else {
-				return record._values.length;
-			}
+	public synchronized int getCount(String name) {
+		final RecordData record = (RecordData) _records.get(name);
+		if (record == null) {
+			return 0;
+		} else {
+			return record._values.length;
 		}
 	}
 
@@ -462,44 +450,40 @@ public final class Session implements Bundle<String> {
 		}
 	}
 
-	public int decode(String[] parts, int n) {
-		synchronized (_recordsList) {
-			_records.clear();
-			_recordsList.clear();
+	public synchronized int decode(String[] parts, int n) {
+		_records.clear();
+		_recordsList.clear();
+		if (n >= parts.length) {
+			return n;
+		}
+		final int count = Integer.parseInt(parts[n++]);
+		for (int i = 0; i < count; i++) {
 			if (n >= parts.length) {
 				return n;
 			}
-			final int count = Integer.parseInt(parts[n++]);
-			for (int i = 0; i < count; i++) {
-				if (n >= parts.length) {
-					return n;
-				}
-				final RecordData record = new RecordData(parts[n++]);
-				n = record.decode(parts, n);
-				if (record._name != null && record.isSaved()) {
-					_records.put(record._name, record);
-					_recordsList.add(record);
-				}
+			final RecordData record = new RecordData(parts[n++]);
+			n = record.decode(parts, n);
+			if (record._name != null && record.isSaved()) {
+				_records.put(record._name, record);
+				_recordsList.add(record);
 			}
-			return n;
 		}
+		return n;
 	}
 
-	public void saveRecordsToStorage() {
-		synchronized (_recordsList) {
-			for (int i = 0; i < _recordsList.size; i++) {
-				final RecordData recordv = _recordsList.get(i);
-				if (recordv != null && recordv.isSaved()) {
-					String result = recordv.encodeVale();
-					if (!Base64Coder.isBase64(result)) {
-						try {
-							result = new String(Base64Coder.encode(result.getBytes()), LSystem.ENCODING);
-						} catch (Throwable e) {
-							result = new String(Base64Coder.encode(result.getBytes()));
-						}
+	public synchronized void saveRecordsToStorage() {
+		for (int i = 0; i < _recordsList.size; i++) {
+			final RecordData recordv = _recordsList.get(i);
+			if (recordv != null && recordv.isSaved()) {
+				String result = recordv.encodeVale();
+				if (!Base64Coder.isBase64(result)) {
+					try {
+						result = new String(Base64Coder.encode(result.getBytes()), LSystem.ENCODING);
+					} catch (Throwable e) {
+						result = new String(Base64Coder.encode(result.getBytes()));
 					}
-					_save.setItem(recordv._name, result);
 				}
+				_save.setItem(recordv._name, result);
 			}
 		}
 	}
@@ -538,66 +522,54 @@ public final class Session implements Bundle<String> {
 		return recordv;
 	}
 
-	public String encode() {
-		synchronized (_recordsList) {
-			final StrBuilder sbr = new StrBuilder();
-			sbr.append(_recordsList.size).append(_record_split_flag).toString();
-			for (int i = 0; i < _recordsList.size; i++) {
-				final RecordData recordv = _recordsList.get(i);
-				if (recordv != null && recordv.isSaved()) {
-					sbr.append(recordv.encode()).toString();
-				}
+	public synchronized String encode() {
+		final StrBuilder sbr = new StrBuilder();
+		sbr.append(_recordsList.size).append(_record_split_flag).toString();
+		for (int i = 0; i < _recordsList.size; i++) {
+			final RecordData recordv = _recordsList.get(i);
+			if (recordv != null && recordv.isSaved()) {
+				sbr.append(recordv.encode()).toString();
 			}
-			return sbr.toString();
 		}
+		return sbr.toString();
 	}
 
-	public boolean hasData(String name) {
-		synchronized (_recordsList) {
-			return _records.get(name) != null;
-		}
+	public synchronized boolean hasData(String name) {
+		return _records.get(name) != null;
 	}
 
-	public Session activate(String name) {
-		synchronized (_recordsList) {
-			final RecordData record = new RecordData(name);
-			record.active = true;
-			_records.put(name, record);
-			_recordsList.add(record);
+	public synchronized Session activate(String name) {
+		final RecordData record = new RecordData(name);
+		record.active = true;
+		_records.put(name, record);
+		_recordsList.add(record);
+		return this;
+	}
+
+	public synchronized Session clear(String name) {
+		final RecordData record = (RecordData) _records.remove(name);
+		if (record != null) {
+			_recordsList.remove(record);
 		}
 		return this;
 	}
 
-	public Session clear(String name) {
-		synchronized (_recordsList) {
-			final RecordData record = (RecordData) _records.remove(name);
-			if (record != null) {
-				_recordsList.remove(record);
-			}
-		}
-		return this;
-	}
-
-	public boolean isActive(String name) {
-		synchronized (_recordsList) {
-			final RecordData record = (RecordData) _records.get(name);
-			if (record != null) {
-				return record.active;
-			} else {
-				return false;
-			}
+	public synchronized boolean isActive(String name) {
+		final RecordData record = (RecordData) _records.get(name);
+		if (record != null) {
+			return record.active;
+		} else {
+			return false;
 		}
 	}
 
-	public Session reject(String name) {
-		synchronized (_recordsList) {
-			clear(name);
-			final RecordData record = new RecordData(name);
-			record.active = false;
-			record.set(0, "1");
-			_records.put(name, record);
-			_recordsList.add(record);
-		}
+	public synchronized Session reject(String name) {
+		clear(name);
+		final RecordData record = new RecordData(name);
+		record.active = false;
+		record.set(0, "1");
+		_records.put(name, record);
+		_recordsList.add(record);
 		return this;
 	}
 
@@ -687,18 +659,16 @@ public final class Session implements Bundle<String> {
 		return hasData(key);
 	}
 
-	public Session dispose(String name) {
-		synchronized (_recordsList) {
-			clear(name);
-			final RecordData record = new RecordData(name);
-			record.active = false;
-			_records.put(name, record);
-			_recordsList.add(record);
-		}
+	public synchronized Session dispose(String name) {
+		clear(name);
+		final RecordData record = new RecordData(name);
+		record.active = false;
+		_records.put(name, record);
+		_recordsList.add(record);
 		return this;
 	}
 
-	public void dispose() {
+	public synchronized void dispose() {
 		try {
 			if (_records != null) {
 				_records.clear();

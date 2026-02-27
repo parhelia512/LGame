@@ -165,12 +165,10 @@ public final class RealtimeProcessManager implements RealtimeProcessEvent, IArra
 				for (Iterator<GameProcess> it = toBeUpdated.iterator(); it.hasNext();) {
 					GameProcess realtimeProcess = it.next();
 					if (realtimeProcess != null) {
-						synchronized (realtimeProcess) {
-							_currentProcess = realtimeProcess;
-							realtimeProcess.tick(time);
-							if (realtimeProcess.isDead()) {
-								deadProcesses.add(realtimeProcess);
-							}
+						_currentProcess = realtimeProcess;
+						realtimeProcess.tick(time);
+						if (realtimeProcess.isDead()) {
+							deadProcesses.add(realtimeProcess);
 						}
 					}
 				}
@@ -178,9 +176,7 @@ public final class RealtimeProcessManager implements RealtimeProcessEvent, IArra
 					for (Iterator<GameProcess> it = deadProcesses.iterator(); it.hasNext();) {
 						GameProcess realtimeProcess = it.next();
 						if (realtimeProcess != null) {
-							synchronized (realtimeProcess) {
-								realtimeProcess.finish();
-							}
+							realtimeProcess.finish();
 						}
 					}
 					synchronized (this._processes) {
@@ -658,9 +654,7 @@ public final class RealtimeProcessManager implements RealtimeProcessEvent, IArra
 				for (int i = 0; i < ps.size; i++) {
 					GameProcess p = ps.get(i);
 					if (p != null) {
-						synchronized (p) {
-							p.finish();
-						}
+						p.finish();
 					}
 				}
 				_processes.clear();
