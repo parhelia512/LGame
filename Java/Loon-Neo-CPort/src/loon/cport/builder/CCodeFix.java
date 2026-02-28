@@ -511,6 +511,33 @@ public class CCodeFix {
 						+ "    if ((uintptr_t)relocation < (uintptr_t)teavm_gc_heapAddress ||\r\n"
 						+ "        (uintptr_t)relocation >= (uintptr_t)teavm_gc_heapAddress + teavm_gc_availableBytes) {\r\n"
 						+ "        return NULL;\r\n" + "    }\r\n" + "    return relocation;" });
+		fix7.putFunctionReplace("meth_otr_GC_freeBufferContent", new String[] { "void* buffer",
+				"     TeaVM_Class* class_ptr = NULL;\r\n"
+						+ "     void* enum_values_field = NULL;\r\n"
+						+ "     int32_t enum_values_offset = 0;\r\n"
+						+ "     void* content_to_free = NULL;\r\n"
+						+ "    \r\n"
+						+ "     class_ptr = (TeaVM_Class*)meth_otr_RuntimeClass_getClass(buffer);\r\n"
+						+ "     while (class_ptr != NULL) {\r\n"
+						+ "         enum_values_field = TEAVM_FIELD(class_ptr, TeaVM_Class, enumValues);\r\n"
+						+ "         if (enum_values_field != NULL) {\r\n"
+						+ "             enum_values_offset = (int32_t)(intptr_t)enum_values_field;\r\n"
+						+ "             content_to_free = *(void**)TEAVM_ADDRESS_ADD(\r\n"
+						+ "                 TEAVM_ADDRESS_ADD(buffer, enum_values_offset),\r\n"
+						+ "                 sizeof(void*)\r\n"
+						+ "             );\r\n"
+						+ "             if (content_to_free != NULL) {\r\n"
+						+ "                 meth_otr_GC_free(content_to_free);\r\n"
+						+ "             }\r\n"
+						+ "             return;\r\n"
+						+ "         }\r\n"
+						+ "         class_ptr = (TeaVM_Class*)TEAVM_FIELD(class_ptr, TeaVM_Class, superclass);\r\n"
+						+ "     }" });
+		fix7.putFunctionReplace("meth_otr_GC_free",
+				new String[] { "void* teavm_local_1",
+						"    if (teavm_local_1 == NULL) {\r\n" + "        return;\r\n" + "    }\r\n"
+								+ "    if ((uintptr_t)teavm_local_1 > (uintptr_t)teavm_gc_heapAddress) {\r\n"
+								+ "        return;\r\n" + "    }\r\n" + "    free(teavm_local_1);" });
 		fixContexts.add(fix7);
 	}
 

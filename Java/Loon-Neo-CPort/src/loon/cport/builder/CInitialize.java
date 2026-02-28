@@ -68,15 +68,6 @@ public class CInitialize {
 	public static void create(String mainClassName, boolean obfuscated, boolean debug, boolean outputResources,
 			TeaVMOptimizationLevel level, TargetType target, String[] assetPath, String[] sourcePath, String[] reflects,
 			String buildPath, String source) throws IOException {
-		if (reflects != null) {
-			for (int i = 0; i < reflects.length; i++) {
-				final String refPackName = reflects[i];
-				TeaReflectionSupplier.addReflectionClass(refPackName);
-			}
-		}
-		if (obfuscated) {
-			debug = false;
-		}
 		CBuildConfiguration cbuildConfiguration = new CBuildConfiguration();
 		cbuildConfiguration.cappOutputSource = source;
 		cbuildConfiguration.assetsPath.add(new AssetFile("../assets"));
@@ -95,31 +86,45 @@ public class CInitialize {
 		cbuildConfiguration.outputResources = outputResources;
 		cbuildConfiguration.cappPath = new File(buildPath).getCanonicalPath();
 		cbuildConfiguration.targetType = target;
-		CBuilder.config(cbuildConfiguration);
+		create(cbuildConfiguration, mainClassName, obfuscated, debug, outputResources, level, target, assetPath,
+				sourcePath, reflects, buildPath, source);
+	}
 
+	public static void create(CBuildConfiguration configuration, String mainClassName, boolean obfuscated,
+			boolean debug, boolean outputResources, TeaVMOptimizationLevel level, TargetType target, String[] assetPath,
+			String[] sourcePath, String[] reflects, String buildPath, String source) throws IOException {
+		if (reflects != null) {
+			for (int i = 0; i < reflects.length; i++) {
+				final String refPackName = reflects[i];
+				TeaReflectionSupplier.addReflectionClass(refPackName);
+			}
+		}
+		if (obfuscated) {
+			debug = false;
+		}
+		CBuilder.config(configuration);
 		TeaVMTool tool = new TeaVMTool();
 		tool.setTargetType(TeaVMTargetType.C);
 		tool.setObfuscated(obfuscated);
-		final int defMinHeapSize = 16 * (1 << 20);
-		if (cbuildConfiguration.minHeapSize < defMinHeapSize) {
+		final int defMinHeapSize = 8 * (1 << 20);
+		if (configuration.minHeapSize < defMinHeapSize) {
 			tool.setMinHeapSize(defMinHeapSize);
 		} else {
-			tool.setMinHeapSize(cbuildConfiguration.minHeapSize);
+			tool.setMinHeapSize(configuration.minHeapSize);
 		}
 		final int defMaxHeapSize = 64 * (1 << 20);
-		if (cbuildConfiguration.maxHeapSize < defMaxHeapSize) {
+		if (configuration.maxHeapSize < defMaxHeapSize) {
 			tool.setMaxHeapSize(defMaxHeapSize);
 		} else {
-			tool.setMaxHeapSize(cbuildConfiguration.maxHeapSize);
+			tool.setMaxHeapSize(configuration.maxHeapSize);
 		}
-		tool.setMinDirectBuffersSize(cbuildConfiguration.minDirectBuffersSize);
-		tool.setMaxDirectBuffersSize(cbuildConfiguration.maxDirectBuffersSize);
+		tool.setMinDirectBuffersSize(configuration.minDirectBuffersSize);
+		tool.setMaxDirectBuffersSize(configuration.maxDirectBuffersSize);
 		tool.setHeapDump(false);
 		tool.setOptimizationLevel(level);
 		tool.setMainClass(mainClassName);
 		tool.setDebugInformationGenerated(debug);
 		tool.setSourceMapsFileGenerated(debug);
-
 		if (sourcePath != null) {
 			tool.setSourceFilePolicy(TeaVMSourceFilePolicy.COPY);
 			for (int i = 0; i < sourcePath.length; i++) {
@@ -128,8 +133,6 @@ public class CInitialize {
 				tool.addSourceFileProvider(new DirectorySourceFileProvider(sourceFile));
 			}
 		}
-
 		CBuilder.build(tool);
 	}
-
 }

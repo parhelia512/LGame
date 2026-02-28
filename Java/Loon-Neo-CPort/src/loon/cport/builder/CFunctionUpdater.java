@@ -41,11 +41,21 @@ public class CFunctionUpdater {
 	}
 
 	private static String replaceFunction(String source, String functionName, String newParams, String newBody) {
-		String regex = "\\b([\\w\\*\\s]+)" + functionName + "\\s*\\([^)]*\\)\\s*\\{";
+		String regex = "(?m)^\\s*([a-zA-Z_][\\w\\*\\s]+)\\b" + functionName + "\\s*\\([^)]*\\)\\s*\\{";
 		Pattern pattern = Pattern.compile(regex);
 		Matcher matcher = pattern.matcher(source);
 
 		if (!matcher.find()) {
+			return source;
+		}
+
+		String returnTypeLine = matcher.group(1).trim();
+
+		if (!(returnTypeLine.startsWith("void") || returnTypeLine.startsWith("int") || returnTypeLine.startsWith("char")
+				|| returnTypeLine.startsWith("float") || returnTypeLine.startsWith("double")
+				|| returnTypeLine.startsWith("long") || returnTypeLine.startsWith("short")
+				|| returnTypeLine.startsWith("unsigned") || returnTypeLine.startsWith("signed")
+				|| returnTypeLine.startsWith("struct") || returnTypeLine.startsWith("enum"))) {
 			return source;
 		}
 
@@ -56,50 +66,44 @@ public class CFunctionUpdater {
 		int bodyEndIndex = bodyStartIndex + 1;
 		while (bodyEndIndex < source.length() && braceCount > 0) {
 			char c = source.charAt(bodyEndIndex);
-			if (c == '{') {
+			if (c == '{')
 				braceCount++;
-			} else if (c == '}') {
+			else if (c == '}')
 				braceCount--;
-			}
 			bodyEndIndex++;
 		}
-
-		String matchedDefinition = source.substring(startIndex, bodyEndIndex);
-
-		if (matchedDefinition.contains("#define") || matchedDefinition.contains("inline")) {
-			return source;
-		}
-
-		if (!matchedDefinition.startsWith(matcher.group(1).trim() + " " + functionName)) {
-			return source;
-		}
-
-		String returnTypeLine = matcher.group(1).trim();
 
 		StringBuilder newFunction = new StringBuilder();
 		newFunction.append("\n").append(returnTypeLine).append(" ").append(functionName).append("(").append(newParams)
 				.append(") {\n");
-		String[] lines = newBody.split("\n");
-		for (String line : lines) {
+		for (String line : newBody.split("\n")) {
 			newFunction.append("    ").append(line).append("\n");
 		}
 		newFunction.append("}\n");
+
 		return source.substring(0, startIndex) + newFunction.toString() + source.substring(bodyEndIndex);
 	}
 
 	private static String replaceDeclaration(String source, String functionName, String newParams) {
-		String regex = "^[\\s]*([\\w\\*\\s]+)" + functionName + "\\s*\\([^)]*\\)\\s*;[\\s]*$";
-		Pattern pattern = Pattern.compile(regex, Pattern.MULTILINE);
+		String regex = "(?m)^\\s*([\\w\\*\\s]+)" + functionName + "\\s*\\([^)]*\\)\\s*;\\s*$";
+		Pattern pattern = Pattern.compile(regex);
 		Matcher matcher = pattern.matcher(source);
 
 		StringBuffer sbr = new StringBuffer();
 		while (matcher.find()) {
-			String matchedDeclaration = matcher.group(0);
-			if (matchedDeclaration.contains("#define") || matchedDeclaration.contains("inline")) {
+			String matchedLine = matcher.group(0).trim();
+			String prefix = matcher.group(1).trim();
+
+			boolean isTypePrefix = prefix.matches(
+					"^(void|int|char|float|double|long|short|unsigned|signed|struct|enum|[A-Za-z_][A-Za-z0-9_\\*\\s]*)$");
+
+			if (!isTypePrefix) {
+				matcher.appendReplacement(sbr, Matcher.quoteReplacement(matchedLine));
 				continue;
 			}
-			String returnType = matcher.group(1).trim();
-			String replacement = returnType + " " + functionName + "(" + newParams + ");";
+
+			String replacement = prefix + " " + functionName + "(" + newParams + ");";
+
 			matcher.appendReplacement(sbr, Matcher.quoteReplacement(replacement));
 		}
 		matcher.appendTail(sbr);
