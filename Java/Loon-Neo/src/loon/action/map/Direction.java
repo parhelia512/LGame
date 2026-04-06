@@ -53,6 +53,33 @@ public class Direction {
 			d = Direction.UP_LEFT;
 		} else if (d == Direction.UP_LEFT) {
 			d = Direction.UP;
+		} else if (d == Direction.UP) {
+			d = Direction.UP_RIGHT;
+		} else if (d == Direction.DOWN) {
+			d = Direction.DOWN_LEFT;
+		} else if (d == Direction.DOWN_LEFT) {
+			d = Direction.LEFT;
+		} else if (d == Direction.DOWN_RIGHT) {
+			d = Direction.RIGHT;
+		}
+		return d;
+	}
+
+	/**
+	 * 转换8方向为4方向显示
+	 * 
+	 * @param d
+	 * @return
+	 */
+	public final static Direction toDisplay4Direction(Direction d) {
+		if (d == Direction.DOWN_RIGHT) {
+			d = Direction.DOWN;
+		} else if (d == Direction.UP_LEFT) {
+			d = Direction.UP;
+		} else if (d == Direction.DOWN_LEFT) {
+			d = Direction.LEFT;
+		} else if (d == Direction.DOWN_RIGHT) {
+			d = Direction.RIGHT;
 		}
 		return d;
 	}

@@ -20,6 +20,7 @@
  */
 package loon.action.map.battle;
 
+import loon.ZIndex;
 import loon.action.map.Direction;
 import loon.action.map.battle.BattleMovementManager.AnimationState;
 import loon.action.map.battle.BattleMovementManager.CollisionResponse;
@@ -31,6 +32,8 @@ import loon.action.map.battle.BattleType.ObjectState;
 import loon.action.map.items.Role;
 import loon.action.map.items.RoleEquip;
 import loon.action.sprite.ISprite;
+import loon.events.GameEvent;
+import loon.events.GameEventType;
 import loon.geom.PointI;
 import loon.geom.Vector2f;
 import loon.geom.XY;
@@ -47,30 +50,110 @@ import loon.utils.TArray;
  */
 public class BattleMapObject extends Role {
 
+	// 对象主状态变更监听
+	public static interface ObjectStateListener {
+
+		// 状态变化事件
+		void onStateChanged(BattleMapObject obj, ObjectState oldState, ObjectState newState);
+
+		// 移动中
+		void onMoving(BattleMapObject obj, float deltaTime);
+
+		// 攻击事件
+		void onAttackStart(BattleMapObject obj, float deltaTime);
+
+		void onAttackEnd(BattleMapObject obj, float deltaTime);
+
+		// 技能事件
+		void onSkillStart(BattleMapObject obj, float deltaTime);
+
+		void onSkillEnd(BattleMapObject obj, float deltaTime);
+
+		// 死亡事件
+		void onDead(BattleMapObject obj, float deltaTime);
+	}
+
+	// 移动数据
+	public static class MoveData {
+		public final int fromX, fromY, toX, toY;
+		public final String message;
+
+		public MoveData(int fromX, int fromY, int toX, int toY, String message) {
+			this.fromX = fromX;
+			this.fromY = fromY;
+			this.toX = toX;
+			this.toY = toY;
+			this.message = message;
+		}
+	}
+
+	// 攻击数据
+	public static class AttackData {
+		public final boolean success;
+		public final String message;
+		public final int damage;
+		public final boolean isCrit;
+
+		public AttackData(boolean success, String message, int damage, boolean isCrit) {
+			this.success = success;
+			this.message = message;
+			this.damage = damage;
+			this.isCrit = isCrit;
+		}
+	}
+
+	// 资源变化（HP/MP）
+	public static class ResourceData {
+		public final String type;
+		public final int value;
+		public final int change;
+
+		public ResourceData(String type, int value, int change) {
+			this.type = type;
+			this.value = value;
+			this.change = change;
+		}
+	}
+
+	// 技能数据
+	public static class SkillData {
+		public final String skillName;
+		public final String effectType;
+		public final int value;
+
+		public SkillData(String skillName, String effectType, int value) {
+			this.skillName = skillName;
+			this.effectType = effectType;
+			this.value = value;
+		}
+	}
+
 	/** 最大惯性值 */
 	public static final float MAX_INERTIA = 0.1f;
 
 	/** 默认缓动函数 */
 	private static final Easing DEFAULT_EASING = Easing.TIME_LINEAR;
 
+	protected ObjectStateListener objectStateListener;
+
 	// 初始(当前)坐标
-	public int gridX, gridY;
+	protected int gridX, gridY;
 	// 目标(移动后到达)坐标
-	public int targetX, targetY;
+	protected int targetX, targetY;
 
 	// 方向与状态
-	public Direction currentDirection = Direction.DOWN;
-	public ObjectState state = ObjectState.IDLE;
+	protected Direction currentDirection = Direction.DOWN;
+	protected ObjectState state = ObjectState.IDLE;
 
 	// 渲染与移动基础参数
-	public float renderPriority = 0f;
+	protected float renderPriority = 0f;
 	private boolean isMoving;
-	public float moveInertia = 0f;
-	public float moveSpeedMultiplier = 1f;
+	protected float moveInertia = 0f;
+	protected float moveSpeedMultiplier = 1f;
 
 	// 斜角地图配置
-	public final IsoConfig isoConfig;
-	private final int charWidth, charHeight;
+	protected final IsoConfig isoConfig;
+	private final int charInMapWidth, charInMapHeight;
 
 	// 速度系统
 	private float baseSpeed;
@@ -82,6 +165,11 @@ public class BattleMapObject extends Role {
 	private int currentStep;
 	private boolean paused;
 	private Easing easing;
+
+	private boolean inCombat = false;
+
+	private float attackProgress;
+	private float skillProgress;
 
 	// 坐标缓存对象
 	private final Vector2f startPixel = new Vector2f();
@@ -101,19 +189,19 @@ public class BattleMapObject extends Role {
 	// 地图引用
 	private BattleMap battleMap;
 
-	// 移动点数系统
-	private int maxMovementPoints;
-	private int remainingMovementPoints;
-
 	// 移动管理器
 	private final BattleMovementManager moveManager;
+
 	private final TArray<BattleMapObject> otherCharacters = new TArray<BattleMapObject>();
+
 	private MovementListener listener;
 
 	// 当前所在瓦片
 	private final PointI currentMapTile = new PointI();
 
-	public float moveProgress = 0f;
+	private float moveProgress = 0f;
+
+	private BattleSkill currentSkill;
 
 	public BattleMapObject(IsoConfig cfg, BattleMap map, ISprite sprite, int id, String name, int gx, int gy, int w,
 			int h, MovementListener l) {
@@ -145,8 +233,8 @@ public class BattleMapObject extends Role {
 		this.targetY = gridY;
 
 		// 尺寸校验
-		this.charWidth = MathUtils.max(1, w);
-		this.charHeight = MathUtils.max(1, h);
+		this.charInMapWidth = MathUtils.max(1, w);
+		this.charInMapHeight = MathUtils.max(1, h);
 		this.listener = l;
 
 		// 初始化移动管理器
@@ -166,7 +254,7 @@ public class BattleMapObject extends Role {
 
 		// 精灵初始化
 		if (sprite != null) {
-			sprite.setSize(charWidth, charHeight);
+			sprite.setSize(charInMapWidth, charInMapHeight);
 			sprite.setLocation(startPixel.x, startPixel.y);
 			setRoleObject(sprite);
 		}
@@ -193,9 +281,35 @@ public class BattleMapObject extends Role {
 		return this;
 	}
 
+	public int getRenderPriority() {
+		return MathUtils.ifloor(renderPriority);
+	}
+
+	public int getCharWidth() {
+		return MathUtils.iceil(charInMapWidth * getCharScaleX());
+	}
+
+	public int getCharHeight() {
+		return MathUtils.iceil(charInMapHeight * getCharScaleY());
+	}
+
+	public float getCharScaleX() {
+		if (_roleObject == null) {
+			return 1f;
+		}
+		return _roleObject.getScaleX();
+	}
+
+	public float getCharScaleY() {
+		if (_roleObject == null) {
+			return 1f;
+		}
+		return _roleObject.getScaleY();
+	}
+
 	private float calculateRenderPriority() {
 		Vector2f screenPos = getTileToScreenPosition();
-		return screenPos.y + (getLayer() * 100) + (charHeight * isoConfig.heightScale);
+		return screenPos.y + (getLayer() * 100) + (getCharHeight() * isoConfig.heightScale);
 	}
 
 	public Vector2f getInterpolatedPosition() {
@@ -228,7 +342,7 @@ public class BattleMapObject extends Role {
 	}
 
 	public void setStartTile(int gx, int gy) {
-		setStartTile(gx, gy, charWidth, charHeight);
+		setStartTile(gx, gy, charInMapWidth, charInMapHeight);
 	}
 
 	public void setStartTile(int gx, int gy, int cw, int ch) {
@@ -240,7 +354,7 @@ public class BattleMapObject extends Role {
 	}
 
 	public void setTargetTile(int gx, int gy) {
-		setTargetTile(gx, gy, charWidth, charHeight);
+		setTargetTile(gx, gy, charInMapWidth, charInMapHeight);
 	}
 
 	public void setTargetTile(int gx, int gy, int cw, int ch) {
@@ -254,7 +368,7 @@ public class BattleMapObject extends Role {
 	}
 
 	public Vector2f getScreenToTile(float px, float py) {
-		return getScreenToTile(px, py, charWidth, charHeight);
+		return getScreenToTile(px, py, charInMapWidth, charInMapHeight);
 	}
 
 	public Vector2f getScreenToTile(float px, float py, int cw, int ch) {
@@ -262,7 +376,7 @@ public class BattleMapObject extends Role {
 	}
 
 	public Vector2f getTileToScreen(int gx, int gy) {
-		return getTileToScreen(gx, gy, charWidth, charHeight);
+		return getTileToScreen(gx, gy, charInMapWidth, charInMapHeight);
 	}
 
 	public Vector2f getTileToScreen(int gx, int gy, int cw, int ch) {
@@ -282,11 +396,30 @@ public class BattleMapObject extends Role {
 		return gridY;
 	}
 
-	public void setLayer(int l) {
+	public BattleMapObject setLayer(int l) {
 		if (_roleObject != null) {
 			_roleObject.setLayer(l);
 		}
+		return this;
+	}
+
+	public BattleMapObject updateRenderPriorityLayer() {
 		renderPriority = calculateRenderPriority();
+		int orderZ = MathUtils.ifloor(renderPriority);
+		setLayer(orderZ);
+		return this;
+	}
+
+	public BattleMapObject updateRenderPriorityZ() {
+		renderPriority = calculateRenderPriority();
+		int orderZ = MathUtils.ifloor(renderPriority);
+		if (_roleObject != null) {
+			if (_roleObject instanceof ZIndex) {
+				orderZ = orderZ - MathUtils.abs(((ZIndex) this._roleObject).getLayer());
+			}
+		}
+		setLayer(-orderZ);
+		return this;
 	}
 
 	/**
@@ -352,13 +485,12 @@ public class BattleMapObject extends Role {
 		triggerAnimation(AnimationState.WALK);
 	}
 
-	public void update(float deltaTime) {
+	public void handleMoveState(float deltaTime) {
 		// 死亡/暂停/无路径，直接返回，不予执行
 		if (state == ObjectState.DEAD || paused || path.isEmpty()) {
 			handleIdleState(deltaTime);
 			return;
 		}
-
 		// 更新移动管理器
 		moveManager.update(deltaTime, this);
 
@@ -391,8 +523,288 @@ public class BattleMapObject extends Role {
 			completeStep();
 		}
 
-		// 更新渲染优先级
-		renderPriority = calculateRenderPriority();
+		if (isMoving) {
+			// 更新渲染优先级
+			renderPriority = calculateRenderPriority();
+		}
+
+		if (objectStateListener != null) {
+			objectStateListener.onMoving(this, deltaTime);
+		}
+	}
+
+	private void handleDeadState(float deltaTime) {
+		if (objectStateListener != null) {
+			objectStateListener.onDead(this, deltaTime);
+		}
+	}
+
+	private void handleAttackState(float deltaTime, TArray<BattleMapObject> allObjects) {
+		attackProgress += deltaTime * baseSpeed;
+		if (attackProgress >= 1.0f) {
+			// 执行攻击逻辑
+			performAttack(allObjects);
+			// 重置攻击状态
+			attackProgress = 0f;
+			setState(ObjectState.IDLE);
+		}
+		if (objectStateListener != null) {
+			objectStateListener.onAttackEnd(this, deltaTime);
+		}
+	}
+
+	public boolean isInAttackRange(BattleMapObject target) {
+		int dx = MathUtils.abs(gridX - target.gridX);
+		int dy = MathUtils.abs(gridY - target.gridY);
+		int maxRange = currentSkill != null ? currentSkill.rangeRadius : 1;
+		return MathUtils.max(dx, dy) <= maxRange;
+	}
+
+	private BattleMapObject findAttackTarget(TArray<BattleMapObject> allObjects) {
+		for (BattleMapObject obj : allObjects) {
+			if (obj != this && obj.state != ObjectState.DEAD && isInAttackRange(obj)) {
+				currentDirection = Direction.fromDelta(obj.gridX - gridX, obj.gridY - gridY);
+				if (listener != null) {
+					listener.onDirectionChanged(this, currentDirection);
+				}
+				return obj;
+			}
+		}
+		return null;
+	}
+
+	private void performAttack(TArray<BattleMapObject> allObjects) {
+		// 查找攻击范围内的目标
+		BattleMapObject target = findAttackTarget(allObjects);
+		if (target == null || target.state == ObjectState.DEAD) {
+			setState(ObjectState.IDLE);
+			return;
+		}
+		// 消耗MP（如果技能需要）
+		if (currentSkill.mpCost > 0 && getMana() < currentSkill.mpCost) {
+			if (battleMap != null) {
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK, this, target,
+						new AttackData(false, "Insufficient Magic", 0, false)));
+			}
+			setState(ObjectState.IDLE);
+			return;
+		}
+		// 扣除MP
+		if (currentSkill.mpCost > 0) {
+			mana -= currentSkill.mpCost;
+			if (battleMap != null) {
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.MP_CHANGED, this, target,
+						new ResourceData("mp", mana, -currentSkill.mpCost)));
+			}
+		}
+		// 攻击命中判定
+		boolean hit = MathUtils.random() <= currentSkill.hitRate;
+		if (hit) {
+			// 触发技能命中震动
+			currentSkill.triggerHitShake();
+
+			if (battleMap != null) {
+				// 发布命中事件
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
+						new AttackData(true, "hit", 0, MathUtils.random() <= currentSkill.critRate)));
+				// 发布HP变化事件
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.HP_CHANGED, target, this,
+						new ResourceData("hp", target.health, 0)));
+			}
+
+			// 检查是否击杀
+			if (target.health <= 0) {
+				setState(ObjectState.DEAD);
+				if (battleMap != null) {
+					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, target, this));
+				}
+				target.endCombat(this);
+			}
+		} else {
+			// 未命中
+			if (battleMap != null) {
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_MISS, this, target,
+						new AttackData(false, "miss", 0, false)));
+			}
+		}
+
+		// 播放攻击特效
+		currentSkill.isCastTriggered = true;
+
+		// 若目标死亡，结束战斗
+		if (target.health <= 0) {
+			setState(ObjectState.DEAD);
+			endCombat(target);
+		}
+	}
+
+	/**
+	 * 指定对象开始战斗
+	 * 
+	 * @param enemy
+	 */
+	public void startCombat(BattleMapObject enemy) {
+		if (!inCombat && enemy != this && enemy.state != ObjectState.DEAD) {
+			inCombat = true;
+			if (battleMap != null) {
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.COMBAT_START, this, enemy));
+			}
+		}
+	}
+
+	/**
+	 * 指定对象结束战斗
+	 * 
+	 * @param enemy
+	 */
+	public void endCombat(BattleMapObject enemy) {
+		if (inCombat) {
+			inCombat = false;
+			if (battleMap != null) {
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.COMBAT_END, this, enemy));
+			}
+		}
+	}
+
+	private void performSkill(TArray<BattleMapObject> allObjects) {
+		// 检查技能是否冷却完成
+		if (!currentSkill.isReady()) {
+			if (battleMap != null) {
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
+						new SkillData(currentSkill.name, "Skill on cooldown", 0)));
+			}
+			setState(ObjectState.IDLE);
+			return;
+		}
+		// 消耗MP
+		if (mana < currentSkill.mpCost) {
+			if (battleMap != null) {
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
+						new SkillData(currentSkill.name, "Insufficient Magic", 0)));
+			}
+			setState(ObjectState.IDLE);
+			return;
+		}
+		mana -= currentSkill.mpCost;
+		if (battleMap != null) {
+			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.MP_CHANGED, this, null,
+					new ResourceData("mp", mana, -currentSkill.mpCost)));
+		}
+		// 根据技能类型执行不同逻辑
+		switch (currentSkill.battleType) {
+		case HEAL:
+			// 治疗自己
+			int healAmount = MathUtils.abs(currentSkill.damage);
+			health = MathUtils.min(health, health + healAmount);
+			if (battleMap != null) {
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
+						new SkillData(currentSkill.name, "heal", healAmount)));
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.HP_CHANGED, this, null,
+						new ResourceData("hp", health, healAmount)));
+			}
+
+			break;
+		case RANGE:
+		case MELEE:
+			// 远程近战技能攻击
+			BattleMapObject target = findAttackTarget(allObjects);
+			if (target != null && target.state != ObjectState.DEAD) {
+				boolean isCrit = MathUtils.random() <= currentSkill.critRate;
+				// 触发技能震动
+				currentSkill.triggerHitShake();
+				if (battleMap != null) {
+					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
+							new AttackData(true, "hit", 0, isCrit)));
+					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.HP_CHANGED, target, null,
+							new ResourceData("hp", target.health, 0)));
+				}
+
+				if (target.health <= 0) {
+					setState(ObjectState.DEAD);
+					if (battleMap != null) {
+						battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, target, this));
+					}
+				}
+			}
+
+			break;
+
+		default:
+			break;
+		}
+
+		// 标记技能已释放，开始冷却
+		currentSkill.startCooldown();
+		currentSkill.isCastTriggered = true;
+
+		// 重置状态
+		setState(ObjectState.IDLE);
+
+	}
+
+	private void handleSkillState(float deltaTime, TArray<BattleMapObject> allObjects) {
+		skillProgress += deltaTime * baseSpeed;
+		if (skillProgress >= 1.0f) {
+			// 执行技能逻辑
+			performSkill(allObjects);
+			// 重置技能状态
+			skillProgress = 0f;
+			setState(ObjectState.IDLE);
+		}
+		if (objectStateListener != null) {
+			objectStateListener.onSkillEnd(this, deltaTime);
+		}
+	}
+
+	private void handlePrepareAttack(float deltaTime) {
+		attackProgress += deltaTime * baseSpeed;
+		if (attackProgress >= 1.0f) {
+			attackProgress = 0f;
+			setState(ObjectState.PREPARE_ATTACK);
+			if (objectStateListener != null) {
+				objectStateListener.onAttackStart(this, deltaTime);
+			}
+		}
+	}
+
+	private void handlePrepareSkill(float deltaTime) {
+		skillProgress += deltaTime * baseSpeed;
+		if (skillProgress >= 1.0f) {
+			skillProgress = 0f;
+			setState(ObjectState.PREPARE_SKILL);
+			if (objectStateListener != null) {
+				objectStateListener.onSkillStart(this, deltaTime);
+			}
+		}
+	}
+
+	public void update(float deltaTime) {
+		switch (state) {
+		case IDLE:
+			handleIdleState(deltaTime);
+			break;
+		case MOVING:
+			handleMoveState(deltaTime);
+			break;
+		case ATTACKING:
+			handleAttackState(deltaTime, otherCharacters);
+			break;
+		case SKILL:
+			handleSkillState(deltaTime, otherCharacters);
+			break;
+		case DEAD:
+			handleDeadState(deltaTime);
+			break;
+		case PREPARE_ATTACK:
+			handlePrepareAttack(deltaTime);
+			break;
+		case PREPARE_SKILL:
+			handlePrepareSkill(deltaTime);
+			break;
+		default:
+			setState(ObjectState.IDLE);
+			break;
+		}
 	}
 
 	public void updateCurrentMapTile() {
@@ -400,7 +812,7 @@ public class BattleMapObject extends Role {
 	}
 
 	public void updateCurrentMapTile(float x, float y) {
-		updateCurrentMapTile(x, y, charWidth, charHeight);
+		updateCurrentMapTile(x, y, charInMapWidth, charInMapHeight);
 	}
 
 	public void updateCurrentMapTile(float x, float y, int charW, int charH) {
@@ -470,7 +882,7 @@ public class BattleMapObject extends Role {
 	 */
 	public int getMaxReachableSteps() {
 		int steps = 0;
-		int tempPoints = remainingMovementPoints;
+		int tempPoints = actionPoints;
 		for (PointI tile : path) {
 			int cost = getTileCost(tile);
 			if (tempPoints < cost) {
@@ -649,12 +1061,12 @@ public class BattleMapObject extends Role {
 			BattleTile battleTile = battleMap.getMapTile(tile.x, tile.y);
 			cost = battleTile == null ? 0 : (int) battleTile.getPathCost();
 		}
-		remainingMovementPoints = MathUtils.max(0, remainingMovementPoints - cost);
+		actionPoints = MathUtils.max(0, actionPoints - cost);
 		if (listener != null) {
-			listener.onTerrainCostDeducted(this, cost, remainingMovementPoints);
-			listener.onMovementPointChanged(this, remainingMovementPoints);
+			listener.onTerrainCostDeducted(this, cost, actionPoints);
+			listener.onMovementPointChanged(this, actionPoints);
 		}
-		if (remainingMovementPoints <= 0) {
+		if (actionPoints <= 0) {
 			pause();
 		}
 	}
@@ -770,7 +1182,7 @@ public class BattleMapObject extends Role {
 		packet.put("step", currentStep);
 		packet.put("paused", paused);
 		packet.put("mode", currentMode);
-		packet.put("points", remainingMovementPoints);
+		packet.put("points", actionPoints);
 		packet.put("x", startPixel.x);
 		packet.put("y", startPixel.y);
 		return packet;
@@ -784,7 +1196,7 @@ public class BattleMapObject extends Role {
 		this.currentStep = MathUtils.max(0, packet.getInt("step", 0));
 		this.paused = packet.getBool("paused", false);
 		this.currentMode = (MovementMode) packet.get("mode", MovementMode.WALK);
-		this.remainingMovementPoints = MathUtils.max(0, packet.getInt("points", 0));
+		this.actionPoints = MathUtils.max(0, packet.getInt("points", 0));
 		float x = packet.getFloat("x", getX());
 		float y = packet.getFloat("y", getY());
 		setPixelPosition(new Vector2f(x, y));
@@ -866,7 +1278,7 @@ public class BattleMapObject extends Role {
 		if (paths == null || paths.isEmpty()) {
 			return valid;
 		}
-		int tempPoints = remainingMovementPoints;
+		int tempPoints = actionPoints;
 		for (PointI tile : paths) {
 			if (!canMoveTo(tile)) {
 				break;
@@ -896,32 +1308,32 @@ public class BattleMapObject extends Role {
 	}
 
 	public int getMaxMovementPoints() {
-		return maxMovementPoints;
+		return movePoints;
 	}
 
 	public void setMaxMovementPoints(int points) {
-		this.maxMovementPoints = MathUtils.max(0, points);
+		this.movePoints = MathUtils.max(0, points);
 	}
 
 	public void resetPathState() {
-		resetPathState(maxMovementPoints);
+		resetPathState(movePoints);
 	}
 
 	public void resetPathState(int points) {
 		currentStep = 0;
 		moveProgress = 0f;
 		paused = false;
-		maxMovementPoints = MathUtils.max(0, points);
-		remainingMovementPoints = maxMovementPoints;
+		movePoints = MathUtils.max(0, points);
+		actionPoints = movePoints;
 		path.clear();
 	}
 
 	public void setRemainingMovementPoints(int points) {
-		this.remainingMovementPoints = MathUtils.clamp(points, 0, maxMovementPoints);
+		this.actionPoints = MathUtils.clamp(points, 0, movePoints);
 	}
 
 	public int getRemainingMovementPoints() {
-		return remainingMovementPoints;
+		return actionPoints;
 	}
 
 	public Direction getDirection() {
@@ -936,11 +1348,14 @@ public class BattleMapObject extends Role {
 		return state;
 	}
 
-	public void setState(ObjectState state) {
-		if (state == null) {
+	public void setState(ObjectState newState) {
+		if (newState == null || newState == state) {
 			return;
 		}
-		this.state = state;
+		if (objectStateListener != null) {
+			objectStateListener.onStateChanged(this, state, newState);
+		}
+		this.state = newState;
 		this.isMoving = (state == ObjectState.MOVING);
 		// 死亡状态强制停止移动
 		if (state == ObjectState.DEAD) {
@@ -953,7 +1368,7 @@ public class BattleMapObject extends Role {
 	}
 
 	/**
-	 * 待机状态：惯性衰减+路径检测
+	 * 待机状态
 	 * 
 	 * @param deltaTime
 	 */
@@ -961,6 +1376,8 @@ public class BattleMapObject extends Role {
 		moveInertia = MathUtils.max(0, moveInertia - deltaTime * 2);
 		if (!path.isEmpty() && state != ObjectState.DEAD) {
 			startMoving();
+		} else if (path.isEmpty()) {
+			endMovement();
 		}
 	}
 
@@ -971,7 +1388,7 @@ public class BattleMapObject extends Role {
 		if (state == ObjectState.DEAD) {
 			return;
 		}
-		state = ObjectState.MOVING;
+		setState(ObjectState.MOVING);
 		isMoving = true;
 		moveProgress = 0f;
 	}
@@ -981,7 +1398,7 @@ public class BattleMapObject extends Role {
 	 */
 	protected void endMovement() {
 		paused = true;
-		state = ObjectState.IDLE;
+		setState(ObjectState.IDLE);
 		isMoving = false;
 		moveProgress = 0f;
 		targetX = gridX;
@@ -1020,5 +1437,13 @@ public class BattleMapObject extends Role {
 		if (listener != null) {
 			listener.onSpeedChanged(this, baseSpeed);
 		}
+	}
+
+	public ObjectStateListener getObjectStateListener() {
+		return objectStateListener;
+	}
+
+	public void setObjectStateListener(ObjectStateListener l) {
+		this.objectStateListener = l;
 	}
 }

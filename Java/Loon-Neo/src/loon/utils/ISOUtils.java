@@ -660,8 +660,8 @@ public final class ISOUtils {
 		Vector2f screenPos = isoPos.screenPos;
 		float scaledTileW = config.tileWidth * config.scaleX;
 		float scaledTileH = config.tileHeight * config.scaleY;
-		float drawX = screenPos.x - charWidth / 2f + scaledTileW / 2f;
-		float drawY = screenPos.y - charHeight + (scaledTileH * 3f / 4f);
+		float drawX = screenPos.x - (charWidth / 2f) + (scaledTileW / 2f);
+		float drawY = screenPos.y - (charHeight / 2f) + (scaledTileH / 2f) - (scaledTileH - config.heightScale) / 1.45f;
 		return result.set(drawX + offsetX, drawY + offsetY);
 	}
 
@@ -701,8 +701,8 @@ public final class ISOUtils {
 		}
 		float scaledTileW = config.tileWidth * config.scaleX;
 		float scaledTileH = config.tileHeight * config.scaleY;
-		float screenX = drawX + charWidth / 2f - scaledTileW / 2f;
-		float screenY = drawY + charHeight - (scaledTileH * 3f / 4f);
+		float screenX = drawX + (charWidth / 2f) - (scaledTileW / 2f);
+		float screenY = drawY + (charHeight / 2f) - (scaledTileH / 2f) + (scaledTileH - config.heightScale) / 1.45f;
 		return screenToGrid(screenX, screenY, offsetX, offsetY, 0, 0, config, result);
 	}
 

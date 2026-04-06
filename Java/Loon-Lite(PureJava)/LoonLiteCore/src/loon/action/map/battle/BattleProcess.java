@@ -731,16 +731,14 @@ public class BattleProcess extends CoroutineProcess {
 	protected boolean checkProcessWait() {
 		if (_waiting) {
 			if (_waitProcess.size > 0) {
-				synchronized (_waitProcess) {
-					for (Iterator<GameProcess> it = _waitProcess.iterator(); it.hasNext();) {
-						GameProcess process = it.next();
-						if (process != null && !process.isDead()) {
-							return (_waiting = true);
-						}
+				for (Iterator<GameProcess> it = _waitProcess.iterator(); it.hasNext();) {
+					GameProcess process = it.next();
+					if (process != null && !process.isDead()) {
+						return (_waiting = true);
 					}
-					_waitProcess.clear();
-					this._waiting = false;
 				}
+				_waitProcess.clear();
+				this._waiting = false;
 			} else {
 				this._waiting = false;
 			}
@@ -1076,12 +1074,10 @@ public class BattleProcess extends CoroutineProcess {
 
 	public WaitProcess wait(WaitProcess waitProcess) {
 		if (waitProcess != null) {
-			synchronized (_waitProcess) {
-				_waitProcess.add(waitProcess);
-				_waiting = true;
-				RealtimeProcessManager.get().addProcess(waitProcess);
-				return waitProcess;
-			}
+			_waitProcess.add(waitProcess);
+			_waiting = true;
+			RealtimeProcessManager.get().addProcess(waitProcess);
+			return waitProcess;
 		}
 		return null;
 	}

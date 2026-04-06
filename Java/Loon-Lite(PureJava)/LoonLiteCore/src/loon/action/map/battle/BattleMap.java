@@ -55,7 +55,6 @@ import loon.action.sprite.Sprites;
 import loon.canvas.LColor;
 import loon.events.DrawListener;
 import loon.events.GameEventBus;
-import loon.events.GameEventType;
 import loon.events.ResizeListener;
 import loon.geom.PointF;
 import loon.geom.PointI;
@@ -73,7 +72,7 @@ import loon.utils.StringUtils;
 import loon.utils.TArray;
 
 /**
- * 专属战斗用地图，和普通地图最大区别是，此地图全部由高度可控动画对象构建(也就是复杂特效可以具体到单个瓦片)
+ * 斜视地图，专属战斗用地图，和普通地图最大区别是，此地图全部由高度可控动画对象构建(也就是复杂特效可以具体到单个瓦片)，内置完整角色与事件管理系统
  */
 public class BattleMap extends LObject<ISprite> implements TileMapCollision, Sized, ISprite {
 
@@ -102,11 +101,15 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	private final Field2D _field2d;
 
+	private final Vector2f _gxTempResult = new Vector2f();
+
+	private final IsoResult _isoTempResult = new IsoResult();
+
 	private Vector2f _followOffset = new Vector2f();
 
 	private Vector2f _offset = new Vector2f();
 
-	private GameEventBus<GameEventType> _eventBus;
+	private GameEventBus<Object> _eventBus;
 
 	private BattlePathFinder _pathFinder;
 
@@ -170,23 +173,23 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	private final TileIsoHighlighter _highlighter = new TileIsoHighlighter();
 
-	public BattleMap(BattleTileMake make, Field2D field2d, Screen screen, GameEventBus<GameEventType> events,
+	public BattleMap(BattleTileMake make, Field2D field2d, Screen screen, GameEventBus<Object> events,
 			IsoConfig config) {
 		this(make, field2d, 0, 0, screen, events, config);
 	}
 
-	public BattleMap(BattleTileMake make, Field2D field2d, int x, int y, Screen screen,
-			GameEventBus<GameEventType> events, IsoConfig config) {
+	public BattleMap(BattleTileMake make, Field2D field2d, int x, int y, Screen screen, GameEventBus<Object> events,
+			IsoConfig config) {
 		this(make, field2d, screen, x, y, events, config, LSystem.viewSize.getWidth(), LSystem.viewSize.getHeight());
 	}
 
-	public BattleMap(BattleTileMake make, Field2D field2d, int x, int y, Screen screen,
-			GameEventBus<GameEventType> events, IsoConfig config, int screenWidth, int screenHeight) {
+	public BattleMap(BattleTileMake make, Field2D field2d, int x, int y, Screen screen, GameEventBus<Object> events,
+			IsoConfig config, int screenWidth, int screenHeight) {
 		this(make, field2d, screen, x, y, events, config, screenWidth, screenHeight);
 	}
 
-	public BattleMap(BattleTileMake make, Field2D field2d, Screen screen, int x, int y,
-			GameEventBus<GameEventType> events, IsoConfig config, int screenWidth, int screenHeight) {
+	public BattleMap(BattleTileMake make, Field2D field2d, Screen screen, int x, int y, GameEventBus<Object> events,
+			IsoConfig config, int screenWidth, int screenHeight) {
 		_tileMake = make;
 		if (config == null) {
 			config = IsoConfig.defaultConfig();
@@ -212,6 +215,9 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 			config.tileHeight = field2d.getTileHeight();
 		}
 		this._eventBus = events;
+		if (_eventBus == null) {
+			_eventBus = new GameEventBus<Object>();
+		}
 		this._isoConfig = config;
 		this._visible = _playAnimation = true;
 		this._mapSprites = new Sprites("BattleMapSprites", screen == null ? LSystem.getProcess().getScreen() : screen,
@@ -283,9 +289,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		if (manager != null) {
 			renderer.addCharacter(manager, x, y, scaleX, scaleY, flipX, flipY, color, layerIndex);
 		}
-		if (renderer != null) {
-			_mapSprites.add(renderer);
-		}
+		_mapSprites.add(renderer);
 		return obj;
 	}
 
@@ -298,9 +302,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		if (manager != null) {
 			renderer.addCharacter(manager, 0, 0);
 		}
-		if (renderer != null) {
-			_mapSprites.add(renderer);
-		}
+		_mapSprites.add(renderer);
 		return obj;
 	}
 
@@ -313,6 +315,18 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 			_mapSprites.remove(o.getRoleObject());
 		}
 		return result;
+	}
+
+	public boolean addSprite(ISprite spr) {
+		return _mapSprites.add(spr);
+	}
+
+	public boolean containsSprite(ISprite spr) {
+		return _mapSprites.contains(spr);
+	}
+
+	public boolean removeSprite(ISprite spr) {
+		return _mapSprites.remove(spr);
 	}
 
 	public TileIsoHighlighter getTileHighlighter() {
@@ -738,7 +752,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		}
 	}
 
-	public GameEventBus<GameEventType> getEventBus() {
+	public GameEventBus<Object> getEventBus() {
 		return _eventBus;
 	}
 
@@ -1262,6 +1276,14 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	@Override
 	public LTexture getBitmap() {
 		return _background;
+	}
+
+	public Vector2f getTileToScreen(int gx, int gy, int cw, int ch, float offsetX, float offsetY) {
+		return ISOUtils.getTileToScreen(_isoConfig, gx, gy, cw, ch, offsetX, offsetY, _gxTempResult, _isoTempResult);
+	}
+
+	public Vector2f getScreenToTile(float px, float py, int cw, int ch, float offsetX, float offsetY) {
+		return ISOUtils.getScreenToTile(_isoConfig, px, py, cw, ch, offsetX, offsetY, _gxTempResult);
 	}
 
 	public BattleMap startAnimation() {

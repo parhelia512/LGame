@@ -29,7 +29,7 @@ import loon.utils.ISOUtils;
 import loon.utils.ISOUtils.IsoConfig;
 import loon.utils.ISOUtils.IsoResult;
 
-public class BattleTile implements Cloneable {
+public class BattleTile {
 
 	public interface EffectService {
 		void applyEffect(BattleTile tile, BattleTileType newType, float duration);
@@ -60,24 +60,26 @@ public class BattleTile implements Cloneable {
 	private EffectService effectService;
 	private SkillService skillService;
 
-	public Animation bgAnim, groundAnim, effectAnim;
+	protected Animation bgAnim, groundAnim, effectAnim;
 
-	public boolean isHighlighted = false;
+	protected boolean isHighlighted = false;
 
-	public boolean isVisible = true;
+	protected boolean isVisible = true;
 	// 瓦片移动成本
-	public float pathCost = 1.0f;
+	protected float pathCost = 1.0f;
 	// 光照亮度
-	public float brightness = 1.0f;
+	protected float brightness = 1.0f;
+
+	protected boolean passable = true;
 
 	// 瓦片可操作标记
-	public boolean isInteractable = false;
+	protected boolean isInteractable = false;
 	// 瓦片已破坏
-	public boolean isDestroyed = false;
+	protected boolean isDestroyed = false;
 	// 耐久度
-	public int durability = 100;
+	protected int durability = 100;
 	// 斜视参数基本设置状态
-	private final IsoConfig isoCofing;
+	protected final IsoConfig isoCofing;
 
 	public BattleTile(int x, int y, int w, int h, IsoConfig config) {
 		this(x, y, w, h, config, null, null);
@@ -111,6 +113,7 @@ public class BattleTile implements Cloneable {
 		this.brightness = brightness;
 		this.isInteractable = false;
 		this.isDestroyed = false;
+		this.passable = true;
 		this.durability = durability;
 		if (pathCost <= 0) {
 			this.pathCost = calculatePathCost();
@@ -134,10 +137,15 @@ public class BattleTile implements Cloneable {
 		copy.isInteractable = this.isInteractable;
 		copy.isDestroyed = this.isDestroyed;
 		copy.durability = this.durability;
+		copy.passable = this.passable;
 		copy.bgAnim = this.bgAnim.cpy();
 		copy.effectAnim = this.effectAnim.cpy();
 		copy.groundAnim = this.groundAnim.cpy();
 		return copy;
+	}
+
+	public void setPassable(boolean p) {
+		passable = p;
 	}
 
 	private float calculatePathCost() {
@@ -227,7 +235,6 @@ public class BattleTile implements Cloneable {
 	}
 
 	public void paint(GLEx g, float drawX, float drawY, float tileWidth, float tileHeight, LColor color) {
-
 		// 绘制背景层
 		if (bgAnim != null) {
 			g.draw(bgAnim.getSpriteImage(), drawX, drawY, tileWidth, tileHeight, color);
@@ -478,6 +485,6 @@ public class BattleTile implements Cloneable {
 	}
 
 	public boolean isPassable() {
-		return tiletype.isPassable();
+		return tiletype.isPassable() || passable;
 	}
 }

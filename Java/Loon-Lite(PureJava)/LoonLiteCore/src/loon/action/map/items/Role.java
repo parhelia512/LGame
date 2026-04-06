@@ -457,6 +457,16 @@ public class Role extends RoleValue implements ActionBind, EventActionN {
 		return LColor.white.cpy();
 	}
 
+	public void setScale(XY scale) {
+		if (scale != null) {
+			setScale(scale.getX(), scale.getY());
+		}
+	}
+
+	public void setScale(float s) {
+		setScale(s, s);
+	}
+
 	@Override
 	public void setScale(float sx, float sy) {
 		if (isLocked()) {

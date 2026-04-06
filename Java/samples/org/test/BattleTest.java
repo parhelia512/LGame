@@ -86,7 +86,7 @@ public class BattleTest extends Stage {
 		// 获得随机地图与索引id关系的二维数组
 		int[][] maps = generator.getMapGrid();
 
-		GameEventBus<GameEventType> bus = new GameEventBus<>();
+		GameEventBus<Object> bus = new GameEventBus<Object>();
 		// int[][] maps = TileMapConfig.loadAthwartArray("battle.txt");
 
 		Field2D map = new Field2D(maps, 32, 32);
@@ -226,7 +226,8 @@ public class BattleTest extends Stage {
 
 			}
 		});
-
+		// 将地图对象缩放2倍(瓦片的缩放和地图对象的缩放不通用，需分别设置)
+		// obj.setScale(2f);
 		// 拖拽地图
 		drag((x, y) -> {
 			newMap.scroll(x, y);

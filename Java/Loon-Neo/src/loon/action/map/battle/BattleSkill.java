@@ -20,78 +20,141 @@
  */
 package loon.action.map.battle;
 
+import loon.LRelease;
+import loon.LSystem;
+import loon.LTexture;
 import loon.action.map.battle.BattleType.RangeType;
 import loon.action.map.battle.BattleType.SkillType;
 import loon.action.map.battle.BattleType.UnitType;
 import loon.action.map.battle.BattleType.WeatherType;
+import loon.action.sprite.Animation;
+import loon.canvas.LColor;
 import loon.geom.Vector2f;
+import loon.opengl.GLEx;
 import loon.utils.MathUtils;
 import loon.utils.SortedList;
 import loon.utils.TArray;
+import loon.utils.TimeUtils;
 
-public class BattleSkill {
+public class BattleSkill implements LRelease {
+
+	public static enum BattleType {
+		MELEE, RANGE, BUFF, DEBUFF, HEAL
+	}
+
+	private static final float MAX_SHAKE_INTENSITY = 12f;
+
+	private final LColor effColor = new LColor();
+
+	private float lightOverlayAlpha = 0.4f;
+
+	private float effectAlpha = 0.8f;
+
+	private float rangeHighlightAlpha = 0.5f;
+
+	private BattleMap battleMap;
+
 	// 唯一标识
-	String id;
+	protected String id;
 	// 名称
-	String name;
+	protected String name;
 	// 描述
-	String description;
+	protected String description;
 	// 类型
-	SkillType skilltype;
+	protected SkillType skilltype;
 	// 限定兵种
-	UnitType[] limitUnits;
+	protected UnitType[] limitUnits;
 	// 限定地形
-	BattleTileType[] limitTiles;
+	protected BattleTileType[] limitTiles;
 	// 限定天气
-	WeatherType[] limitWeathers;
+	protected WeatherType[] limitWeathers;
+	// 战技类型
+	protected BattleType battleType;
 	// 最低使用等级
-	int minLevel = 1;
+	protected int minLevel = 1;
 	// 是否需要城池
-	boolean needCity = false;
+	protected boolean needCity = false;
 	// 优先级(1-5)
-	int priority = 3;
+	protected int priority = 3;
 	// 基础成功率
-	float baseSuccessRate = 0.7f;
+	protected float baseSuccessRate = 0.7f;
 	// 气力消耗
-	int moraleCost = 20;
+	protected int moraleCost = 20;
 	// 冷却时间(秒/回合)
-	int cooldown = 5;
+	protected float cooldown = 5;
 	// 上次使用时间
-	long lastUseTime = 0;
+	protected float lastUseTime = 0;
 	// 魔力消耗
-	int mpCost = 0;
+	protected int mpCost = 0;
 	// 行动点消耗
-	int actionPointCost = 2;
+	protected int actionPointCost = 2;
 	// 攻击范围
-	RangeType rangeType = RangeType.SINGLE;
+	protected RangeType rangeType = RangeType.SINGLE;
 	// 攻击距离
-	int rangeDistance = 1;
+	protected int rangeDistance = 1;
 	// 范围半径
-	int rangeRadius = 1;
+	protected int rangeRadius = 1;
+	// 伤害值
+	protected int damage = 1;
 
-	public BattleSkill(String id, String name, String description, SkillType skilltype, UnitType[] limitUnits,
-			BattleTileType[] limitTiles, WeatherType[] limitWeathers, int minLevel, boolean needCity, int priority,
-			float baseSuccessRate, int moraleCost, int cooldown, long lastUseTime, int mpCost, int actionPointCost,
-			RangeType rangeType, int rangeDistance, int rangeRadius) {
-		this.id = id;
-		this.name = name;
-		this.description = description;
-		this.skilltype = skilltype;
-		this.limitUnits = limitUnits;
-		this.limitTiles = limitTiles;
-		this.limitWeathers = limitWeathers;
-		this.minLevel = minLevel;
+	protected int width, height;
+
+	protected float hitRate;
+
+	protected float critRate;
+
+	protected float cooldownDuration;
+
+	protected float rotation = 0f;
+
+	protected Animation attackEffectAnim;
+
+	protected Animation skillEffectAnim;
+
+	protected LTexture defaultEffectTexture;
+
+	protected float shakeIntensity, shakeDuration;
+
+	protected boolean isCastTriggered;
+
+	public BattleSkill(String id, String name, String description, BattleType type, int damage, int mpCost,
+			float hitRate, float critRate, UnitType[] limitUnits, BattleTileType[] limitTiles,
+			WeatherType[] limitWeathers, int minLevel, boolean needCity, int priority, float baseSuccessRate,
+			int moraleCost, int actionPointCost, float cooldownDuration, RangeType rangeType, int rangeDistance,
+			int rangeRadius) {
+		// 基础
+		this.id = id == null || id.isBlank() ? "skill_default" : id.trim();
+		this.name = name == null || name.isBlank() ? LSystem.UNKNOWN : name.trim();
+		this.description = description == null ? LSystem.UNKNOWN : description;
+		this.battleType = type == null ? BattleType.MELEE : type;
+
+		// 基础数值
+		this.damage = MathUtils.max(0, MathUtils.min(damage, 99999));
+		this.mpCost = MathUtils.max(0, MathUtils.min(mpCost, 10000));
+		this.hitRate = MathUtils.clamp(hitRate, 0f, 1f);
+		this.critRate = MathUtils.clamp(critRate, 0f, 1f);
+
+		// 战斗限制
+		this.limitUnits = limitUnits == null ? new UnitType[0] : limitUnits;
+		this.limitTiles = limitTiles == null ? new BattleTileType[0] : limitTiles;
+		this.limitWeathers = limitWeathers == null ? new WeatherType[0] : limitWeathers;
+		this.minLevel = MathUtils.max(1, minLevel);
 		this.needCity = needCity;
-		this.priority = priority;
-		this.baseSuccessRate = baseSuccessRate;
-		this.moraleCost = moraleCost;
-		this.cooldown = cooldown;
-		this.lastUseTime = lastUseTime;
-		this.mpCost = mpCost;
-		this.actionPointCost = actionPointCost;
-		this.rangeType = rangeType;
-		this.rangeDistance = rangeDistance;
-		this.rangeRadius = rangeRadius;
+		this.priority = MathUtils.clamp(priority, 1, 5);
+		this.baseSuccessRate = MathUtils.clamp(baseSuccessRate, 0f, 1f);
+		this.moraleCost = MathUtils.max(0, moraleCost);
+		this.actionPointCost = MathUtils.max(0, actionPointCost);
+
+		// 范围
+		this.rangeType = rangeType == null ? RangeType.SINGLE : rangeType;
+		this.rangeDistance = MathUtils.max(0, rangeDistance);
+		this.rangeRadius = MathUtils.max(0, rangeRadius);
+
+		// 冷却
+		this.cooldownDuration = MathUtils.max(0.1f, cooldownDuration);
+		this.cooldown = 0;
+		this.lastUseTime = 0;
+
 	}
 
 	public SortedList<Vector2f> getSkillRange(BattleMapObject caster, BattleTile[][] map, int mapWidth, int mapHeight,
@@ -233,7 +296,7 @@ public class BattleSkill {
 		case DIAMOND:
 			for (int dx = -rangeRadius; dx <= rangeRadius; dx++) {
 				for (int dy = -rangeRadius; dy <= rangeRadius; dy++) {
-					if (Math.abs(dx) + Math.abs(dy) <= rangeRadius) {
+					if (MathUtils.abs(dx) + MathUtils.abs(dy) <= rangeRadius) {
 						int nx = caster.gridX + dx, ny = caster.gridY + dy;
 						if (nx >= 0 && nx < mapWidth && ny >= 0 && ny < mapHeight) {
 							range.add(new Vector2f(nx, ny));
@@ -289,6 +352,101 @@ public class BattleSkill {
 			break;
 		}
 		return range;
+	}
+
+	public void drawAttackEffect(GLEx g, float deltaTime, float x, float y) {
+		if (attackEffectAnim == null) {
+			return;
+		}
+		attackEffectAnim.update(deltaTime);
+		LTexture frame = attackEffectAnim.getSpriteImage();
+		if (frame == null) {
+			return;
+		}
+		int a = g.color();
+		g.setAlpha(effectAlpha);
+		g.draw(frame, x, y, MathUtils.max(width, frame.getWidth()), MathUtils.max(height, frame.getHeight()));
+		g.setAlpha(a);
+	}
+
+	private void drawSkillRangeHighlight(GLEx g, float px, float py, float ox, float oy, int w, int h) {
+		if (rangeDistance <= 0) {
+			return;
+		}
+		if (battleMap == null) {
+			return;
+		}
+		effColor.setColor(1f, 1f, 0f, rangeHighlightAlpha);
+		int cellWidth = battleMap.getTileWidth();
+		int cellHeight = battleMap.getTileHeight();
+		int cx = MathUtils.ifloor(px / cellWidth);
+		int cy = MathUtils.ifloor(py / cellHeight);
+		int minX = MathUtils.max(0, cx - rangeRadius);
+		int maxX = MathUtils.min(battleMap.getRow() - 1, cx + rangeRadius);
+		int minY = MathUtils.max(0, cy - rangeRadius);
+		int maxY = MathUtils.min(battleMap.getCol() - 1, cy + rangeRadius);
+		for (int x = minX; x <= maxX; x++) {
+			for (int y = minY; y <= maxY; y++) {
+				if (MathUtils.max(MathUtils.abs(x - cx), MathUtils.abs(y - cy)) > rangeRadius) {
+					continue;
+				}
+				Vector2f sp = battleMap.getTileToScreen(x, y, w, h, 0f, 0f);
+				g.draw(defaultEffectTexture, sp.x + ox, sp.y + oy, w, h);
+			}
+		}
+	}
+
+	private void drawLightOverlay(GLEx g, float x, float y, float w, float h) {
+		switch (battleType) {
+		case RANGE:
+			effColor.setColor(0f, 0.5f, 1f, lightOverlayAlpha);
+			break;
+		case MELEE:
+			effColor.setColor(1f, 0.2f, 0f, lightOverlayAlpha);
+			break;
+		case HEAL:
+			effColor.setColor(0f, 1f, 0.3f, lightOverlayAlpha);
+			break;
+		default:
+			g.setColor(1f, 1f, 1f, lightOverlayAlpha);
+			break;
+		}
+		g.draw(defaultEffectTexture, x, y, w, h, effColor);
+	}
+
+	private void updateScreenShake(float delta) {
+		if (shakeDuration <= 0) {
+			return;
+		}
+		shakeDuration = MathUtils.max(0, shakeDuration - delta);
+		shakeIntensity = MathUtils.clamp(shakeIntensity - delta * 5f, 0, MAX_SHAKE_INTENSITY);
+		float newX = (MathUtils.random() - 0.5f) * shakeIntensity;
+		float newY = (MathUtils.random() - 0.5f) * shakeIntensity;
+		if (battleMap != null) {
+			battleMap.setOffset(newX, newY);
+		}
+	}
+
+	public void triggerHitShake() {
+		shakeIntensity = 8f;
+		shakeDuration = 0.2f;
+	}
+
+	public void drawSkillEffect(GLEx g, float deltaTime, float x, float y, float ox, float oy) {
+		float effectX = x + ox;
+		float effectY = y + oy;
+		drawSkillRangeHighlight(g, x, y, ox, oy, width, height);
+		if (skillEffectAnim != null) {
+			skillEffectAnim.update(deltaTime);
+			LTexture frame = skillEffectAnim.getSpriteImage();
+			if (frame != null) {
+				g.draw(frame, effectX, effectY, MathUtils.max(width, frame.getWidth()),
+						MathUtils.max(height, frame.getHeight()), effColor, rotation);
+
+			}
+		}
+		updateScreenShake(deltaTime);
+		drawLightOverlay(g, effectX, effectY, width, height);
 	}
 
 	public String getId() {
@@ -387,19 +545,19 @@ public class BattleSkill {
 		this.moraleCost = moraleCost;
 	}
 
-	public int getCooldown() {
+	public float getCooldown() {
 		return cooldown;
 	}
 
-	public void setCooldown(int cooldown) {
+	public void setCooldown(float cooldown) {
 		this.cooldown = cooldown;
 	}
 
-	public long getLastUseTime() {
+	public float getLastUseTime() {
 		return lastUseTime;
 	}
 
-	public void setLastUseTime(long lastUseTime) {
+	public void setLastUseTime(float lastUseTime) {
 		this.lastUseTime = lastUseTime;
 	}
 
@@ -441,6 +599,175 @@ public class BattleSkill {
 
 	public void setRangeRadius(int rangeRadius) {
 		this.rangeRadius = rangeRadius;
+	}
+
+	public float getWidth() {
+		return width;
+	}
+
+	public void setWidth(int w) {
+		this.width = w;
+	}
+
+	public float getHeight() {
+		return height;
+	}
+
+	public void setHeight(int h) {
+		this.height = h;
+	}
+
+	public void updateCooldown(float delta) {
+		if (cooldown > 0) {
+			cooldown = MathUtils.max(0, cooldown - delta);
+		}
+	}
+
+	public boolean isReady() {
+		return cooldown <= 0.01f;
+	}
+
+	public void startCooldown() {
+		if (isReady()) {
+			cooldown = cooldownDuration;
+			lastUseTime = TimeUtils.currentMillis();
+		}
+	}
+
+	public boolean canCast(int casterLevel) {
+		return casterLevel >= minLevel && isReady();
+	}
+
+	public float getLightOverlayAlpha() {
+		return lightOverlayAlpha;
+	}
+
+	public void setLightOverlayAlpha(float lightOverlayAlpha) {
+		this.lightOverlayAlpha = lightOverlayAlpha;
+	}
+
+	public float getEffectAlpha() {
+		return effectAlpha;
+	}
+
+	public void setEffectAlpha(float effectAlpha) {
+		this.effectAlpha = effectAlpha;
+	}
+
+	public float getRangeHighlightAlpha() {
+		return rangeHighlightAlpha;
+	}
+
+	public void setRangeHighlightAlpha(float rangeHighlightAlpha) {
+		this.rangeHighlightAlpha = rangeHighlightAlpha;
+	}
+
+	public int getDamage() {
+		return damage;
+	}
+
+	public void setDamage(int damage) {
+		this.damage = damage;
+	}
+
+	public float getHitRate() {
+		return hitRate;
+	}
+
+	public void setHitRate(float hitRate) {
+		this.hitRate = hitRate;
+	}
+
+	public float getCritRate() {
+		return critRate;
+	}
+
+	public void setCritRate(float critRate) {
+		this.critRate = critRate;
+	}
+
+	public float getCooldownDuration() {
+		return cooldownDuration;
+	}
+
+	public void setCooldownDuration(float cooldownDuration) {
+		this.cooldownDuration = cooldownDuration;
+	}
+
+	public float getRotation() {
+		return rotation;
+	}
+
+	public void setRotation(float rotation) {
+		this.rotation = rotation;
+	}
+
+	public Animation getSkillEffectAnim() {
+		return skillEffectAnim;
+	}
+
+	public void setSkillEffectAnim(Animation skillEffectAnim) {
+		this.skillEffectAnim = skillEffectAnim;
+	}
+
+	public float getShakeIntensity() {
+		return shakeIntensity;
+	}
+
+	public void setShakeIntensity(float shakeIntensity) {
+		this.shakeIntensity = shakeIntensity;
+	}
+
+	public float getShakeDuration() {
+		return shakeDuration;
+	}
+
+	public void setShakeDuration(float shakeDuration) {
+		this.shakeDuration = shakeDuration;
+	}
+
+	public LColor getEffColor() {
+		return effColor;
+	}
+
+	public BattleMap getBattleMap() {
+		return battleMap;
+	}
+
+	public BattleType getBattleType() {
+		return battleType;
+	}
+
+	public Animation getAttackEffectAnim() {
+		return attackEffectAnim;
+	}
+
+	public void setAttackEffectAnim(Animation attackEffectAnim) {
+		this.attackEffectAnim = attackEffectAnim;
+	}
+
+	public LTexture getDefaultEffectTexture() {
+		return defaultEffectTexture;
+	}
+
+	public void setDefaultEffectTexture(LTexture defaultEffectTexture) {
+		this.defaultEffectTexture = defaultEffectTexture;
+	}
+
+	@Override
+	public void close() {
+		if (attackEffectAnim != null) {
+			attackEffectAnim.close();
+			attackEffectAnim = null;
+		}
+		if (skillEffectAnim != null) {
+			skillEffectAnim.close();
+			skillEffectAnim = null;
+		}
+		if (defaultEffectTexture != null) {
+			defaultEffectTexture.close();
+			defaultEffectTexture = null;
+		}
 	}
 
 }

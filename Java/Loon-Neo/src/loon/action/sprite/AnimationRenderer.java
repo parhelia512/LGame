@@ -254,10 +254,16 @@ public class AnimationRenderer extends Entity {
 				RenderData entry = entries.get(j);
 				LTexture frame = entry.animManager.getCurrentFrame();
 				if (frame != null) {
-					g.draw(frame, entry.x + drawX, entry.y + drawY, MathUtils.min(getWidth(), frame.getWidth()),
-							MathUtils.min(getHeight(), frame.getHeight()),
-							LColor.white.equals(entry.color) ? _baseColor : entry.color, 0f, entry.scaleX, entry.scaleY,
-							entry.flipX, entry.flipY);
+					if (isScaled() || entry.scaleX != 1f || entry.scaleX != 1f) {
+						g.draw(frame, entry.x + drawX, entry.y + drawY, frame.getWidth(), frame.getHeight(),
+								LColor.white.equals(entry.color) ? _baseColor : entry.color, 0f, entry.scaleX,
+								entry.scaleY, entry.flipX, entry.flipY);
+					} else {
+						g.draw(frame, entry.x + drawX, entry.y + drawY, getWidth(), getHeight(),
+								LColor.white.equals(entry.color) ? _baseColor : entry.color, 0f, entry.scaleX,
+								entry.scaleY, entry.flipX, entry.flipY);
+
+					}
 				}
 			}
 		}

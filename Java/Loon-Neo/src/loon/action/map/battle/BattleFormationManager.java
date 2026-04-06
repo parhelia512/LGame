@@ -117,21 +117,21 @@ public class BattleFormationManager {
 
 	private PointI rotateByDirection(PointI o, Direction d) {
 		if (d == Direction.UP) {
-			new PointI(o.y, -o.x);
+			return new PointI(o.y, -o.x);
 		} else if (d == Direction.DOWN) {
-			new PointI(-o.y, o.x);
+			return new PointI(-o.y, o.x);
 		} else if (d == Direction.LEFT) {
-			new PointI(-o.x, -o.y);
+			return new PointI(-o.x, -o.y);
 		} else if (d == Direction.RIGHT) {
-			new PointI(o.x, o.y);
+			return new PointI(o.x, o.y);
 		} else if (d == Direction.UP_LEFT) {
-			new PointI(o.x + o.y, o.y);
+			return new PointI(o.x + o.y, o.y);
 		} else if (d == Direction.UP_RIGHT) {
-			new PointI(o.x, o.x + o.y);
+			return new PointI(o.x, o.x + o.y);
 		} else if (d == Direction.DOWN_LEFT) {
-			new PointI(-o.x, -o.x - o.y);
+			return new PointI(-o.x, -o.x - o.y);
 		} else if (d == Direction.DOWN_RIGHT) {
-			new PointI(-o.x - o.y, -o.y);
+			return new PointI(-o.x - o.y, -o.y);
 		}
 		return new PointI(0, 0);
 	}
