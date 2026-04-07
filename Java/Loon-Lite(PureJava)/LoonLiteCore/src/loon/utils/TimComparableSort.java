@@ -455,7 +455,7 @@ public class TimComparableSort<T> {
 			if (newSize < 0)
 				newSize = minCapacity;
 			else
-				newSize = Math.min(newSize, a.length >>> 1);
+				newSize = MathUtils.min(newSize, a.length >>> 1);
 			@SuppressWarnings({ "unchecked" })
 			T[] newArray = (T[]) new Object[newSize];
 			tmp = newArray;

@@ -33,6 +33,7 @@ import loon.geom.Vector2f;
 import loon.opengl.GLEx;
 import loon.utils.MathUtils;
 import loon.utils.SortedList;
+import loon.utils.StrBuilder;
 import loon.utils.TArray;
 import loon.utils.TimeUtils;
 
@@ -42,80 +43,207 @@ public class BattleSkill implements LRelease {
 		MELEE, RANGE, BUFF, DEBUFF, HEAL
 	}
 
+	public static enum LogicType {
+		AND, OR
+	}
+
+	public static enum SKillEventType {
+		ON_ATTACK, ON_HIT, ON_KILL, ON_DEATH, ON_TURN_START, ON_TURN_END
+	}
+
+	public static enum AnimPlayMode {
+		// 单次播放
+		ONCE,
+		// 无限循环
+		LOOP,
+		// 指定次数循环
+		LOOP_COUNT,
+		// 暂停
+		PAUSE
+	}
+
+	public static interface SkillCondition {
+
+		boolean canTrigger(BattleMapObject caster, BattleMapObject target);
+
+		String getDescription();
+	}
+
+	public abstract class ConditionalSkillEffect implements SkillEffect {
+
+		private SkillCondition condition;
+
+		public ConditionalSkillEffect(SkillCondition condition) {
+			this.condition = condition;
+		}
+
+		@Override
+		public void apply(BattleMapObject caster, BattleMapObject target) {
+			if (condition == null || condition.canTrigger(caster, target)) {
+				doApply(caster, target);
+			}
+		}
+
+		protected abstract void doApply(BattleMapObject caster, BattleMapObject target);
+	}
+
+	public static class CompositeCondition implements SkillCondition {
+
+		private TArray<SkillCondition> conditions = new TArray<SkillCondition>();
+
+		private LogicType logicType;
+
+		public CompositeCondition(LogicType logicType) {
+			this.logicType = logicType;
+		}
+
+		public void addCondition(SkillCondition condition) {
+			conditions.add(condition);
+		}
+
+		@Override
+		public boolean canTrigger(BattleMapObject caster, BattleMapObject target) {
+			if (logicType == LogicType.AND) {
+				for (SkillCondition condition : conditions) {
+					if (!condition.canTrigger(caster, target)) {
+						return false;
+					}
+				}
+				return true;
+			} else {
+				for (SkillCondition condition : conditions) {
+					if (condition.canTrigger(caster, target)) {
+						return true;
+					}
+				}
+				return false;
+			}
+		}
+
+		@Override
+		public String getDescription() {
+			StrBuilder sbr = new StrBuilder("conditions (").append(logicType).append("): ");
+			for (SkillCondition condition : conditions) {
+				sbr.append(condition.getDescription()).append(LSystem.COMMA);
+			}
+			return sbr.toString();
+		}
+	}
+
+	public static interface SkillEffect {
+
+		void apply(BattleMapObject caster, BattleMapObject target);
+
+		String getDescription();
+	}
+
+	public static class CompositeSkillEffect implements SkillEffect {
+
+		private TArray<SkillEffect> effects = new TArray<SkillEffect>();
+
+		public void addEffect(SkillEffect effect) {
+			effects.add(effect);
+		}
+
+		public void removeEffect(SkillEffect effect) {
+			effects.remove(effect);
+		}
+
+		@Override
+		public void apply(BattleMapObject caster, BattleMapObject target) {
+			for (SkillEffect effect : effects) {
+				effect.apply(caster, target);
+			}
+		}
+
+		@Override
+		public String getDescription() {
+			StrBuilder sbr = new StrBuilder("effects:");
+			for (SkillEffect effect : effects) {
+				sbr.append(effect.getDescription()).append(LSystem.COMMA);
+			}
+			return sbr.toString();
+		}
+	}
+
+	public static interface SkillTriggerEvent {
+
+		boolean onEvent(BattleMapObject caster, BattleMapObject target);
+
+		String getDescription();
+	}
+
+	public static interface EventCondition {
+
+		boolean canTrigger(BattleMapObject caster, BattleMapObject target);
+
+		String getDescription();
+	}
+
 	private static final float MAX_SHAKE_INTENSITY = 12f;
+	private static final float DEFAULT_ANIM_SPEED = 1f;
+	private static final float DEFAULT_SCALE = 1f;
+	private static final float SMOOTH_FACTOR = 0.05f;
 
 	private final LColor effColor = new LColor();
-
 	private float lightOverlayAlpha = 0.4f;
-
 	private float effectAlpha = 0.8f;
-
 	private float rangeHighlightAlpha = 0.5f;
-
 	private BattleMap battleMap;
-
-	// 唯一标识
+	private SkillEffect effect;
 	protected String id;
-	// 名称
 	protected String name;
-	// 描述
 	protected String description;
-	// 类型
 	protected SkillType skilltype;
-	// 限定兵种
 	protected UnitType[] limitUnits;
-	// 限定地形
 	protected BattleTileType[] limitTiles;
-	// 限定天气
 	protected WeatherType[] limitWeathers;
-	// 战技类型
 	protected BattleType battleType;
-	// 最低使用等级
 	protected int minLevel = 1;
-	// 是否需要城池
 	protected boolean needCity = false;
-	// 优先级(1-5)
 	protected int priority = 3;
-	// 基础成功率
 	protected float baseSuccessRate = 0.7f;
-	// 气力消耗
 	protected int moraleCost = 20;
-	// 冷却时间(秒/回合)
 	protected float cooldown = 5;
-	// 上次使用时间
 	protected float lastUseTime = 0;
-	// 魔力消耗
 	protected int mpCost = 0;
-	// 行动点消耗
 	protected int actionPointCost = 2;
-	// 攻击范围
 	protected RangeType rangeType = RangeType.SINGLE;
-	// 攻击距离
 	protected int rangeDistance = 1;
-	// 范围半径
 	protected int rangeRadius = 1;
-	// 伤害值
 	protected int damage = 1;
-
 	protected int width, height;
-
 	protected float hitRate;
-
 	protected float critRate;
-
 	protected float cooldownDuration;
-
 	protected float rotation = 0f;
-
 	protected Animation attackEffectAnim;
-
 	protected Animation skillEffectAnim;
-
 	protected LTexture defaultEffectTexture;
-
 	protected float shakeIntensity, shakeDuration;
-
 	protected boolean isCastTriggered;
+	private TArray<SkillTriggerEvent> triggerEvents = new TArray<SkillTriggerEvent>();
+	private AnimPlayMode attackAnimMode = AnimPlayMode.ONCE;
+	private AnimPlayMode skillAnimMode = AnimPlayMode.ONCE;
+	private int loopCount = 3;
+	private int currentLoop = 0;
+	private boolean animFinished = false;
+	private float animSpeed = DEFAULT_ANIM_SPEED;
+	private float scaleX = DEFAULT_SCALE;
+	private float scaleY = DEFAULT_SCALE;
+	private float offsetX = 0f;
+	private float offsetY = 0f;
+	private boolean fadeInEnable = false;
+	private boolean fadeOutEnable = false;
+	private float fadeDuration = 0.5f;
+	private float fadeTimer = 0f;
+	private boolean blinkEnable = false;
+	private float blinkInterval = 0.2f;
+	private float blinkTimer = 0f;
+
+	private float lastShakeX, lastShakeY;
+	private float targetAlpha = 1f;
+	private float currentAlpha = 1f;
 
 	public BattleSkill(String id, String name, String description, BattleType type, int damage, int mpCost,
 			float hitRate, float critRate, UnitType[] limitUnits, BattleTileType[] limitTiles,
@@ -354,29 +482,35 @@ public class BattleSkill implements LRelease {
 		return range;
 	}
 
+	public void setBattleMap(BattleMap map) {
+		this.battleMap = map;
+	}
+
 	public void drawAttackEffect(GLEx g, float deltaTime, float x, float y) {
 		if (attackEffectAnim == null) {
 			return;
 		}
-		attackEffectAnim.update(deltaTime);
+		updateAnimCommon(attackEffectAnim, attackAnimMode, deltaTime);
+		updateFadeBlink(deltaTime);
+		updateAlphaInterpolation();
 		LTexture frame = attackEffectAnim.getSpriteImage();
 		if (frame == null) {
 			return;
 		}
-		int a = g.color();
-		g.setAlpha(effectAlpha);
-		g.draw(frame, x, y, MathUtils.max(width, frame.getWidth()), MathUtils.max(height, frame.getHeight()));
-		g.setAlpha(a);
+		effColor.setAlpha(effectAlpha * currentAlpha * getFadeAlpha());
+		float renderW = MathUtils.max(width, frame.getWidth()) * scaleX;
+		float renderH = MathUtils.max(height, frame.getHeight()) * scaleY;
+		g.draw(frame, x + offsetX, y + offsetY, renderW, renderH, effColor);
 	}
 
 	private void drawSkillRangeHighlight(GLEx g, float px, float py, float ox, float oy, int w, int h) {
-		if (rangeDistance <= 0) {
-			return;
-		}
 		if (battleMap == null) {
 			return;
 		}
-		effColor.setColor(1f, 1f, 0f, rangeHighlightAlpha);
+		if (rangeDistance <= 0) {
+			return;
+		}
+		effColor.setColor(1f, 1f, 0f, rangeHighlightAlpha * currentAlpha);
 		int cellWidth = battleMap.getTileWidth();
 		int cellHeight = battleMap.getTileHeight();
 		int cx = MathUtils.ifloor(px / cellWidth);
@@ -391,7 +525,7 @@ public class BattleSkill implements LRelease {
 					continue;
 				}
 				Vector2f sp = battleMap.getTileToScreen(x, y, w, h, 0f, 0f);
-				g.draw(defaultEffectTexture, sp.x + ox, sp.y + oy, w, h);
+				g.draw(defaultEffectTexture, sp.x + ox, sp.y + oy, w, h, effColor);
 			}
 		}
 	}
@@ -399,16 +533,16 @@ public class BattleSkill implements LRelease {
 	private void drawLightOverlay(GLEx g, float x, float y, float w, float h) {
 		switch (battleType) {
 		case RANGE:
-			effColor.setColor(0f, 0.5f, 1f, lightOverlayAlpha);
+			effColor.setColor(0f, 0.5f, 1f, lightOverlayAlpha * currentAlpha);
 			break;
 		case MELEE:
-			effColor.setColor(1f, 0.2f, 0f, lightOverlayAlpha);
+			effColor.setColor(1f, 0.2f, 0f, lightOverlayAlpha * currentAlpha);
 			break;
 		case HEAL:
-			effColor.setColor(0f, 1f, 0.3f, lightOverlayAlpha);
+			effColor.setColor(0f, 1f, 0.3f, lightOverlayAlpha * currentAlpha);
 			break;
 		default:
-			g.setColor(1f, 1f, 1f, lightOverlayAlpha);
+			effColor.setColor(1f, 1f, 1f, lightOverlayAlpha * currentAlpha);
 			break;
 		}
 		g.draw(defaultEffectTexture, x, y, w, h, effColor);
@@ -416,14 +550,21 @@ public class BattleSkill implements LRelease {
 
 	private void updateScreenShake(float delta) {
 		if (shakeDuration <= 0) {
+			lastShakeX = MathUtils.lerp(lastShakeX, 0, SMOOTH_FACTOR);
+			lastShakeY = MathUtils.lerp(lastShakeY, 0, SMOOTH_FACTOR);
+			if (battleMap != null) {
+				battleMap.setOffset(lastShakeX, lastShakeY);
+			}
 			return;
 		}
 		shakeDuration = MathUtils.max(0, shakeDuration - delta);
 		shakeIntensity = MathUtils.clamp(shakeIntensity - delta * 5f, 0, MAX_SHAKE_INTENSITY);
-		float newX = (MathUtils.random() - 0.5f) * shakeIntensity;
-		float newY = (MathUtils.random() - 0.5f) * shakeIntensity;
+		float targetX = (MathUtils.random() - 0.5f) * shakeIntensity;
+		float targetY = (MathUtils.random() - 0.5f) * shakeIntensity;
+		lastShakeX = MathUtils.lerp(lastShakeX, targetX, SMOOTH_FACTOR);
+		lastShakeY = MathUtils.lerp(lastShakeY, targetY, SMOOTH_FACTOR);
 		if (battleMap != null) {
-			battleMap.setOffset(newX, newY);
+			battleMap.setOffset(lastShakeX, lastShakeY);
 		}
 	}
 
@@ -435,18 +576,190 @@ public class BattleSkill implements LRelease {
 	public void drawSkillEffect(GLEx g, float deltaTime, float x, float y, float ox, float oy) {
 		float effectX = x + ox;
 		float effectY = y + oy;
+
+		updateAnimCommon(skillEffectAnim, skillAnimMode, deltaTime);
+		updateFadeBlink(deltaTime);
+		updateAlphaInterpolation();
 		drawSkillRangeHighlight(g, x, y, ox, oy, width, height);
+
 		if (skillEffectAnim != null) {
-			skillEffectAnim.update(deltaTime);
 			LTexture frame = skillEffectAnim.getSpriteImage();
 			if (frame != null) {
-				g.draw(frame, effectX, effectY, MathUtils.max(width, frame.getWidth()),
-						MathUtils.max(height, frame.getHeight()), effColor, rotation);
-
+				effColor.setAlpha(effectAlpha * currentAlpha * getFadeAlpha());
+				float renderW = MathUtils.max(width, frame.getWidth()) * scaleX;
+				float renderH = MathUtils.max(height, frame.getHeight()) * scaleY;
+				g.draw(frame, effectX + offsetX, effectY + offsetY, renderW, renderH, effColor, rotation);
 			}
 		}
 		updateScreenShake(deltaTime);
 		drawLightOverlay(g, effectX, effectY, width, height);
+	}
+
+	private void updateAlphaInterpolation() {
+		currentAlpha = MathUtils.lerp(currentAlpha, targetAlpha, SMOOTH_FACTOR);
+	}
+
+	private void updateAnimCommon(Animation anim, AnimPlayMode mode, float delta) {
+		if (anim == null || mode == AnimPlayMode.PAUSE || animFinished) {
+			return;
+		}
+		anim.update(delta * animSpeed);
+
+		if (anim.isFinished()) {
+			switch (mode) {
+			default:
+			case ONCE:
+				animFinished = true;
+				break;
+			case LOOP:
+				anim.reset();
+				break;
+			case LOOP_COUNT:
+				currentLoop++;
+				if (currentLoop < loopCount) {
+					anim.reset();
+				} else {
+					animFinished = true;
+				}
+				break;
+			}
+		}
+	}
+
+	private void updateFadeBlink(float delta) {
+		if (fadeInEnable || fadeOutEnable) {
+			fadeTimer = MathUtils.min(fadeTimer + delta, fadeDuration);
+		}
+		if (blinkEnable) {
+			blinkTimer += delta;
+			if (blinkTimer >= blinkInterval) {
+				float r = MathUtils.random(0.6f, 1f);
+				float g = MathUtils.random(0.6f, 1f);
+				float b = MathUtils.random(0.6f, 1f);
+				effColor.setColor(r, g, b, effColor.a);
+				blinkTimer = 0f;
+			}
+		}
+	}
+
+	private float getFadeAlpha() {
+		if (!fadeInEnable && !fadeOutEnable) {
+			return 1f;
+		}
+		if (fadeInEnable) {
+			return fadeTimer / fadeDuration;
+		}
+		if (fadeOutEnable) {
+			return 1f - (fadeTimer / fadeDuration);
+		}
+		return 1f;
+	}
+
+	public void updateCooldown(float delta) {
+		if (cooldown > 0) {
+			cooldown = MathUtils.max(0, cooldown - delta);
+		}
+	}
+
+	public boolean isReady() {
+		return cooldown <= 0.01f;
+	}
+
+	public void startCooldown() {
+		if (isReady()) {
+			cooldown = cooldownDuration;
+			lastUseTime = TimeUtils.currentMillis();
+		}
+	}
+
+	public boolean canCast(int casterLevel) {
+		return casterLevel >= minLevel && isReady();
+	}
+
+	public void castEffect(BattleMapObject caster, BattleMapObject target) {
+		if (effect != null && canCast(caster.getLevel())) {
+			effect.apply(caster, target);
+			startCooldown();
+			resetAnim();
+		}
+	}
+
+	public BattleSkill setEffect(SkillEffect eff) {
+		effect = eff;
+		return this;
+	}
+
+	public void resetAnim() {
+		if (attackEffectAnim != null) {
+			attackEffectAnim.reset();
+		}
+		if (skillEffectAnim != null) {
+			skillEffectAnim.reset();
+		}
+		currentLoop = 0;
+		animFinished = false;
+		fadeTimer = 0f;
+		blinkTimer = 0f;
+		currentAlpha = 0f;
+	}
+
+	public void setSkillAnimPlayMode(AnimPlayMode mode) {
+		this.skillAnimMode = mode;
+		resetAnim();
+	}
+
+	public void setAttackAnimPlayMode(AnimPlayMode mode) {
+		this.attackAnimMode = mode;
+		resetAnim();
+	}
+
+	public void setLoopCount(int count) {
+		this.loopCount = MathUtils.max(1, count);
+		this.skillAnimMode = AnimPlayMode.LOOP_COUNT;
+		resetAnim();
+	}
+
+	public void pauseAnim(boolean pause) {
+		this.attackAnimMode = pause ? AnimPlayMode.PAUSE : AnimPlayMode.LOOP;
+		this.skillAnimMode = pause ? AnimPlayMode.PAUSE : AnimPlayMode.LOOP;
+	}
+
+	public void setAnimScale(float scale) {
+		this.scaleX = scale;
+		this.scaleY = scale;
+	}
+
+	public void setAnimOffset(float x, float y) {
+		this.offsetX = x;
+		this.offsetY = y;
+	}
+
+	public void setFadeIn(boolean enable) {
+		this.fadeInEnable = enable;
+		this.fadeOutEnable = !enable;
+	}
+
+	public void setFadeOut(boolean enable) {
+		this.fadeOutEnable = enable;
+		this.fadeInEnable = !enable;
+	}
+
+	public void setBlink(boolean enable) {
+		this.blinkEnable = enable;
+	}
+
+	public void setAnimSpeed(float speed) {
+		this.animSpeed = MathUtils.clamp(speed, 0.1f, 3f);
+	}
+
+	public void addTriggerEvent(SkillTriggerEvent event) {
+		triggerEvents.add(event);
+	}
+
+	public void triggerEvents(BattleMapObject caster, BattleMapObject target, String eventType) {
+		for (SkillTriggerEvent event : triggerEvents) {
+			event.onEvent(caster, target);
+		}
 	}
 
 	public String getId() {
@@ -617,27 +930,6 @@ public class BattleSkill implements LRelease {
 		this.height = h;
 	}
 
-	public void updateCooldown(float delta) {
-		if (cooldown > 0) {
-			cooldown = MathUtils.max(0, cooldown - delta);
-		}
-	}
-
-	public boolean isReady() {
-		return cooldown <= 0.01f;
-	}
-
-	public void startCooldown() {
-		if (isReady()) {
-			cooldown = cooldownDuration;
-			lastUseTime = TimeUtils.currentMillis();
-		}
-	}
-
-	public boolean canCast(int casterLevel) {
-		return casterLevel >= minLevel && isReady();
-	}
-
 	public float getLightOverlayAlpha() {
 		return lightOverlayAlpha;
 	}
@@ -754,6 +1046,14 @@ public class BattleSkill implements LRelease {
 		this.defaultEffectTexture = defaultEffectTexture;
 	}
 
+	public SkillEffect getSkillEffect() {
+		return effect;
+	}
+
+	public boolean isAnimFinished() {
+		return animFinished;
+	}
+
 	@Override
 	public void close() {
 		if (attackEffectAnim != null) {
@@ -769,5 +1069,4 @@ public class BattleSkill implements LRelease {
 			defaultEffectTexture = null;
 		}
 	}
-
 }

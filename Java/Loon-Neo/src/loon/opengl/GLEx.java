@@ -3264,9 +3264,22 @@ public class GLEx extends BatchEx<GLEx> implements LRelease {
 	 * @return
 	 */
 	public GLEx draw(Shape shape, LColor color) {
+		return draw(shape, 0f, 0f, color);
+	}
+
+	/**
+	 * 绘制不特定Shape
+	 * 
+	 * @param shape
+	 * @param x
+	 * @param y
+	 * @param color
+	 * @return
+	 */
+	public GLEx draw(Shape shape, float x, float y, LColor color) {
 		int tmp = getTint();
 		setTint(color);
-		draw(shape, 0f, 0f);
+		draw(shape, x, y);
 		setTint(tmp);
 		return this;
 	}
@@ -3397,6 +3410,17 @@ public class GLEx extends BatchEx<GLEx> implements LRelease {
 	 * @return
 	 */
 	public GLEx fill(Shape shape, LColor color) {
+		return fill(shape, 0f, 0f, color);
+	}
+
+	/**
+	 * 绘制不特定Shape
+	 * 
+	 * @param shape
+	 * @param color
+	 * @return
+	 */
+	public GLEx fill(Shape shape, float x, float y, LColor color) {
 		int tmp = getTint();
 		setTint(color);
 		fill(shape, 0f, 0f);

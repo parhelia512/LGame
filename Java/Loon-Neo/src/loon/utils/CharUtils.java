@@ -703,7 +703,7 @@ public class CharUtils {
 
 	public static String componentToHex(int v, int shift) {
 		int mag = 32 - numberOfLeadingZeros(v);
-		int chars = Math.max(((mag + (shift - 1)) / shift), 1);
+		int chars = MathUtils.max(((mag + (shift - 1)) / shift), 1);
 		byte[] buf = new byte[chars];
 		formatUnsignedInt(v, shift, buf, chars);
 		final String hex = new String(buf);

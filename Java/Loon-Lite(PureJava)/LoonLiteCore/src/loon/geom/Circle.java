@@ -186,10 +186,10 @@ public class Circle extends Ellipse {
 		disc = MathUtils.sqrt(disc);
 		Vector2f pos1 = Vector2f.ZERO();
 		pos1.x = (D * dy + MathUtils.sign(dy) * dx * disc) / dr2;
-		pos1.y = (-D * dx + Math.abs(dy) * disc) / dr2;
+		pos1.y = (-D * dx + MathUtils.abs(dy) * disc) / dr2;
 		Vector2f pos2 = Vector2f.ZERO();
 		pos2.x = (D * dy - MathUtils.sign(dy) * dx * disc) / dr2;
-		pos2.y = (-D * dx - Math.abs(dy) * disc) / dr2;
+		pos2.y = (-D * dx - MathUtils.abs(dy) * disc) / dr2;
 		Vector2f dir = line.getSubDirection();
 		float dot1 = dir.dot(pos1.sub(line.getStart()));
 		float dot2 = dir.dot(pos2.sub(line.getStart()));

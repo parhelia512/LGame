@@ -574,6 +574,9 @@ public class BattleMapObject extends Role {
 	}
 
 	private void performAttack(TArray<BattleMapObject> allObjects) {
+		if (currentSkill == null) {
+			return;
+		}
 		// 查找攻击范围内的目标
 		BattleMapObject target = findAttackTarget(allObjects);
 		if (target == null || target.state == ObjectState.DEAD) {
@@ -600,6 +603,10 @@ public class BattleMapObject extends Role {
 		// 攻击命中判定
 		boolean hit = MathUtils.random() <= currentSkill.hitRate;
 		if (hit) {
+
+			// 触发实际技能效果
+			currentSkill.castEffect(this, target);
+
 			// 触发技能命中震动
 			currentSkill.triggerHitShake();
 
@@ -667,6 +674,9 @@ public class BattleMapObject extends Role {
 	}
 
 	private void performSkill(TArray<BattleMapObject> allObjects) {
+		if (currentSkill == null) {
+			return;
+		}
 		// 检查技能是否冷却完成
 		if (!currentSkill.isReady()) {
 			if (battleMap != null) {
@@ -710,6 +720,8 @@ public class BattleMapObject extends Role {
 			BattleMapObject target = findAttackTarget(allObjects);
 			if (target != null && target.state != ObjectState.DEAD) {
 				boolean isCrit = MathUtils.random() <= currentSkill.critRate;
+				// 实际调用技能效果
+				currentSkill.castEffect(this, target);
 				// 触发技能震动
 				currentSkill.triggerHitShake();
 				if (battleMap != null) {
@@ -1426,6 +1438,17 @@ public class BattleMapObject extends Role {
 
 	public void setBattleMap(BattleMap battleMap) {
 		this.battleMap = battleMap;
+	}
+
+	public void setCurrentSkill(BattleSkill skill) {
+		this.currentSkill = skill;
+		if (currentSkill != null) {
+			currentSkill.setBattleMap(battleMap);
+		}
+	}
+
+	public BattleSkill getCurrentSkill() {
+		return currentSkill;
 	}
 
 	public float getBaseSpeed() {

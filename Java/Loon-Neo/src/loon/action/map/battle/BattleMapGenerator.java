@@ -607,9 +607,9 @@ public class BattleMapGenerator implements LRelease {
 		}
 
 		// 随机选择模板
-		if (Math.random() < 0.3) {
+		if (MathUtils.random() < 0.3) {
 			generateCityCenter();
-		} else if (Math.random() < 0.3) {
+		} else if (MathUtils.random() < 0.3) {
 			generateIslandMap();
 		} else {
 			generateRiverCrossing();

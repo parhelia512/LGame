@@ -23,6 +23,7 @@ package loon.action.map.battle;
 import loon.action.map.battle.BattleType.MoveState;
 import loon.action.map.battle.BattleType.UnitType;
 import loon.utils.IntMap;
+import loon.utils.MathUtils;
 
 /**
  * 主要供战棋或回合制游戏使用的地形参数类(具体地形的瓦片属性只是模板，具体多少可自行修正或建立新瓦片类型)
@@ -295,13 +296,13 @@ public class BattleTileType {
 				cost *= 2;
 			}
 			if (this == ROAD || this == PLAIN) {
-				cost = Math.max(1, cost / 2);
+				cost = MathUtils.max(1, cost / 2);
 			}
 			break;
 
 		case HEAVY_INFANTRY:
 			if (this == WALL || this == CASTLE || this == FORT) {
-				cost = Math.max(1, cost / 2);
+				cost = MathUtils.max(1, cost / 2);
 			}
 			if (this == RIVER || this == SEA) {
 				cost *= 2;
@@ -311,13 +312,13 @@ public class BattleTileType {
 		case ARCHER:
 		case ELITE_ARCHER:
 			if (this == HILL || this == MOUNTAIN) {
-				cost = Math.max(1, cost);
+				cost = MathUtils.max(1, cost);
 			}
 			break;
 
 		case NAVAL:
 			if (this == RIVER || this == SEA || this == FORD || this == FERRY || this == PORT) {
-				cost = Math.max(1, cost / 2);
+				cost = MathUtils.max(1, cost / 2);
 			}
 			if (!(this == SEA || this == RIVER || this == FORD || this == FERRY || this == PORT)) {
 				cost *= 2;

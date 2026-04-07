@@ -50,7 +50,7 @@ public class IntStack {
 	private void ensure(int count) {
 		int requiredSize = _offset + count;
 		if (requiredSize > _buffer.length) {
-			this._buffer = CollectionUtils.copyOf(this._buffer, Math.max(requiredSize, _buffer.length * 2));
+			this._buffer = CollectionUtils.copyOf(this._buffer, MathUtils.max(requiredSize, _buffer.length * 2));
 		}
 	}
 

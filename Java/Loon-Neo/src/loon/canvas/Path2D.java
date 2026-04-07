@@ -20,7 +20,6 @@
  */
 package loon.canvas;
 
-import loon.LSysException;
 import loon.LSystem;
 import loon.geom.Curve;
 import loon.geom.Polygon;
@@ -29,8 +28,6 @@ import loon.opengl.GLEx;
 import loon.utils.CollectionUtils;
 import loon.utils.FloatArray;
 import loon.utils.MathUtils;
-import loon.utils.NumberUtils;
-import loon.utils.StrBuilder;
 import loon.utils.TArray;
 
 /**
@@ -39,36 +36,37 @@ import loon.utils.TArray;
 public class Path2D implements Path {
 
 	public static enum PathCommand {
-		MoveTo, LineTo, CurveTo, CubicCurveTo, Stroke, Fill, Closed
+		MoveTo, LineTo, CurveTo, CubicCurveTo, ClearSubPath, Stroke, Fill, Closed
 	}
 
 	private final TArray<PathCommand> _commands;
-
 	private final FloatArray _tempData;
 	private final FloatArray _data;
-
 	private final Polygon _currentPolys = new Polygon();
-
+	private final TArray<Polygon> _polygons = new TArray<Polygon>();
 	private final Curve _curve = new Curve();
-
+	private final TArray<float[]> _linePaths = new TArray<float[]>();
 	private int _segments = LSystem.LAYER_TILE_SIZE;
-
 	private float _deltaT;
-
 	private float _lastX;
 	private float _lastY;
-
 	private float _lastStartX;
 	private float _lastStartY;
-
 	private boolean _dirty;
+
+	private static final float MIN_TOLERANCE = 0.0001f;
+	private static final float DUPLICATE_EPSILON = 0.001f;
+	private static final int MAX_TESSELATION_LEVEL = 8;
+	private static final int MIN_SEGMENTS = 4;
+	private static final int MAX_SEGMENTS = 64;
 
 	public Path2D() {
 		this(CollectionUtils.INITIAL_CAPACITY);
 	}
 
 	public Path2D(int capacity) {
-		this._commands = new TArray<Path2D.PathCommand>(capacity);
+		capacity = MathUtils.max(16, capacity);
+		this._commands = new TArray<PathCommand>(capacity);
 		this._data = new FloatArray(capacity);
 		this._tempData = new FloatArray(capacity);
 	}
@@ -78,7 +76,7 @@ public class Path2D implements Path {
 	}
 
 	public Path verticalMoveToRel(float y) {
-		return moveTo(_lastX, y + _lastY);
+		return moveTo(_lastX, _lastY + y);
 	}
 
 	public Path horizontalMoveTo(float x) {
@@ -86,35 +84,42 @@ public class Path2D implements Path {
 	}
 
 	public Path horizontalMoveToRel(float x) {
-		return moveTo(x + _lastX, _lastY);
+		return moveTo(_lastX + x, _lastY);
 	}
 
 	public Path lineToRel(float x, float y) {
-		return lineTo(x + _lastX, y + _lastY);
+		return lineTo(_lastX + x, _lastY + y);
 	}
 
-	public Path curveToRel(float controlX, float controlY, float anchorX, float anchorY) {
-		return curveTo(controlX + _lastX, controlY + _lastY, anchorX + _lastX, anchorY + _lastY);
+	public Path curveToRel(float cx, float cy, float ax, float ay) {
+		return curveTo(_lastX + cx, _lastY + cy, _lastX + ax, _lastY + ay);
 	}
 
 	public Path moveToRel(float x, float y) {
-		return moveTo(x + _lastX, y + _lastY);
+		return moveTo(_lastX + x, _lastY + y);
 	}
 
 	@Override
 	public Path moveTo(float x, float y) {
-		PathCommand cmd = _commands.last();
-		if (cmd != PathCommand.MoveTo) {
-			_commands.add(PathCommand.MoveTo);
-			add(x, y);
-		} else {
-			setDataLength(_data.size(), x, y);
+		if (!_commands.isEmpty() && isDrawingLine()) {
+			_commands.add(PathCommand.ClearSubPath);
 		}
+		_commands.add(PathCommand.MoveTo);
+		add(x, y);
 		_lastX = x;
 		_lastY = y;
 		_lastStartX = x;
 		_lastStartY = y;
+		_dirty = true;
 		return this;
+	}
+
+	private boolean isDrawingLine() {
+		if (_commands.isEmpty()) {
+			return false;
+		}
+		PathCommand last = _commands.last();
+		return last == PathCommand.LineTo || last == PathCommand.CurveTo || last == PathCommand.CubicCurveTo;
 	}
 
 	@Override
@@ -123,66 +128,111 @@ public class Path2D implements Path {
 		add(x, y);
 		_lastX = x;
 		_lastY = y;
+		_dirty = true;
 		return this;
 	}
 
 	public int nextIndex(int index) {
-		if (index == length() - 1) {
+		int len = length();
+		if (len <= 0) {
 			return 0;
 		}
-		return index + 1;
+		if (index < 0 || index >= len) {
+			return 0;
+		}
+		return (index == len - 1) ? 0 : index + 1;
 	}
 
 	public int previousIndex(int index) {
-		if (index == 0) {
-			return length() - 1;
+		int len = length();
+		if (len <= 0) {
+			return 0;
 		}
-		return index - 1;
+		if (index < 0 || index >= len) {
+			return len - 1;
+		}
+		return (index == 0) ? len - 1 : index - 1;
 	}
 
 	public void add(Vector2f pos) {
+		if (pos == null) {
+			return;
+		}
 		add(pos.x, pos.y);
 	}
 
 	public void add(float x, float y) {
 		_data.add(x);
 		_data.add(y);
-		_deltaT = 1f / (length() - 1);
+		int len = length();
+		_deltaT = len > 1 ? 1f / (len - 1) : 0f;
 		_dirty = true;
 	}
 
 	public void set(int index, float x, float y) {
-		final int idx = index * 2;
-		setDataLength(idx, x, y);
+		int len = length();
+		if (index < 0 || index >= len) {
+			return;
+		}
+		int idx = index * 2;
+		if (idx + 1 >= _data.size()) {
+			return;
+		}
+		_data.set(idx, x);
+		_data.set(idx + 1, y);
+		_dirty = true;
 	}
 
 	public void setDataLength(int idx, float x, float y) {
-		_data.set(idx - 2, x);
-		_data.set(idx - 1, y);
-		_deltaT = 1f / (length() - 1);
+		if (idx < 0 || idx + 1 >= _data.size()) {
+			return;
+		}
+		_data.set(idx, x);
+		_data.set(idx + 1, y);
+		int len = length();
+		_deltaT = len > 1 ? 1f / (len - 1) : 0f;
 		_dirty = true;
 	}
 
 	public void addAll(float[] points) {
+		if (points == null || points.length == 0 || points.length % 2 != 0) {
+			return;
+		}
 		_data.addAll(points);
-		_deltaT = 1f / (length() - 1);
+		int len = length();
+		_deltaT = len > 1 ? 1f / (len - 1) : 0f;
 		_dirty = true;
 	}
 
 	public Vector2f getVector(int index) {
-		final int idx = index * 2;
+		int len = length();
+		if (len == 0 || index < 0 || index >= len) {
+			return new Vector2f(0, 0);
+		}
+		int idx = index * 2;
+		if (idx + 1 >= _data.size()) {
+			return new Vector2f(0, 0);
+		}
 		return new Vector2f(_data.get(idx), _data.get(idx + 1));
 	}
 
 	public float getDelta() {
-		return this._deltaT;
+		return _deltaT;
 	}
 
 	public void removeAt(int index) {
-		final int idx = index * 2;
-		_data.removeIndex(idx);
+		int len = length();
+		if (len <= 1 || index < 0 || index >= len) {
+			return;
+		}
+		int idx = index * 2;
+		if (idx + 1 >= _data.size()) {
+			return;
+		}
 		_data.removeIndex(idx + 1);
-		_deltaT = 1f / (length() - 1);
+		_data.removeIndex(idx);
+		len = length();
+		_deltaT = len > 1 ? 1f / (len - 1) : 0f;
 		_dirty = true;
 	}
 
@@ -191,10 +241,15 @@ public class Path2D implements Path {
 	}
 
 	public TArray<Vector2f> getVertices(int divisions, boolean closed) {
-		final TArray<Vector2f> verts = new TArray<Vector2f>();
-		final float timeStep = 1f / divisions;
-		for (float i = 0; i < 1f; i += timeStep) {
-			verts.add(getPosition(i, closed));
+		TArray<Vector2f> verts = new TArray<Vector2f>();
+		int len = length();
+		if (len < 2) {
+			return verts;
+		}
+		divisions = MathUtils.max(MIN_SEGMENTS, MathUtils.min(divisions, MAX_SEGMENTS));
+		float step = 1f / divisions;
+		for (float t = 0; t <= 1f + MIN_TOLERANCE; t += step) {
+			verts.add(getPosition(t, closed));
 		}
 		return verts;
 	}
@@ -204,72 +259,33 @@ public class Path2D implements Path {
 	}
 
 	public Vector2f getPosition(float time, boolean closed) {
-		Vector2f temp;
-		final int len = length();
+		int len = length();
 		if (len < 2) {
-			throw new LSysException("The position len < 2 !");
+			return new Vector2f(_lastX, _lastY);
 		}
+		time = MathUtils.clamp(time, 0f, 1f);
+		Vector2f result;
 		if (closed) {
 			add(_data.get(0), _data.get(1));
-			_deltaT = 1f / (len - 1);
-			final int p = (int) (time / _deltaT);
-			int p0 = p - 1;
-			if (p0 < 0) {
-				p0 = p0 + (len - 1);
-			} else if (p0 >= len - 1) {
-				p0 = p0 - (len - 1);
-			}
-			int p1 = p;
-			if (p1 < 0) {
-				p1 = p1 + (len - 1);
-			} else if (p1 >= len - 1) {
-				p1 = p1 - (len - 1);
-			}
-			int p2 = p + 1;
-			if (p2 < 0) {
-				p2 = p2 + (len - 1);
-			} else if (p2 >= len - 1) {
-				p2 = p2 - (len - 1);
-			}
-			int p3 = p + 2;
-			if (p3 < 0) {
-				p3 = p3 + (len - 1);
-			} else if (p3 >= len - 1) {
-				p3 = p3 - (len - 1);
-			}
-			final float lt = (time - _deltaT * p) / _deltaT;
-			temp = Vector2f.catmullRom(getVector(p0), getVector(p1), getVector(p2), getVector(p3), lt);
-			removeAt(len - 1);
+			int p = (int) (time / _deltaT);
+			int p0 = MathUtils.floorMod(p - 1, len);
+			int p1 = MathUtils.floorMod(p, len);
+			int p2 = MathUtils.floorMod(p + 1, len);
+			int p3 = MathUtils.floorMod(p + 2, len);
+			float lt = (time - _deltaT * p) / _deltaT;
+			result = Vector2f.catmullRom(getVector(p0), getVector(p1), getVector(p2), getVector(p3), lt);
+			removeAt(len);
 		} else {
-			final int p = (int) (time / _deltaT);
-			int p0 = p - 1;
-			if (p0 < 0) {
-				p0 = 0;
-			} else if (p0 >= len - 1) {
-				p0 = len - 1;
-			}
-			int p1 = p;
-			if (p1 < 0) {
-				p1 = 0;
-			} else if (p1 >= len - 1) {
-				p1 = len - 1;
-			}
-			int p2 = p + 1;
-			if (p2 < 0) {
-				p2 = 0;
-			} else if (p2 >= len - 1) {
-				p2 = len - 1;
-			}
-			int p3 = p + 2;
-			if (p3 < 0) {
-				p3 = 0;
-			} else if (p3 >= len - 1) {
-				p3 = len - 1;
-			}
-			final float lt = (time - _deltaT * p) / _deltaT;
-			temp = Vector2f.catmullRom(getVector(p0), getVector(p1), getVector(p2), getVector(p3), lt);
+			int p = (int) (time / _deltaT);
+			p = MathUtils.clamp(p, 0, len - 2);
+			int p0 = MathUtils.clamp(p - 1, 0, len - 1);
+			int p1 = MathUtils.clamp(p, 0, len - 1);
+			int p2 = MathUtils.clamp(p + 1, 0, len - 1);
+			int p3 = MathUtils.clamp(p + 2, 0, len - 1);
+			float lt = MathUtils.clamp((time - _deltaT * p) / _deltaT, 0f, 1f);
+			result = Vector2f.catmullRom(getVector(p0), getVector(p1), getVector(p2), getVector(p3), lt);
 		}
-		return temp;
+		return result;
 	}
 
 	public Path fill() {
@@ -282,46 +298,50 @@ public class Path2D implements Path {
 		return this;
 	}
 
-	public Path curveTo(float controlX, float controlY, float anchorX, float anchorY) {
-		return curveTo(controlX, controlY, anchorX, anchorY, _segments);
+	public Path curveTo(float cx, float cy, float ax, float ay) {
+		return curveTo(cx, cy, ax, ay, _segments);
 	}
 
-	public Path curveTo(float controlX, float controlY, float anchorX, float anchorY, int segments) {
+	public Path curveTo(float cx, float cy, float ax, float ay, int segments) {
 		_commands.add(PathCommand.CurveTo);
-		_curve.set(_lastX, _lastY, controlX, controlY, anchorX, anchorY, anchorX, anchorY, segments);
+		segments = MathUtils.clamp(segments, MIN_SEGMENTS, MAX_SEGMENTS);
+		_curve.set(_lastX, _lastY, cx, cy, ax, ay, ax, ay, segments);
 		addAll(_curve.getPoints());
-		_lastX = anchorX;
-		_lastY = anchorY;
+		_lastX = ax;
+		_lastY = ay;
+		_dirty = true;
 		return this;
 	}
 
-	public Path cubicCurveTo(float controlX1, float controlY1, float controlX2, float controlY2, float anchorX,
-			float anchorY) {
-		return cubicCurveTo(controlX1, controlY1, controlX2, controlY2, anchorX, anchorY, _segments);
+	public Path cubicCurveTo(float cx1, float cy1, float cx2, float cy2, float ax, float ay) {
+		return cubicCurveTo(cx1, cy1, cx2, cy2, ax, ay, _segments);
 	}
 
-	public Path cubicCurveTo(float controlX1, float controlY1, float controlX2, float controlY2, float anchorX,
-			float anchorY, int segments) {
+	public Path cubicCurveTo(float cx1, float cy1, float cx2, float cy2, float ax, float ay, int segments) {
 		_commands.add(PathCommand.CubicCurveTo);
-		_curve.set(_lastX, _lastY, controlX1, controlY1, controlX2, controlY2, anchorX, anchorY, segments);
+		segments = MathUtils.clamp(segments, MIN_SEGMENTS, MAX_SEGMENTS);
+		_curve.set(_lastX, _lastY, cx1, cy1, cx2, cy2, ax, ay, segments);
 		addAll(_curve.getPoints());
-		_lastX = anchorX;
-		_lastY = anchorY;
+		_lastX = ax;
+		_lastY = ay;
+		_dirty = true;
 		return this;
 	}
 
-	public Path quadToRel(float controlX, float controlY, float x, float y) {
-		return quadTo(controlX + _lastX, controlY + _lastY, x + _lastX, y + _lastY);
+	public Path quadToRel(float cx, float cy, float x, float y) {
+		return quadTo(_lastX + cx, _lastY + cy, _lastX + x, _lastY + y);
 	}
 
-	public Path quadTo(float controlX, float controlY, float x, float y) {
-		return cubicCurveTo(_lastX + 2.0f / 3.0f * (controlX - _lastX), _lastY + 2.0f / 3.0f * (controlY - _lastY),
-				x + 2.0f / 3.0f * (controlX - x), y + 2.0f / 3.0f * (controlY - y), x, y);
+	public Path quadTo(float cx, float cy, float x, float y) {
+		float c1x = _lastX + 2.0f / 3.0f * (cx - _lastX);
+		float c1y = _lastY + 2.0f / 3.0f * (cy - _lastY);
+		float c2x = x + 2.0f / 3.0f * (cx - x);
+		float c2y = y + 2.0f / 3.0f * (cy - y);
+		return cubicCurveTo(c1x, c1y, c2x, c2y, x, y);
 	}
 
-	public Path cubicToRel(float controlX1, float controlY1, float controlX2, float controlY2, float x, float y) {
-		return cubicCurveTo(controlX1 + _lastX, controlY1 + _lastY, controlX2 + _lastX, controlY2 + _lastY, x + _lastX,
-				y + _lastY);
+	public Path cubicToRel(float cx1, float cy1, float cx2, float cy2, float x, float y) {
+		return cubicCurveTo(_lastX + cx1, _lastY + cy1, _lastX + cx2, _lastY + cy2, _lastX + x, _lastY + y);
 	}
 
 	@Override
@@ -334,54 +354,81 @@ public class Path2D implements Path {
 		return cubicCurveTo(c1x, c1y, c2x, c2y, x, y);
 	}
 
-	public Path line(float startX, float startY, float stopX, float stopY) {
-		moveTo(startX, startY).lineTo(stopX, stopY);
-		return this;
+	public Path line(float sx, float sy, float ex, float ey) {
+		return moveTo(sx, sy).lineTo(ex, ey);
 	}
 
 	public Path lines(float... points) {
+		if (points == null || points.length < 4 || points.length % 4 != 0)
+			return this;
 		return lines(points, 0, points.length / 4);
 	}
 
 	public Path lines(float[] points, int offset, int count) {
-		int i = offset;
-		while (i <= offset + (count * 4) - 1) {
-			moveTo(points[i++], points[i++]).lineTo(points[i++], points[i++]);
+		if (points == null || offset < 0 || count <= 0) {
+			return this;
+		}
+		int max = offset + count * 4;
+		if (max > points.length) {
+			return this;
+		}
+		for (int i = offset; i < max; i += 4) {
+			moveTo(points[i], points[i + 1]).lineTo(points[i + 2], points[i + 3]);
 		}
 		return this;
 	}
 
 	public Path lines(FloatArray points) {
+		if (points == null || points.size() < 4) {
+			return this;
+		}
 		return lines(points, 0, points.size() / 4);
 	}
 
 	public Path lines(FloatArray points, int offset, int count) {
-		int i = offset;
-		while (i <= offset + (count * 4) - 1) {
-			moveTo(points.get(i++), points.get(i++)).lineTo(points.get(i++), points.get(i++));
+		if (points == null || offset < 0 || count <= 0) {
+			return this;
+		}
+		int max = offset + count * 4;
+		if (max > points.size()) {
+			return this;
+		}
+		for (int i = offset; i < max; i += 4) {
+			moveTo(points.get(i), points.get(i + 1)).lineTo(points.get(i + 2), points.get(i + 3));
 		}
 		return this;
 	}
 
 	public Path lines(Vector2f... points) {
+		if (points == null || points.length < 2) {
+			return this;
+		}
 		return lines(points, 0, points.length / 2);
 	}
 
 	public Path lines(Vector2f[] points, int offset, int count) {
-		int i = offset;
-		while (i <= offset + (count * 2) - 1) {
-			Vector2f start = points[i++];
-			Vector2f end = points[i++];
-			moveTo(start.x, start.y).lineTo(end.x, end.y);
+		if (points == null || offset < 0 || count <= 0) {
+			return this;
+		}
+		int max = offset + count * 2;
+		if (max > points.length) {
+			return this;
+		}
+		for (int i = offset; i < max; i += 2) {
+			Vector2f s = points[i];
+			Vector2f e = points[i + 1];
+			if (s == null || e == null) {
+				continue;
+			}
+			moveTo(s.x, s.y).lineTo(e.x, e.y);
 		}
 		return this;
 	}
 
 	public Path polyline(float... points) {
-		if (points.length < 4) {
+		if (points == null || points.length < 4 || points.length % 2 != 0) {
 			return this;
 		}
-
 		moveTo(points[0], points[1]);
 		for (int i = 2; i < points.length; i += 2) {
 			lineTo(points[i], points[i + 1]);
@@ -390,10 +437,9 @@ public class Path2D implements Path {
 	}
 
 	public Path polyline(FloatArray points) {
-		if (points.size() < 4) {
+		if (points == null || points.size() < 4 || points.size() % 2 != 0) {
 			return this;
 		}
-
 		moveTo(points.get(0), points.get(1));
 		for (int i = 2; i < points.size(); i += 2) {
 			lineTo(points.get(i), points.get(i + 1));
@@ -402,331 +448,473 @@ public class Path2D implements Path {
 	}
 
 	public Path polyline(Vector2f... points) {
-		if (points.length < 2) {
+		if (points == null || points.length < 2) {
 			return this;
 		}
-
 		moveTo(points[0].x, points[0].y);
 		for (int i = 1; i < points.length; i++) {
+			if (points[i] == null) {
+				continue;
+			}
 			lineTo(points[i].x, points[i].y);
 		}
 		return this;
 	}
 
 	public Path polygon(float... points) {
-		if (points.length < 4) {
+		if (points == null || points.length < 4 || points.length % 2 != 0) {
 			return this;
 		}
-
-		int i = 0;
-		moveTo(points[i++], points[i++]);
-		while (i < points.length) {
-			lineTo(points[i++], points[i++]);
+		moveTo(points[0], points[1]);
+		for (int i = 2; i < points.length; i += 2) {
+			lineTo(points[i], points[i + 1]);
 		}
-		close();
-		return this;
+		return close();
 	}
 
 	public Path polygon(FloatArray points) {
-		if (points.size() < 4) {
+		if (points == null || points.size() < 4 || points.size() % 2 != 0) {
 			return this;
 		}
-
-		int i = 0;
-		moveTo(points.get(i++), points.get(i++));
-		while (i < points.size()) {
-			lineTo(points.get(i++), points.get(i++));
+		moveTo(points.get(0), points.get(1));
+		for (int i = 2; i < points.size(); i += 2) {
+			lineTo(points.get(i), points.get(i + 1));
 		}
-		close();
-		return this;
+		return close();
 	}
 
 	public Path polygon(Vector2f... points) {
-		if (points.length < 2) {
+		if (points == null || points.length < 2) {
 			return this;
 		}
-		int i = 0;
-		moveTo(points[i].x, points[i].y);
-		i++;
-		while (i < points.length) {
+		moveTo(points[0].x, points[0].y);
+		for (int i = 1; i < points.length; i++) {
+			if (points[i] == null) {
+				continue;
+			}
 			lineTo(points[i].x, points[i].y);
-			i++;
 		}
+		return close();
+	}
+
+	public Path oval(float x, float y, float w, float h, int segments) {
+		return arcToBezier(x, y, w * 0.5f, h * 0.5f, 0, MathUtils.TWO_PI, false, segments);
+	}
+
+	public Path oval(float x, float y, float w, float h) {
+		return oval(x, y, w, h, _segments);
+	}
+
+	public Path arcToBezier(float x, float y, float rx, float ry, float end) {
+		return arcToBezier(x, y, rx, ry, 0, end);
+	}
+
+	public Path arcToBezier(float x, float y, float rx, float ry, float start, float end) {
+		return arcToBezier(x, y, rx, ry, start, end, false, _segments);
+	}
+
+	public Path arcToBezier(float x, float y, float rx, float ry, float start, float end, boolean acw, int segments) {
+		rx = MathUtils.max(MIN_TOLERANCE, rx);
+		ry = MathUtils.max(MIN_TOLERANCE, ry);
+		segments = MathUtils.clamp(segments, MIN_SEGMENTS, MAX_SEGMENTS);
+		float total = acw ? start - end : end - start;
+		if (MathUtils.abs(total) < MIN_TOLERANCE) {
+			return this;
+		}
+		float cx = x + rx;
+		float cy = y + ry;
+		float step = total / segments;
+		float curr = start;
+		float sx = cx + MathUtils.cos(curr) * rx;
+		float sy = cy + MathUtils.sin(curr) * ry;
+		moveTo(sx, sy);
+		for (int i = 0; i < segments; i++) {
+			float next = curr + step;
+			float k = 0.551915f;
+			float ca = curr + step * k;
+			float na = next - step * k;
+			float c1x = cx + MathUtils.cos(ca) * rx;
+			float c1y = cy + MathUtils.sin(ca) * ry;
+			float c2x = cx + MathUtils.cos(na) * rx;
+			float c2y = cy + MathUtils.sin(na) * ry;
+			float ex = cx + MathUtils.cos(next) * rx;
+			float ey = cy + MathUtils.sin(next) * ry;
+			cubicCurveTo(c1x, c1y, c2x, c2y, ex, ey);
+			curr = next;
+		}
+		return this;
+	}
+
+	public Path drawRect(float x, float y, float w, float h) {
+		if (w < MIN_TOLERANCE || h < MIN_TOLERANCE) {
+			return this;
+		}
+		moveTo(x, y);
+		lineTo(x + w, y);
+		lineTo(x + w, y + h);
+		lineTo(x, y + h);
+		close();
+		stroke();
+		return this;
+	}
+
+	public Path drawCircle(float x, float y, float r, int segments) {
+		return arcToBezier(x - r, y - r, r, r, 0, MathUtils.TWO_PI, false, segments);
+	}
+
+	public Path drawCircle(float x, float y, float r) {
+		return drawCircle(x, y, r, _segments);
+	}
+
+	public Path drawEllipse(float x, float y, float w, float h, int segments) {
+		return arcToBezier(x, y, w * 0.5f, h * 0.5f, 0, MathUtils.TWO_PI, false, segments);
+	}
+
+	public Path drawEllipse(float x, float y, float w, float h) {
+		return drawEllipse(x, y, w, h, _segments);
+	}
+
+	public Path drawRoundRect(float x, float y, float w, float h, float ew, float eh) {
+		return drawRoundRect(x, y, w, h, ew, eh, _segments);
+	}
+
+	public Path drawRoundRect(float x, float y, float w, float h, float ew, float eh, int s) {
+		if (w < MIN_TOLERANCE || h < MIN_TOLERANCE) {
+			return this;
+		}
+		float rx = MathUtils.clamp(ew * 0.5f, 0, w * 0.5f);
+		float ry = MathUtils.clamp(eh * 0.5f, 0, h * 0.5f);
+		s = MathUtils.clamp(s, MIN_SEGMENTS, MAX_SEGMENTS);
+
+		moveTo(x + rx, y);
+		lineTo(x + w - rx, y);
+		curveTo(x + w, y, x + w, y + ry, s);
+
+		lineTo(x + w, y + h - ry);
+		curveTo(x + w, y + h, x + w - rx, y + h, s);
+
+		lineTo(x + rx, y + h);
+		curveTo(x, y + h, x, y + h - ry, s);
+
+		lineTo(x, y + ry);
+		curveTo(x, y, x + rx, y, s);
+
 		close();
 		return this;
 	}
 
-	public Path oval(float x1, float y1, float width, float height, int segments) {
-		return arcToBezier(x1, y1, width, height, 0, MathUtils.DEG_FULL, segments);
-	}
-
-	public Path oval(float x1, float y1, float width, float height) {
-		return oval(x1, y1, width, height, _segments);
-	}
-
-	public Path arcToBezier(float x, float y, float radiusX, float radiusY, float endAngle) {
-		return arcToBezier(x, y, radiusX, radiusY, 0, endAngle);
-	}
-
-	public Path arcToBezier(float x, float y, float radiusX, float radiusY, float startAngle, float endAngle) {
-		return arcToBezier(x, y, radiusX, radiusY, startAngle, endAngle, _segments);
-	}
-
-	public Path arcToBezier(float x, float y, float radiusX, float radiusY, float startAngle, float endAngle,
-			int segments) {
-		return arcToBezier(x, y, radiusX, radiusY, startAngle, endAngle, false, segments);
-	}
-
-	public Path arcToBezier(float x, float y, float radiusX, float radiusY, float startAngle, float endAngle,
-			boolean anticlockwise, int segments) {
-		float halfPI = MathUtils.PI / (segments / 2);
-		float start = startAngle;
-		float end = start;
-		if (anticlockwise) {
-			end += -halfPI - (start % halfPI);
-			if (end < endAngle) {
-				end = endAngle;
-			}
-		} else {
-			end += halfPI - (start % halfPI);
-			if (end > endAngle) {
-				end = endAngle;
-			}
-		}
-		float currentX = x + MathUtils.cos(start) * radiusX;
-		float currentY = y + MathUtils.sin(start) * radiusY;
-		if (!MathUtils.equal(this._lastX, currentX) || !MathUtils.equal(this._lastY, currentY)) {
-			this.moveTo(currentX, currentY);
-		}
-		float u = MathUtils.cos(start);
-		float v = MathUtils.sin(start);
-		int step = (segments - 1);
-		for (int i = 0; i < segments; i++) {
-			float addAngle = end - start;
-			float newAngle = segments * MathUtils.tan(addAngle / segments) / step;
-			float x1 = currentX - v * newAngle * radiusX;
-			float y1 = currentY + u * newAngle * radiusY;
-			u = MathUtils.cos(end);
-			v = MathUtils.sin(end);
-			currentX = x + u * radiusX;
-			currentY = y + v * radiusY;
-			float x2 = currentX + v * newAngle * radiusX;
-			float y2 = currentY - u * newAngle * radiusY;
-			this.cubicCurveTo(x1, y1, x2, y2, currentX, currentY);
-			if (MathUtils.equal(end, endAngle)) {
-				break;
-			}
-			start = end;
-			if (anticlockwise) {
-				end = start - halfPI;
-				if (end < endAngle) {
-					end = endAngle;
-				}
-			} else {
-				end = start + halfPI;
-				if (end > endAngle) {
-					end = endAngle;
-				}
-			}
-		}
-		this.close();
-		this.stroke();
-		return this;
-	}
-
-	public Path drawRect(float x, float y, float width, float height) {
-		float x2 = x + width;
-		float y2 = y + height;
-		this.moveTo(x, y);
-		this.lineTo(x2, y);
-		this.lineTo(x2, y2);
-		this.lineTo(x, y2);
-		this.lineTo(x, y);
-		this.close();
-		this.stroke();
-		return this;
-	}
-
-	public Path drawCircle(float x, float y, float radius, int segments) {
-		return this.arcToBezier(x, y, radius, radius, 0, MathUtils.TWO_PI, segments);
-	}
-
-	public Path drawCircle(float x, float y, float radius) {
-		return drawCircle(x, y, radius, _segments);
-	}
-
-	public Path drawEllipse(float x, float y, float width, float height, int segments) {
-		float radiusX = width * 0.5f;
-		float radiusY = height * 0.5f;
-		x += radiusX;
-		y += radiusY;
-		return this.arcToBezier(x, y, radiusX, radiusY, 0, MathUtils.TWO_PI, segments);
-	}
-
-	public Path drawEllipse(float x, float y, float width, float height) {
-		return drawEllipse(x, y, width, height, _segments);
-	}
-
-	public Path drawRoundRect(float x, float y, float width, float height, float ellipseWidth, float ellipseHeight) {
-		return drawRoundRect(x, y, width, height, ellipseWidth, ellipseHeight, _segments);
-	}
-
-	public Path drawRoundRect(float x, float y, float width, float height, float ellipseWidth, float ellipseHeight,
-			int segments) {
-		float radiusX = MathUtils.max(0f, (ellipseWidth * 0.5f));
-		float radiusY = MathUtils.max(0f, ellipseHeight > 0f ? (ellipseHeight * 0.5f) : radiusX);
-
-		if (radiusX == 0f || radiusY == 0f) {
-			this.drawRect(x, y, width, height);
+	public Path drawSmoothLine(Vector2f[] points) {
+		if (points == null || points.length < 2) {
 			return this;
 		}
+		moveTo(points[0].x, points[0].y);
+		for (int i = 1; i < points.length; i++) {
+			Vector2f p0 = i > 1 ? points[i - 2] : points[0];
+			Vector2f p1 = points[i - 1];
+			Vector2f p2 = points[i];
+			Vector2f p3 = i < points.length - 1 ? points[i + 1] : points[i];
 
-		float hw = width * 0.5f;
-		float hh = height * 0.5f;
-		if (radiusX > hw) {
-			radiusX = hw;
-		}
-		if (radiusY > hh) {
-			radiusY = hh;
-		}
-		if (MathUtils.equal(hw, radiusX) && MathUtils.equal(hh, radiusY)) {
-			if (MathUtils.equal(radiusX, radiusY)) {
-				this.drawCircle(x + radiusX, y + radiusY, radiusX, segments);
-			} else {
-				this.drawEllipse(x, y, radiusX * 2, radiusY * 2, segments);
+			for (float t = 0; t < 1; t += 0.1f) {
+				Vector2f v = Vector2f.catmullRom(p0, p1, p2, p3, t);
+				lineTo(v.x, v.y);
 			}
-			return this;
 		}
-
-		float right = x + width;
-		float bottom = y + height;
-		float xlw = x + radiusX;
-		float xrw = right - radiusX;
-		float ytw = y + radiusY;
-		float ybw = bottom - radiusY;
-		this.moveTo(right, ybw);
-		this.curveTo(right, bottom, xrw, bottom, segments);
-		this.lineTo(xlw, bottom);
-		this.curveTo(x, bottom, x, ybw, segments);
-		this.lineTo(x, ytw);
-		this.curveTo(x, y, xlw, y, segments);
-		this.lineTo(xrw, y);
-		this.curveTo(right, y, right, ytw, segments);
-		this.lineTo(right, ybw);
-		this.close();
-		this.stroke();
+		stroke();
 		return this;
 	}
 
-	public Path2D translate(Vector2f pos) {
-		for (int i = 0; i < _data.length; i += 2) {
-			_data.items[i] = _data.items[i] + pos.x;
-			_data.items[i + 1] = _data.items[i + 1] + pos.y;
+	public Path drawAxis(float x, float y, float width, float height) {
+		moveTo(x, y);
+		lineTo(x + width, y);
+		moveTo(x, y);
+		lineTo(x, y - height);
+		stroke();
+		return this;
+	}
+
+	public Path drawGrid(float x, float y, float w, float h, int cols, int rows) {
+		float cw = w / cols;
+		float ch = h / rows;
+		for (int i = 1; i < cols; i++) {
+			moveTo(x + cw * i, y);
+			lineTo(x + cw * i, y - h);
 		}
+		for (int i = 1; i < rows; i++) {
+			moveTo(x, y - ch * i);
+			lineTo(x + w, y - ch * i);
+		}
+		stroke();
+		return this;
+	}
+
+	public Path drawArrow(float fromX, float fromY, float toX, float toY, float headSize) {
+		moveTo(fromX, fromY);
+		lineTo(toX, toY);
+
+		float angle = MathUtils.atan2(toY - fromY, toX - fromX);
+		float p1x = toX - headSize * MathUtils.cos(angle - MathUtils.PI / 6);
+		float p1y = toY - headSize * MathUtils.sin(angle - MathUtils.PI / 6);
+		float p2x = toX - headSize * MathUtils.cos(angle + MathUtils.PI / 6);
+		float p2y = toY - headSize * MathUtils.sin(angle + MathUtils.PI / 6);
+
+		moveTo(toX, toY);
+		lineTo(p1x, p1y);
+		moveTo(toX, toY);
+		lineTo(p2x, p2y);
+		stroke();
+		return this;
+	}
+
+	public Path drawRadar(float cx, float cy, float radius, int sides, int layers) {
+		sides = MathUtils.max(3, sides);
+		layers = MathUtils.max(1, layers);
+		radius = MathUtils.max(MIN_TOLERANCE, radius);
+		float step = MathUtils.TWO_PI / sides;
+		for (int l = 1; l <= layers; l++) {
+			float r = radius * l / layers;
+			moveTo(cx + r, cy);
+			for (int i = 1; i <= sides; i++) {
+				float a = step * i;
+				lineTo(cx + MathUtils.cos(a) * r, cy + MathUtils.sin(a) * r);
+			}
+			close();
+		}
+		for (int i = 0; i < sides; i++) {
+			float a = step * i;
+			moveTo(cx, cy);
+			lineTo(cx + MathUtils.cos(a) * radius, cy + MathUtils.sin(a) * radius);
+		}
+		stroke();
+		return this;
+	}
+
+	public Path drawRadarData(float cx, float cy, float[] values, float maxR) {
+		if (values == null || values.length < 3) {
+			return this;
+		}
+		maxR = MathUtils.max(MIN_TOLERANCE, maxR);
+		int n = values.length;
+		float step = MathUtils.TWO_PI / n;
+		for (int i = 0; i < n; i++) {
+			float r = MathUtils.clamp(values[i], 0, maxR);
+			float a = step * i;
+			float x = cx + MathUtils.cos(a) * r;
+			float y = cy + MathUtils.sin(a) * r;
+			if (i == 0) {
+				moveTo(x, y);
+			} else {
+				lineTo(x, y);
+			}
+		}
+		close();
+		fill();
+		return this;
+	}
+
+	public Path drawSanguoAbility(float cx, float cy, float maxRadius, int levels, float leader, float force,
+			float intellect, float politics, float charm) {
+		final int COUNT = 5;
+		final float stepAng = MathUtils.TWO_PI / COUNT;
+		final float offsetAng = -MathUtils.HALF_PI;
+		float[] angles = new float[COUNT];
+		for (int i = 0; i < COUNT; i++) {
+			angles[i] = offsetAng + i * stepAng;
+		}
+		float[] values = { leader, force, intellect, politics, charm };
+		float[] radii = new float[COUNT];
+		for (int i = 0; i < COUNT; i++) {
+			float v = MathUtils.clamp(values[i], 0, 100);
+			radii[i] = maxRadius * (v / 100f); // 纯线性等距
+		}
+		for (int l = 1; l <= levels; l++) {
+			float r = maxRadius * l / levels;
+			float x0 = cx + MathUtils.cos(angles[0]) * r;
+			float y0 = cy + MathUtils.sin(angles[0]) * r;
+			moveTo(x0, y0);
+			for (int i = 1; i < COUNT; i++) {
+				float x = cx + MathUtils.cos(angles[i]) * r;
+				float y = cy + MathUtils.sin(angles[i]) * r;
+				lineTo(x, y);
+			}
+			close();
+		}
+		for (int i = 0; i < COUNT; i++) {
+			moveTo(cx, cy);
+			float x = cx + MathUtils.cos(angles[i]) * maxRadius;
+			float y = cy + MathUtils.sin(angles[i]) * maxRadius;
+			lineTo(x, y);
+		}
+		stroke();
+		moveTo(cx + MathUtils.cos(angles[0]) * radii[0], cy + MathUtils.sin(angles[0]) * radii[0]);
+		for (int i = 1; i < COUNT; i++) {
+			lineTo(cx + MathUtils.cos(angles[i]) * radii[i], cy + MathUtils.sin(angles[i]) * radii[i]);
+		}
+		close();
+		fill();
+		moveTo(cx + MathUtils.cos(angles[0]) * radii[0], cy + MathUtils.sin(angles[0]) * radii[0]);
+		for (int i = 1; i < COUNT; i++) {
+			lineTo(cx + MathUtils.cos(angles[i]) * radii[i], cy + MathUtils.sin(angles[i]) * radii[i]);
+		}
+		close();
+		stroke();
+		return this;
+	}
+
+	public Path drawSanguoAbilityRound(float cx, float cy, float maxRadius, int levels, float leader, float force,
+			float intellect, float politics, float charm) {
+		final int COUNT = 5;
+		final float stepAng = MathUtils.TWO_PI / COUNT;
+		final float offsetAng = -MathUtils.HALF_PI;
+		float[] angles = new float[COUNT];
+		for (int i = 0; i < COUNT; i++) {
+			angles[i] = offsetAng + i * stepAng;
+		}
+		float[] values = { leader, force, intellect, politics, charm };
+		float[] radii = new float[COUNT];
+		for (int i = 0; i < COUNT; i++) {
+			float v = MathUtils.clamp(values[i], 0, 100);
+			radii[i] = maxRadius * (v / 100f);
+		}
+		final int circleSegments = 180;
+		for (int l = 1; l <= levels; l++) {
+			float r = maxRadius * l / levels;
+			float firstX = cx + r * MathUtils.cos(offsetAng);
+			float firstY = cy + r * MathUtils.sin(offsetAng);
+			moveTo(firstX, firstY);
+			for (int j = 1; j <= circleSegments; j++) {
+				float ang = offsetAng + MathUtils.TWO_PI * j / circleSegments;
+				float x = cx + r * MathUtils.cos(ang);
+				float y = cy + r * MathUtils.sin(ang);
+				lineTo(x, y);
+			}
+			close();
+		}
+		for (int i = 0; i < COUNT; i++) {
+			moveTo(cx, cy);
+			float x = cx + maxRadius * MathUtils.cos(angles[i]);
+			float y = cy + maxRadius * MathUtils.sin(angles[i]);
+			lineTo(x, y);
+		}
+		stroke();
+		moveTo(cx + radii[0] * MathUtils.cos(angles[0]), cy + radii[0] * MathUtils.sin(angles[0]));
+		for (int i = 1; i < COUNT; i++) {
+			lineTo(cx + radii[i] * MathUtils.cos(angles[i]), cy + radii[i] * MathUtils.sin(angles[i]));
+		}
+		close();
+		fill();
+		moveTo(cx + radii[0] * MathUtils.cos(angles[0]), cy + radii[0] * MathUtils.sin(angles[0]));
+		for (int i = 1; i < COUNT; i++) {
+			lineTo(cx + radii[i] * MathUtils.cos(angles[i]), cy + radii[i] * MathUtils.sin(angles[i]));
+		}
+		close();
+		stroke();
+		return this;
+	}
+
+	public Path drawBar(float x, float by, float w, float h, float r) {
+		if (w < MIN_TOLERANCE || h < MIN_TOLERANCE) {
+			return this;
+		}
+		r = MathUtils.clamp(r, 0, MathUtils.min(w, h) * 0.5f);
+		drawRoundRect(x, by - h, w, h, r * 2, r * 2);
+		fill();
+		return this;
+	}
+
+	public Path drawDonut(float cx, float cy, float ir, float or, float s, float e) {
+		ir = MathUtils.max(MIN_TOLERANCE, ir);
+		or = MathUtils.max(ir + MIN_TOLERANCE, or);
+		arcToBezier(cx - or, cy - or, or, or, s, e, false, _segments);
+		arcToBezier(cx - ir, cy - ir, ir, ir, e, s, true, _segments);
+		close();
+		fill();
+		return this;
+	}
+
+	public Path2D translate(Vector2f v) {
+		if (v == null) {
+			return this;
+		}
+		for (int i = 0; i < _data.size(); i += 2) {
+			_data.set(i, _data.get(i) + v.x);
+			_data.set(i + 1, _data.get(i + 1) + v.y);
+		}
+		_dirty = true;
 		return this;
 	}
 
 	public float getArea() {
 		_tempData.clear();
-		float area = 0;
-		int segmentStart = 0;
-		float lastStartX = 0;
-		float lastStartY = 0;
-		float lastX = 0;
-		float lastY = 0;
-		int segmentCommandsCount = 0;
-
-		for (int i = 0; i < _commands.size; i++) {
-			PathCommand cmd = _commands.get(i);
-			switch (cmd) {
-			case MoveTo:
-				if (segmentCommandsCount != 0) {
-					_tempData.insert(segmentStart, lastStartX);
-					_tempData.insert(segmentStart + 1, lastStartY);
-					_tempData.add(lastStartX);
-					_tempData.add(lastStartY);
-					area += getSegmentArea();
-
+		float area = 0f;
+		int cmdSize = _commands.size();
+		if (cmdSize == 0 || _data.isEmpty()) {
+			return 0f;
+		}
+		float lx = 0, ly = 0, lsx = 0, lsy = 0;
+		int seg = 0;
+		for (int i = 0; i < cmdSize; i++) {
+			PathCommand c = _commands.get(i);
+			if (c == PathCommand.MoveTo) {
+				if (seg > 0) {
+					_tempData.add(lsx, lsy);
+					area += MathUtils.abs(getSegmentArea());
 					_tempData.clear();
-					segmentStart = _tempData.size();
-					segmentCommandsCount = 0;
 				}
-
-				lastStartX = _data.get(i + 0);
-				lastStartY = _data.get(i + 1);
-
-				lastX = lastStartX;
-				lastY = lastStartY;
-
-				break;
-			case CurveTo:
-				lastX = _data.get(i + 0);
-				lastY = _data.get(i + 1);
-
-				_tempData.add(lastX);
-				_tempData.add(lastY);
-
-				_tempData.add(_data.get(i + 2));
-				_tempData.add(_data.get(i + 3));
-				segmentCommandsCount++;
-
-				break;
-			case LineTo:
-				lastX = _data.get(i + 0);
-				lastY = _data.get(i + 1);
-
-				_tempData.add(lastX);
-				_tempData.add(lastY);
-				segmentCommandsCount++;
-
-				break;
-			case CubicCurveTo:
-				float x1 = lastX;
-				float y1 = lastY;
-				float x2 = _data.get(i + 0);
-				float y2 = _data.get(i + 1);
-				float x3 = _data.get(i + 2);
-				float y3 = _data.get(i + 3);
-				float x4 = _data.get(i + 4);
-				float y4 = _data.get(i + 5);
+				if (i * 2 + 1 >= _data.size()) {
+					break;
+				}
+				lsx = _data.get(i * 2);
+				lsy = _data.get(i * 2 + 1);
+				lx = lsx;
+				ly = lsy;
+				seg = 0;
+			} else if (c == PathCommand.LineTo) {
+				if (i * 2 + 1 >= _data.size()) {
+					break;
+				}
+				lx = _data.get(i * 2);
+				ly = _data.get(i * 2 + 1);
+				_tempData.add(lx, ly);
+				seg++;
+			} else if (c == PathCommand.CubicCurveTo) {
+				if (i * 2 + 5 >= _data.size()) {
+					break;
+				}
+				float x1 = lx, y1 = ly;
+				float x2 = _data.get(i * 2);
+				float y2 = _data.get(i * 2 + 1);
+				float x3 = _data.get(i * 2 + 2);
+				float y3 = _data.get(i * 2 + 3);
+				float x4 = _data.get(i * 2 + 4);
+				float y4 = _data.get(i * 2 + 5);
 				tesselateBezier(x1, y1, x2, y2, x3, y3, x4, y4, 0);
-				segmentCommandsCount++;
-
-				break;
-			case Closed:
-				break;
-			default:
+				lx = x4;
+				ly = y4;
+				seg++;
 			}
 		}
-
-		_tempData.insert(segmentStart, lastStartX);
-		_tempData.insert(segmentStart + 1, lastStartY);
-		_tempData.add(lastStartX);
-		_tempData.add(lastStartY);
-		area += getSegmentArea();
-
+		if (seg > 0) {
+			_tempData.add(lsx, lsy);
+			area += MathUtils.abs(getSegmentArea());
+		}
 		return area;
 	}
 
-	private static boolean checkTesselationTolerance(float x1, float y1, float x2, float y2, float x3, float y3,
-			float x4, float y4) {
+	private boolean checkTesselationTolerance(float x1, float y1, float x2, float y2, float x3, float y3, float x4,
+			float y4) {
 		float dx = x4 - x1;
 		float dy = y4 - y1;
-		float d2 = MathUtils.abs(((x2 - x4) * dy - (y2 - y4) * dx));
-		float d3 = MathUtils.abs(((x3 - x4) * dy - (y3 - y4) * dx));
-		return ((d2 + d3) * (d2 + d3) < 0.25f * (dx * dx + dy * dy));
+		float d2 = MathUtils.abs((x2 - x4) * dy - (y2 - y4) * dx);
+		float d3 = MathUtils.abs((x3 - x4) * dy - (y3 - y4) * dx);
+		return (d2 + d3) * (d2 + d3) < 0.25f * (dx * dx + dy * dy);
 	}
 
 	private void tesselateBezier(float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4,
 			int level) {
-		if (level > 8) {
-			return;
-		} else if (level == 8 || checkTesselationTolerance(x1, y1, x2, y2, x3, y3, x4, y4)) {
-			_tempData.add(x4);
-			_tempData.add(y4);
+		if (level >= MAX_TESSELATION_LEVEL || checkTesselationTolerance(x1, y1, x2, y2, x3, y3, x4, y4)) {
+			_tempData.add(x4, y4);
 			return;
 		}
-
 		float x12 = (x1 + x2) * 0.5f;
 		float y12 = (y1 + y2) * 0.5f;
 		float x23 = (x2 + x3) * 0.5f;
@@ -739,59 +927,62 @@ public class Path2D implements Path {
 		float y234 = (y23 + y34) * 0.5f;
 		float x1234 = (x123 + x234) * 0.5f;
 		float y1234 = (y123 + y234) * 0.5f;
-
 		tesselateBezier(x1, y1, x12, y12, x123, y123, x1234, y1234, level + 1);
 		tesselateBezier(x1234, y1234, x234, y234, x34, y34, x4, y4, level + 1);
 	}
 
 	private float getSegmentArea() {
-		float area = 0;
-		int size = _tempData.size();
-		for (int i = 0; i < size; i += 2) {
-			int y1 = i + 1;
-			int x2 = (i + 2) % size;
-			int y2 = (i + 3) % size;
-			area += _tempData.get(i) * _tempData.get(y2);
-			area -= _tempData.get(x2) * _tempData.get(y1);
+		float a = 0f;
+		int n = _tempData.size();
+		if (n < 4) {
+			return 0f;
 		}
-		area *= 0.5f;
-		return area;
+		for (int i = 0; i < n; i += 2) {
+			int j = (i + 2) % n;
+			a += _tempData.get(i) * _tempData.get(j + 1);
+			a -= _tempData.get(j) * _tempData.get(i + 1);
+		}
+		return a * 0.5f;
 	}
 
 	public float[] getPointfX() {
-		float[] list = new float[size() / 2];
-		for (int i = 0, j = 0; i < _data.length; i += 2, j++) {
-			list[j] = _data.get(i);
+		int n = length();
+		float[] r = new float[n];
+		for (int i = 0; i < n; i++) {
+			r[i] = getVector(i).x;
 		}
-		return list;
+		return r;
 	}
 
 	public float[] getPointfY() {
-		float[] list = new float[size() / 2];
-		for (int i = 0, j = 0; i < _data.length; i += 2, j++) {
-			list[j] = _data.get(i + 1);
+		int n = length();
+		float[] r = new float[n];
+		for (int i = 0; i < n; i++) {
+			r[i] = getVector(i).y;
 		}
-		return list;
+		return r;
 	}
 
 	public int[] getPointiX() {
-		int[] list = new int[size() / 2];
-		for (int i = 0, j = 0; i < _data.length; i += 2, j++) {
-			list[j] = (int) _data.get(i);
+		int n = length();
+		int[] r = new int[n];
+		for (int i = 0; i < n; i++) {
+			r[i] = (int) getVector(i).x;
 		}
-		return list;
+		return r;
 	}
 
 	public int[] getPointiY() {
-		int[] list = new int[size() / 2];
-		for (int i = 0, j = 0; i < _data.length; i += 2, j++) {
-			list[j] = (int) _data.get(i + 1);
+		int n = length();
+		int[] r = new int[n];
+		for (int i = 0; i < n; i++) {
+			r[i] = (int) getVector(i).y;
 		}
-		return list;
+		return r;
 	}
 
 	public boolean isEmpty() {
-		return _data.size() == 0;
+		return _data.isEmpty();
 	}
 
 	public float getLastX() {
@@ -819,20 +1010,23 @@ public class Path2D implements Path {
 	}
 
 	public boolean isClosed() {
-		return _commands.last() == PathCommand.Closed;
+		return !_commands.isEmpty() && _commands.last() == PathCommand.Closed;
 	}
 
 	public boolean isStroke() {
-		return _commands.last() == PathCommand.Stroke;
+		return !_commands.isEmpty() && _commands.last() == PathCommand.Stroke;
 	}
 
 	public boolean isFill() {
-		return _commands.last() == PathCommand.Fill;
+		return !_commands.isEmpty() && _commands.last() == PathCommand.Fill;
 	}
 
-	public Path2D update(FloatArray arrays) {
+	public Path2D update(FloatArray arr) {
+		if (arr == null) {
+			return this;
+		}
 		_data.clear();
-		addAll(arrays.toArray());
+		addAll(arr.toArray());
 		return this;
 	}
 
@@ -840,21 +1034,218 @@ public class Path2D implements Path {
 		return getShape(isFill());
 	}
 
+	/**
+	 * 此函数形状只适合单独连续图形使用(例如矩形，圆形之类，可以直接使用这个)，复杂不连贯图应使用getShapes，否则全部图形的连接线会混合在一起(例如雷达图，例如网状图，应使用getShapes返回)
+	 * 
+	 * @param fill
+	 * @return
+	 */
 	public Polygon getShape(boolean fill) {
-		if (fill) {
-			if (_dirty) {
-				final TArray<Vector2f> vers = getVertices(_segments);
-				_currentPolys.setPolygon(vers);
-				_dirty = false;
-			}
-		} else {
-			if (_dirty) {
-				_currentPolys.setPolygon(_data.toArray(), _data.length);
-				_dirty = false;
-			}
+		if (!_dirty) {
 			return _currentPolys;
 		}
+		_currentPolys.clear();
+		TArray<Vector2f> current = new TArray<Vector2f>();
+		int dataIdx = 0;
+		for (PathCommand cmd : _commands) {
+			if (cmd == PathCommand.MoveTo) {
+				if (current.size() >= 3) {
+					addShape(current, fill);
+					current.clear();
+				}
+				if (dataIdx + 1 < _data.size()) {
+					float x = _data.get(dataIdx++);
+					float y = _data.get(dataIdx++);
+					current.add(new Vector2f(x, y));
+				}
+			} else if (cmd == PathCommand.LineTo) {
+				if (current.isEmpty()) {
+					continue;
+				}
+				if (dataIdx + 1 < _data.size()) {
+					float x = _data.get(dataIdx++);
+					float y = _data.get(dataIdx++);
+					current.add(new Vector2f(x, y));
+				}
+			} else if (cmd == PathCommand.CurveTo || cmd == PathCommand.CubicCurveTo) {
+				int count = _curve.getPoints().length / 2;
+				for (int i = 0; i < count && dataIdx + 1 < _data.size(); i++) {
+					current.add(new Vector2f(_data.get(dataIdx++), _data.get(dataIdx++)));
+				}
+			} else if (cmd == PathCommand.Closed) {
+				if (current.size() >= 3) {
+					current.add(current.get(0));
+					addShape(current, fill);
+					current.clear();
+				}
+			} else if (cmd == PathCommand.ClearSubPath) {
+				if (current.size() >= 3) {
+					addShape(current, fill);
+					current.clear();
+				}
+			}
+		}
+		if (current.size() >= 3) {
+			addShape(current, fill);
+		}
+		_dirty = false;
 		return _currentPolys;
+	}
+
+	private void addShape(TArray<Vector2f> shape, boolean fill) {
+		TArray<Vector2f> out = new TArray<Vector2f>();
+		Vector2f last = null;
+		for (Vector2f v : shape) {
+			if (v == null) {
+				continue;
+			}
+			if (last != null) {
+				float dx = MathUtils.abs(v.x - last.x);
+				float dy = MathUtils.abs(v.y - last.y);
+				if (dx < DUPLICATE_EPSILON && dy < DUPLICATE_EPSILON) {
+					continue;
+				}
+			}
+			out.add(v);
+			last = v;
+		}
+		if (out.size() < 3) {
+			return;
+		}
+		for (Vector2f v : out) {
+			_currentPolys.addPoint(v.x, v.y);
+		}
+		if (fill) {
+			_currentPolys.addPoint(out.first().x, out.first().y);
+		}
+	}
+
+	private void flushToPolygon(TArray<Vector2f> points, boolean fill) {
+		if (points.size() < 3) {
+			return;
+		}
+		Polygon p = new Polygon();
+		Vector2f last = null;
+		for (Vector2f v : points) {
+			if (last == null) {
+				p.addPoint(v.x, v.y);
+				last = v;
+				continue;
+			}
+			float dx = MathUtils.abs(v.x - last.x);
+			float dy = MathUtils.abs(v.y - last.y);
+			if (dx < DUPLICATE_EPSILON && dy < DUPLICATE_EPSILON) {
+				continue;
+			}
+			p.addPoint(v.x, v.y);
+			last = v;
+		}
+		if (p.getPointCount() >= 3) {
+			_polygons.add(p);
+		}
+	}
+
+	/**
+	 * 由于Polygon本身的数据结构是连续线,所以不连贯的复杂图形会返回多个polygon，复杂图形应使用此集合数据渲染
+	 * 
+	 * @param fill
+	 * @return
+	 */
+
+	public TArray<Polygon> getShapes() {
+		return getShapes(isFill());
+	}
+
+	public TArray<Polygon> getShapes(boolean fill) {
+		if (!_dirty) {
+			return _polygons;
+		}
+
+		// 清空缓存
+		_polygons.clear();
+		_linePaths.clear();
+
+		TArray<Vector2f> current = new TArray<Vector2f>();
+		int dataIdx = 0;
+
+		for (PathCommand cmd : _commands) {
+			switch (cmd) {
+			case MoveTo:
+				if (current.size() >= 2) {
+					if (fill) {
+						flushToPolygon(current, true);
+					} else {
+						addLinePath(current);
+					}
+					current.clear();
+				}
+				if (dataIdx + 1 < _data.size()) {
+					current.add(new Vector2f(_data.get(dataIdx++), _data.get(dataIdx++)));
+				}
+				break;
+			case LineTo:
+				if (!current.isEmpty() && dataIdx + 1 < _data.size()) {
+					current.add(new Vector2f(_data.get(dataIdx++), _data.get(dataIdx++)));
+				}
+				break;
+			case CurveTo:
+			case CubicCurveTo:
+				int count = _curve.getPoints().length / 2;
+				for (int i = 0; i < count && dataIdx + 1 < _data.size(); i++) {
+					current.add(new Vector2f(_data.get(dataIdx++), _data.get(dataIdx++)));
+				}
+				break;
+			case Closed:
+				if (current.size() >= 2) {
+					current.add(current.get(0));
+					flushToPolygon(current, true);
+					current.clear();
+				}
+				break;
+			case ClearSubPath:
+				if (current.size() >= 2) {
+					if (fill) {
+						flushToPolygon(current, true);
+					} else {
+						addLinePath(current);
+					}
+					current.clear();
+				}
+				break;
+			default:
+				break;
+			}
+		}
+
+		if (current.size() >= 2) {
+			if (fill) {
+				flushToPolygon(current, true);
+			} else {
+				addLinePath(current);
+			}
+		}
+
+		_dirty = false;
+		return _polygons;
+	}
+
+	private void addLinePath(TArray<Vector2f> points) {
+		if (points.size() < 2) {
+			return;
+		}
+		int n = points.size();
+		float[] arr = new float[n * 2];
+		for (int i = 0; i < n; i++) {
+			Vector2f v = points.get(i);
+			arr[i * 2] = v.x;
+			arr[i * 2 + 1] = v.y;
+		}
+		_linePaths.add(arr);
+	}
+
+	public TArray<float[]> getLinePaths() {
+		getShapes(false);
+		return _linePaths;
 	}
 
 	public TArray<Vector2f> getVecs() {
@@ -862,6 +1253,9 @@ public class Path2D implements Path {
 	}
 
 	public Path2D addPath(Path2D p, float px, float py) {
+		if (p == null) {
+			return this;
+		}
 		_commands.addAll(p._commands);
 		for (int i = 0; i < p._data.size(); i += 2) {
 			add(p._data.get(i) + px, p._data.get(i + 1) + py);
@@ -869,44 +1263,189 @@ public class Path2D implements Path {
 		return this;
 	}
 
-	public Path2D fill(GLEx g, float px, float py) {
-		if (g != null) {
-			g.fill(getShape(), px, py);
+	public Path2D fills(GLEx g, float px, float py) {
+		return fills(g, px, py, LColor.white);
+	}
+
+	public Path2D fills(GLEx g, float px, float py, LColor color) {
+		TArray<Polygon> result = getShapes(true);
+		for (Polygon p : result) {
+			g.fill(p, px, py, color);
 		}
+		if (result.size <= 0) {
+			strokeLines(g, px, py, color);
+		}
+		return this;
+	}
+
+	public Path2D fill(GLEx g, float px, float py) {
+		return fill(g, px, py, LColor.white);
+	}
+
+	public Path2D fill(GLEx g, float px, float py, LColor color) {
+		if (g == null) {
+			return this;
+		}
+		g.fill(getShape(true), px, py, color);
 		return this;
 	}
 
 	public Path2D fill(Canvas c, float px, float py) {
-		if (c != null) {
-			Path path = c.createPath();
-			for (int i = 0; i < _data.size(); i += 2) {
-				float x = _data.get(i) + px;
-				float y = _data.get(i + 1) + py;
-				path.lineTo(x, y);
-			}
-			path.close();
-			c.fillPath(path);
+		if (c == null) {
+			return this;
 		}
+		Path path = c.createPath();
+		boolean first = true;
+		int dataIdx = 0;
+		for (PathCommand cmd : _commands) {
+			if (cmd == PathCommand.MoveTo) {
+				if (!first) {
+					path.close();
+				}
+				float x = _data.get(dataIdx++);
+				float y = _data.get(dataIdx++);
+				path.moveTo(x + px, y + py);
+				first = false;
+			} else if (cmd == PathCommand.LineTo) {
+				float x = _data.get(dataIdx++);
+				float y = _data.get(dataIdx++);
+				path.lineTo(x + px, y + py);
+			} else if (cmd == PathCommand.Closed) {
+				path.close();
+				first = true;
+			}
+		}
+		path.close();
+		c.fillPath(path);
 		return this;
 	}
 
 	public Path2D stroke(GLEx g, float px, float py) {
-		if (g != null) {
-			g.draw(getShape(), px, py);
+		return stroke(g, px, py, LColor.white);
+	}
+
+	public Path2D stroke(GLEx g, float px, float py, LColor color) {
+		if (g == null) {
+			return this;
+		}
+		g.draw(getShape(false), px, py, color);
+		return this;
+	}
+
+	public Path2D strokes(GLEx g, float px, float py) {
+		return strokes(g, px, py, LColor.white);
+	}
+
+	/**
+	 * 复杂图形用这个，polygon必须拆分，否则来回往返的坐标会连线
+	 * 
+	 * @param g
+	 * @param px
+	 * @param py
+	 * @return
+	 */
+	public Path2D strokes(GLEx g, float px, float py, LColor color) {
+		TArray<Polygon> result = getShapes(false);
+		for (Polygon p : result) {
+			g.draw(p, px, py, color);
+		}
+		if (result.size <= 0) {
+			strokeLines(g, px, py, color);
 		}
 		return this;
 	}
 
 	public Path2D stroke(Canvas c, float px, float py) {
-		if (c != null) {
-			Path path = c.createPath();
-			for (int i = 0; i < _data.size(); i += 2) {
-				float x = _data.get(i) + px;
-				float y = _data.get(i + 1) + py;
-				path.lineTo(x, y);
+		if (c == null) {
+			return this;
+		}
+		Path path = c.createPath();
+		int dataIdx = 0;
+		for (PathCommand cmd : _commands) {
+			if (cmd == PathCommand.MoveTo) {
+				float x = _data.get(dataIdx++);
+				float y = _data.get(dataIdx++);
+				path.moveTo(x + px, y + py);
+			} else if (cmd == PathCommand.LineTo) {
+				float x = _data.get(dataIdx++);
+				float y = _data.get(dataIdx++);
+				path.lineTo(x + px, y + py);
+			} else if (cmd == PathCommand.Closed) {
+				path.close();
 			}
-			path.close();
-			c.strokePath(path);
+		}
+		c.strokePath(path);
+		return this;
+	}
+
+	public Path2D strokeLines(GLEx g, float px, float py, LColor color) {
+		for (float[] line : getLinePaths()) {
+			int len = line.length;
+			if (len < 4) {
+				continue;
+			}
+			for (int i = 0; i < len - 2; i += 2) {
+				g.drawLine(line[i] + px, line[i + 1] + py, line[i + 2] + px, line[i + 3] + py, color);
+			}
+		}
+		return this;
+	}
+
+	public Path2D dashStrokeLines(GLEx g, float px, float py, int divisions, LColor color) {
+		for (float[] line : getLinePaths()) {
+			int len = line.length;
+			if (len < 4) {
+				continue;
+			}
+			for (int i = 0; i < len - 2; i += 2) {
+				g.drawDashLine(line[i] + px, line[i + 1] + py, line[i + 2] + px, line[i + 3] + py, divisions, color);
+			}
+		}
+		return this;
+	}
+
+	public Path2D dashStroke(GLEx g, float px, float py) {
+		return dashStroke(g, px, py, LColor.white);
+	}
+
+	public Path2D dashStroke(GLEx g, float px, float py, LColor color) {
+		return dashStroke(g, px, py, 16, color);
+	}
+
+	public Path2D dashStroke(GLEx g, float px, float py, int divisions, LColor color) {
+		final Polygon linePath = getShape(false);
+		float renderX = 0;
+		float renderY = 0;
+		final TArray<Vector2f> list = linePath.getVertices();
+		for (int i = 0; i < list.size() - 1; i++) {
+			Vector2f p1 = list.get(i);
+			Vector2f p2 = list.get(i + 1);
+			g.drawDashLine(p1.x + renderX, p1.y + renderY, p2.x + renderX, p2.y + renderY, divisions, color);
+		}
+		return this;
+	}
+
+	public Path2D dashStrokes(GLEx g, float px, float py, LColor color) {
+		return dashStrokes(g, px, py, 16, color);
+	}
+
+	public Path2D dashStrokes(GLEx g, float px, float py, int divisions, LColor color) {
+		final TArray<Polygon> result = getShapes(false);
+		float renderX = 0;
+		float renderY = 0;
+		for (Polygon linePath : result) {
+			if (linePath == null || linePath.size() < 2) {
+				continue;
+			}
+			final TArray<Vector2f> list = linePath.getVertices();
+			for (int i = 0; i < list.size() - 1; i++) {
+				Vector2f p1 = list.get(i);
+				Vector2f p2 = list.get(i + 1);
+				g.drawDashLine(p1.x + renderX, p1.y + renderY, p2.x + renderX, p2.y + renderY, divisions, color);
+			}
+		}
+		if (result.size <= 0) {
+			dashStrokeLines(g, px, py, divisions, color);
 		}
 		return this;
 	}
@@ -920,8 +1459,8 @@ public class Path2D implements Path {
 	}
 
 	public Path2D setSegments(int s) {
-		this._segments = s;
-		this._dirty = true;
+		_segments = MathUtils.clamp(s, MIN_SEGMENTS, MAX_SEGMENTS);
+		_dirty = true;
 		return this;
 	}
 
@@ -931,67 +1470,32 @@ public class Path2D implements Path {
 
 	@Override
 	public int hashCode() {
-		final int prime = 31;
-		int result = 1;
-		for (int i = 0, n = _data.size(); i < n; i++) {
-			result = prime * result + NumberUtils.floatToIntBits(_data.get(i));
-		}
-		return result;
+		return _data.hashCode();
 	}
 
 	@Override
 	public String toString() {
-		StrBuilder builder = new StrBuilder("Path:\n");
-		for (int i = 0; i < _commands.size; i++) {
-			PathCommand cmd = _commands.get(i);
-			switch (cmd) {
-			case MoveTo:
-				builder.append("moveTo: ");
-				builder.append(_data.get(i + 0));
-				builder.append(LSystem.COMMA);
-				builder.append(_data.get(i + 1));
-				builder.append(LSystem.LF);
-				break;
-			case LineTo:
-				builder.append("lineTo: ");
-				builder.append(_data.get(i + 0));
-				builder.append(LSystem.COMMA);
-				builder.append(_data.get(i + 1));
-				builder.append(LSystem.LF);
-				break;
-			case CubicCurveTo:
-				builder.append("cubiccurveTo: ");
-				builder.append(_data.get(i + 0));
-				builder.append(LSystem.COMMA);
-				builder.append(_data.get(i + 1));
-				builder.append(LSystem.COMMA);
-				builder.append(_data.get(i + 2));
-				builder.append(LSystem.COMMA);
-				builder.append(_data.get(i + 3));
-				builder.append(LSystem.COMMA);
-				builder.append(_data.get(i + 4));
-				builder.append(LSystem.COMMA);
-				builder.append(_data.get(i + 5));
-				builder.append(LSystem.LF);
-				break;
-			case CurveTo:
-				builder.append("cubicTo: ");
-				builder.append(_data.get(i + 0));
-				builder.append(LSystem.COMMA);
-				builder.append(_data.get(i + 1));
-				builder.append(LSystem.COMMA);
-				builder.append(_data.get(i + 2));
-				builder.append(LSystem.COMMA);
-				builder.append(_data.get(i + 3));
-				builder.append(LSystem.LF);
-				break;
-			case Closed:
-				builder.append("closed\n");
-				break;
-			default:
+		StringBuilder sb = new StringBuilder("Path2D{\n");
+		int dataIdx = 0;
+		for (PathCommand cmd : _commands) {
+			sb.append(cmd);
+			if (cmd == PathCommand.MoveTo || cmd == PathCommand.LineTo) {
+				if (dataIdx + 1 < _data.size()) {
+					sb.append("(").append(_data.get(dataIdx)).append(",").append(_data.get(dataIdx + 1)).append(")");
+					dataIdx += 2;
+				}
+			} else if (cmd == PathCommand.CubicCurveTo) {
+				if (dataIdx + 5 < _data.size()) {
+					sb.append("(").append(_data.get(dataIdx)).append(",").append(_data.get(dataIdx + 1)).append(",")
+							.append(_data.get(dataIdx + 2)).append(",").append(_data.get(dataIdx + 3)).append(",")
+							.append(_data.get(dataIdx + 4)).append(",").append(_data.get(dataIdx + 5)).append(")");
+					dataIdx += 6;
+				}
 			}
+			sb.append("\n");
 		}
-		return builder.toString();
+		sb.append("}");
+		return sb.toString();
 	}
 
 	@Override
@@ -1001,10 +1505,9 @@ public class Path2D implements Path {
 		_tempData.clear();
 		_curve.clear();
 		_currentPolys.clear();
-		_lastX = 0f;
-		_lastY = 0f;
-		_lastStartX = 0f;
-		_lastStartY = 0f;
+		_polygons.clear();
+		_linePaths.clear();
+		_lastX = _lastY = _lastStartX = _lastStartY = 0f;
 		_deltaT = 0f;
 		_dirty = true;
 		return this;
@@ -1018,5 +1521,4 @@ public class Path2D implements Path {
 		_dirty = true;
 		return this;
 	}
-
 }

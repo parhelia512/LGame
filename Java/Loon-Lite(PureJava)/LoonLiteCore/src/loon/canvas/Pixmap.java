@@ -1548,7 +1548,7 @@ public final class Pixmap extends PixmapComposite implements Canvas.ColorPixel, 
 			for (int x = 0; x < newWidth; x++) {
 				float srcX = x * xRatio;
 				int xFloor = (int) srcX;
-				int xCeil = Math.min(xFloor + 1, _width - 1);
+				int xCeil = MathUtils.min(xFloor + 1, _width - 1);
 				float xWeight = srcX - xFloor;
 				int c00 = getPixel(xFloor, yFloor);
 				int c10 = getPixel(xCeil, yFloor);

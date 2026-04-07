@@ -1498,6 +1498,28 @@ public final class MathUtils {
 		return MathUtils.floor(random(start, end));
 	}
 
+	public static int floorMod(int dividend, int modulus) {
+		if (modulus == 0) {
+			throw new LSysException("/ by zero");
+		}
+		int quotient = dividend / modulus;
+		if ((dividend ^ modulus) < 0 && (dividend % modulus != 0)) {
+			quotient = quotient - 1;
+		}
+		return dividend - (quotient * modulus);
+	}
+
+	public static long floorMod(long dividend, long modulus) {
+		if (modulus == 0) {
+			throw new LSysException("/ by zero");
+		}
+		long quotient = dividend / modulus;
+		if ((dividend ^ modulus) < 0 && (dividend % modulus != 0)) {
+			quotient = quotient - 1;
+		}
+		return dividend - (quotient * modulus);
+	}
+
 	public static int ifloor(float v) {
 		return (int) (v + BIG_ENOUGH_FLOOR) - BIG_ENOUGH_INT;
 	}

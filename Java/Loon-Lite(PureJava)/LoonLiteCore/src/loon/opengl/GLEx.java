@@ -2063,7 +2063,7 @@ public class GLEx implements LRelease {
 
 	/**
 	 * 绘制不特定Shape
-	 *
+	 * 
 	 * @param shape
 	 * @return
 	 */
@@ -2079,9 +2079,22 @@ public class GLEx implements LRelease {
 	 * @return
 	 */
 	public GLEx draw(Shape shape, LColor color) {
-		final int tmp = getTint();
+		return draw(shape, 0f, 0f, color);
+	}
+
+	/**
+	 * 绘制不特定Shape
+	 * 
+	 * @param shape
+	 * @param x
+	 * @param y
+	 * @param color
+	 * @return
+	 */
+	public GLEx draw(Shape shape, float x, float y, LColor color) {
+		int tmp = getTint();
 		setTint(color);
-		draw(shape, 0f, 0f);
+		draw(shape, x, y);
 		setTint(tmp);
 		return this;
 	}
@@ -2174,7 +2187,7 @@ public class GLEx implements LRelease {
 
 	/**
 	 * 绘制不特定Shape
-	 *
+	 * 
 	 * @param shape
 	 * @return
 	 */
@@ -2190,7 +2203,18 @@ public class GLEx implements LRelease {
 	 * @return
 	 */
 	public GLEx fill(Shape shape, LColor color) {
-		final int tmp = getTint();
+		return fill(shape, 0f, 0f, color);
+	}
+
+	/**
+	 * 绘制不特定Shape
+	 * 
+	 * @param shape
+	 * @param color
+	 * @return
+	 */
+	public GLEx fill(Shape shape, float x, float y, LColor color) {
+		int tmp = getTint();
 		setTint(color);
 		fill(shape, 0f, 0f);
 		setTint(tmp);
