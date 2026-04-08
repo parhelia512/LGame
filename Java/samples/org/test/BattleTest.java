@@ -228,12 +228,26 @@ public class BattleTest extends Stage {
 		});
 		// 将地图对象缩放2倍(瓦片的缩放和地图对象的缩放不通用，需分别设置)
 		// obj.setScale(2f);
+		
+		// 构建一个纹理动画用于特技画面
+		Animation skillAni = Animation.getDefaultAnimation("rasaksingle.png",192,192,50);
+		
+		// 启动全局特技(battleMap中特技默认应该注入BattleMapObject，但是我绑定了一个全局特技对象，方便用于点击即攻击，剧情特效之类)
+		newMap.getGlobalSkill().setRunning(true);
+		newMap.getGlobalSkill().setSkillEffectAnim(skillAni);
+		newMap.getGlobalSkill().setLoopCount(1);
+		newMap.getGlobalSkill().setRangeRadius(3);
+		// 设置特技效果大小
+		newMap.getGlobalSkill().setSize(300, 300);
 		// 拖拽地图
 		drag((x, y) -> {
 			newMap.scroll(x, y);
 		});
 		// 获得点中瓦片坐标
 		up((x, y) -> {
+			// 在指定坐标触发特技
+			newMap.getGlobalSkill().castEffect(x, y);
+		
 			// 以像素坐标,获得实际瓦片坐标
 			// Vector2f pos = newMap.findTileXY(x, y);
 			// 请求指定地图对象到指定像素坐标的寻径，并返回瓦片坐标的寻径结果

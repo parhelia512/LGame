@@ -607,9 +607,6 @@ public class BattleMapObject extends Role {
 			// 触发实际技能效果
 			currentSkill.castEffect(this, target);
 
-			// 触发技能命中震动
-			currentSkill.triggerHitShake();
-
 			if (battleMap != null) {
 				// 发布命中事件
 				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
@@ -634,9 +631,6 @@ public class BattleMapObject extends Role {
 						new AttackData(false, "miss", 0, false)));
 			}
 		}
-
-		// 播放攻击特效
-		currentSkill.isCastTriggered = true;
 
 		// 若目标死亡，结束战斗
 		if (target.health <= 0) {
@@ -722,8 +716,7 @@ public class BattleMapObject extends Role {
 				boolean isCrit = MathUtils.random() <= currentSkill.critRate;
 				// 实际调用技能效果
 				currentSkill.castEffect(this, target);
-				// 触发技能震动
-				currentSkill.triggerHitShake();
+
 				if (battleMap != null) {
 					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
 							new AttackData(true, "hit", 0, isCrit)));
@@ -738,16 +731,10 @@ public class BattleMapObject extends Role {
 					}
 				}
 			}
-
 			break;
-
 		default:
 			break;
 		}
-
-		// 标记技能已释放，开始冷却
-		currentSkill.startCooldown();
-		currentSkill.isCastTriggered = true;
 
 		// 重置状态
 		setState(ObjectState.IDLE);

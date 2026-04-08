@@ -35,7 +35,7 @@ public class BattleScriptEventManager {
 		}
 	};
 	
-	private static volatile BattleScriptEventManager instance;
+	private static BattleScriptEventManager instance;
 
 	public static BattleScriptEventManager getInstance() {
 		if (instance == null) {

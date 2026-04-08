@@ -458,10 +458,18 @@ public class Animation implements IArray, LRelease {
 		return this;
 	}
 
+	public Animation reset() {
+		return reset(-1);
+	}
+
 	/**
 	 * 刷新动画为初始状态
+	 * 
+	 * @param loop
+	 * @return
 	 */
-	public Animation reset() {
+	public Animation reset(int loop) {
+		intervalTime.reset();
 		animTime = 0;
 		if (isReversed) {
 			currentFrameIndex = maxFrame - 1;
@@ -469,7 +477,7 @@ public class Animation implements IArray, LRelease {
 			currentFrameIndex = 0;
 		}
 		loopPlay = 0;
-		loopCount = -1;
+		loopCount = loop;
 		isRunning = true;
 		return this;
 	}

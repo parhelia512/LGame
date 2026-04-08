@@ -59,11 +59,19 @@ public class BattleComboSystem {
 
 		private int comboEnergyCost;
 
-		public ComboSkill(String id, String name, String description, BattleType type, int damage, int mpCost,
-				float hitRate, float critRate, int comboEnergyCost, float cooldownDuration) {
+		public ComboSkill(int id, String name, String description, BattleType type, int damage, int mpCost,
+				float hitRate, float critRate, int combo, float cooldownDuration) {
 			super(id, name, description, type, damage, mpCost, hitRate, critRate, null, null, null, 1, false, 5, 0.95f,
 					40, 3, cooldownDuration, RangeType.SINGLE, 1, 1);
-			this.comboEnergyCost = comboEnergyCost;
+			this.comboEnergyCost = combo;
+		}
+
+		public ComboSkill(int id, String name, BattleType type, int damage, int mpCost, float hitRate, float critRate,
+				float baseSuccessRate, int moraleCost, int actionPointCost, int combo, float cooldownDuration,
+				RangeType rangeType, int rangeDistance, int rangeRadius) {
+			super(id, name, type, damage, mpCost, hitRate, critRate, baseSuccessRate, moraleCost, actionPointCost,
+					cooldownDuration, rangeType, rangeDistance, rangeRadius);
+			this.comboEnergyCost = combo;
 		}
 
 		public boolean canCast(BattleMapObject caster, ComboEnergy energy) {

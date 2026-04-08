@@ -485,6 +485,6 @@ public class BattleTile {
 	}
 
 	public boolean isPassable() {
-		return tiletype.isPassable() || passable;
+		return tiletype.isPassable() && passable;
 	}
 }

@@ -36,7 +36,8 @@ import loon.utils.MathUtils;
 public class StringEffect extends BaseAbstractEffect {
 
 	public static enum StringEffectModel {
-		BASE, AWAY, ZOOM, SHAKE, ROTATED, ZOOM_ROTATED, AWAY_ZOOM_ROTATED, AWAY_SHAKE_ROTATED, AWAY_SHAKE_ZOOM_ROTATED
+		BASE, AWAY, ZOOM, SHAKE, ROTATED, ZOOM_ROTATED, AWAY_ZOOM_ROTATED, AWAY_SHAKE_ROTATED, AWAY_SHAKE_ZOOM_ROTATED,
+		FADE_SCALE, FADE_COLOR, TRAIL, WAVE, FLASH
 	}
 
 	private final static float MOVE_VALUE = 1.5f;
@@ -452,6 +453,29 @@ public class StringEffect extends BaseAbstractEffect {
 				onShakeEffect();
 				onZoomEffect();
 				onRotatedEffect();
+				break;
+			case FADE_SCALE:
+				onZoomEffect();
+				this._objectAlpha -= _alphaUpdate * 1.1f;
+				break;
+			case FADE_COLOR:
+				this._objectAlpha -= _alphaUpdate;
+				_baseColor = _baseColor.interpolate(_baseColor, 1f - _objectAlpha);
+				break;
+			case TRAIL:
+				onAwayEffect();
+				this._objectAlpha -= _alphaUpdate;
+				break;
+			case WAVE:
+				float wave = MathUtils.sin(MathUtils.random() * 0.2f) * 5f;
+				getLocation().addSelf(0, wave);
+				this._objectAlpha -= _alphaUpdate;
+				break;
+			case FLASH:
+				if (MathUtils.random(0, 20) % 5 == 0) {
+					this._objectAlpha = (this._objectAlpha > 0.5f) ? 0.2f : 1f;
+				}
+				this._objectAlpha -= _alphaUpdate * 0.5f;
 				break;
 			}
 			if (_objectAlpha <= 0) {

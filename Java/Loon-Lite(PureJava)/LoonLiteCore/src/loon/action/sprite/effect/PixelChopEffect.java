@@ -21,6 +21,7 @@
 package loon.action.sprite.effect;
 
 import loon.LSysException;
+import loon.LSystem;
 import loon.action.sprite.ISprite;
 import loon.canvas.LColor;
 import loon.opengl.GLEx;
@@ -64,8 +65,10 @@ public class PixelChopEffect extends PixelBaseEffect {
 		/**
 		 * ALL combined to Cross
 		 */
-		ALLCROSS;
+		ALLCROSS, CIRCLE, CIRCLE_DASH, STAR, MULTI
 	}
+
+	private final LColor _baseChopColor = new LColor();
 
 	private ChopDirection _direction;
 
@@ -73,7 +76,11 @@ public class PixelChopEffect extends PixelBaseEffect {
 
 	private float _width;
 
+	private float _progress;
+
 	private int _mode;
+
+	private boolean _afterEffect;
 
 	public static PixelBaseEffect chop(ChopDirection dir, LColor color, int size, ISprite spr) {
 		return chop(dir, color, size, spr, false);
@@ -89,8 +96,8 @@ public class PixelChopEffect extends PixelBaseEffect {
 			throw new LSysException("The chop target does not exist !");
 		}
 		final int frame = MathUtils.ifloor(MathUtils.max(spr.getWidth(), spr.getHeight()) / 3f);
-		final float centerX = spr.getX() + spr.getWidth() / 2 + offsetX;
-		final float centerY = spr.getY() + spr.getHeight() / 2 + offsetY;
+		final float centerX = spr.getX() + spr.getWidth() / 2f + offsetX;
+		final float centerY = spr.getY() + spr.getHeight() / 2f + offsetY;
 		if (rand) {
 			return createRandom(color, centerX, centerY, size, frame);
 		} else {
@@ -107,36 +114,24 @@ public class PixelChopEffect extends PixelBaseEffect {
 	}
 
 	public static PixelBaseEffect create(ChopDirection dir, LColor color, float x, float y, int width, int frameLimit) {
-		return PixelChopEffect.get(dir, color, x, y, width, frameLimit).setAutoRemoved(true);
+		return get(dir, color, x, y, width, frameLimit).setAutoRemoved(true);
 	}
 
 	public static PixelBaseEffect createRandom(LColor color, float x, float y, int width, int frameLimit) {
-		return PixelChopEffect.getRandom(color, x, y, width, frameLimit).setAutoRemoved(true);
+		return getRandom(color, x, y, width, frameLimit).setAutoRemoved(true);
 	}
 
 	public static PixelChopEffect get(ChopDirection dir, LColor color, float x, float y, int width, int frameLimit) {
-		return new PixelChopEffect(dir, color, x, y, width, frameLimit);
+		return new PixelChopEffect(dir, color, 0, x, y, width, frameLimit);
 	}
 
 	public static PixelChopEffect getRandom(LColor color, float x, float y, int width, int frameLimit) {
-		final int rand = MathUtils.nextInt(0, 6);
-		switch (rand) {
-		default:
-		case 0:
+		final int rand = MathUtils.random(10);
+		ChopDirection[] directions = ChopDirection.values();
+		if (rand >= directions.length) {
 			return new PixelChopEffect(ChopDirection.WNTES, color, x, y, width, frameLimit);
-		case 1:
-			return new PixelChopEffect(ChopDirection.NETSW, color, x, y, width, frameLimit);
-		case 2:
-			return new PixelChopEffect(ChopDirection.LTR, color, x, y, width, frameLimit);
-		case 3:
-			return new PixelChopEffect(ChopDirection.TTB, color, x, y, width, frameLimit);
-		case 4:
-			return new PixelChopEffect(ChopDirection.LTCROSS, color, x, y, width, frameLimit);
-		case 5:
-			return new PixelChopEffect(ChopDirection.WNCROSS, color, x, y, width, frameLimit);
-		case 6:
-			return new PixelChopEffect(ChopDirection.ALLCROSS, color, x, y, width, frameLimit);
 		}
+		return new PixelChopEffect(directions[rand], color, x, y, width, frameLimit);
 	}
 
 	public PixelChopEffect(LColor color, float x, float y) {
@@ -164,7 +159,7 @@ public class PixelChopEffect extends PixelBaseEffect {
 	}
 
 	public PixelChopEffect(ChopDirection dir, LColor color, int mode, float x, float y, int frameLimit) {
-		this(dir, color, mode, x, y, 2, 25);
+		this(dir, color, mode, x, y, 2, frameLimit);
 	}
 
 	public PixelChopEffect(LColor color, int x, int y, int width, int frameLimit) {
@@ -191,112 +186,132 @@ public class PixelChopEffect extends PixelBaseEffect {
 		this._viewX = x;
 		this._viewY = y;
 		this._limit = frameLimit;
+		this._afterEffect = width > 1 && frameLimit > LSystem.LAYER_TILE_SIZE;
 		setDelay(0);
 		setEffectDelay(0);
 	}
 
 	private void paintChop(GLEx g, ChopDirection dir, float tx, float ty) {
+
 		final float x = _viewX - tx;
 		final float y = _viewY - ty;
-		int f = super._frame;
-		if (f > _limit) {
-			f = _limit - f;
+
+		final int currentFrame = MathUtils.min(super._frame, _limit);
+		final int size = MathUtils.iceil(currentFrame * _width);
+
+		switch (dir) {
+		case LTR:
+		case TTB:
+		case NETSW:
+		case WNTES:
+			paintLineChop(g, dir, x, y, currentFrame);
+			break;
+		case CIRCLE:
+			g.drawOval(x - size, y - size, size * 2f, size * 2f);
+			break;
+		case CIRCLE_DASH:
+			g.drawDashCircle(x - size, y - size, size * 2, _width);
+			break;
+		case STAR:
+			final float starSize = size * 0.8f;
+			for (int i = 0; i < 8; i++) {
+				float angle = MathUtils.PI * i / 4f;
+				float sx = x + (MathUtils.cos(angle) * starSize);
+				float sy = y + (MathUtils.sin(angle) * starSize);
+				g.drawLine(x, y, sx, sy, _width);
+			}
+			break;
+		case MULTI:
+			final float lineSpacing = size * 0.25f;
+			for (int i = -2; i <= 2; i++) {
+				g.drawLine(x - size, y + i * lineSpacing, x + size, y + i * lineSpacing, _width);
+			}
+			break;
+		default:
+			paintLineChop(g, dir, x, y, currentFrame);
+			break;
 		}
-		float x1 = 0f;
-		float y1 = 0f;
-		float x2 = 0f;
-		float y2 = 0f;
-		float offset = 0f;
-		if (_mode == 0) {
-			switch (dir) {
-			case LTR:
-				offset = MathUtils.floor(f / 3);
-				x1 = x - f - offset;
+	}
+
+	private void paintLineChop(GLEx g, ChopDirection dir, float x, float y, int currentFrame) {
+		float x1 = 0f, y1 = 0f, x2 = 0f, y2 = 0f;
+		float offset = currentFrame / 3f;
+
+		switch (dir) {
+		case LTR:
+			if (_mode == 0) {
+				x1 = x - currentFrame - offset;
 				y1 = y;
-				x2 = x + f + offset;
-				y2 = y1;
-				break;
-			case TTB:
-				offset = MathUtils.floor(f / 3);
-				x1 = x;
-				y1 = y - f - offset;
-				x2 = x1;
-				y2 = y + f + offset;
-				break;
-			case NETSW:
-				x1 = x - f;
-				y1 = y + f;
-				x2 = x + f;
-				y2 = y - f;
-				break;
-			case WNTES:
-			default:
-				x1 = x - f;
-				y1 = y - f;
-				x2 = x + f;
-				y2 = y + f;
-				break;
+				x2 = x + currentFrame + offset;
+				y2 = y;
+			} else if (_mode == 1) {
+				x1 = x - currentFrame;
+				y1 = y;
+				x2 = x;
+				y2 = y;
+			} else {
+				x1 = x - _limit;
+				y1 = y;
+				x2 = x + _limit;
+				y2 = y;
 			}
-		} else if (_mode == 1) {
-			switch (dir) {
-			case LTR:
-				offset = MathUtils.floor(_limit / 3);
-				x1 = x - _limit - offset + f;
-				y1 = y;
-				x2 = x + _limit + offset + f;
-				y2 = y1;
-				break;
-			case TTB:
-				offset = MathUtils.floor(_limit / 3);
+			break;
+		case TTB:
+			if (_mode == 0) {
 				x1 = x;
-				y1 = y - _limit - offset + f;
-				x2 = x1;
-				y2 = y + _limit + offset + f;
-				break;
-			case NETSW:
-				x1 = x - _limit - f;
-				y1 = y + _limit + f;
-				x2 = x + _limit - f;
-				y2 = y - _limit + f;
-				break;
-			case WNTES:
-			default:
-				x1 = x - _limit + f;
-				y1 = y - _limit + f;
-				x2 = x + _limit + f;
-				y2 = y + _limit + f;
-				break;
+				y1 = y - currentFrame - offset;
+				x2 = x;
+				y2 = y + currentFrame + offset;
+			} else if (_mode == 1) {
+				x1 = x;
+				y1 = y - currentFrame;
+				x2 = x;
+				y2 = y;
+			} else {
+				x1 = x;
+				y1 = y - _limit;
+				x2 = x;
+				y2 = y + _limit;
 			}
-		} else {
-			switch (dir) {
-			case LTR:
-				offset = MathUtils.floor(_limit / 3);
-				x1 = x - _limit - offset;
-				y1 = y;
-				x2 = x + _limit + offset;
-				y2 = y1;
-				break;
-			case TTB:
-				offset = MathUtils.floor(_limit / 3);
+			break;
+		case NETSW:
+			if (_mode == 0) {
+				x1 = x - currentFrame;
+				y1 = y + currentFrame;
+				x2 = x + currentFrame;
+				y2 = y - currentFrame;
+			} else if (_mode == 1) {
 				x1 = x;
-				y1 = y - _limit - offset;
-				x2 = x1;
-				y2 = y + _limit + offset;
-				break;
-			case NETSW:
+				y1 = y;
+				x2 = x + currentFrame;
+				y2 = y - currentFrame;
+			} else {
 				x1 = x - _limit;
 				y1 = y + _limit;
 				x2 = x + _limit;
 				y2 = y - _limit;
-				break;
-			case WNTES:
-			default:
+			}
+			break;
+		case WNTES:
+			if (_mode == 0) {
+				x1 = x - currentFrame;
+				y1 = y - currentFrame;
+				x2 = x + currentFrame;
+				y2 = y + currentFrame;
+			} else if (_mode == 1) {
+				x1 = x;
+				y1 = y;
+				x2 = x + currentFrame;
+				y2 = y + currentFrame;
+			} else {
 				x1 = x - _limit;
 				y1 = y - _limit;
 				x2 = x + _limit;
 				y2 = y + _limit;
-				break;
 			}
+			break;
+		default:
+			break;
 		}
 		g.drawLine(x1, y1, x2, y2, _width);
 	}
@@ -306,9 +321,23 @@ public class PixelChopEffect extends PixelBaseEffect {
 		if (super._completed) {
 			return;
 		}
-		int tmp = g.color();
-		g.setColor(_baseColor);
-		switch (this._direction) {
+
+		final int oldColor = g.color();
+		_progress = super._frame / (float) _limit;
+		float alpha = MathUtils.max(1f - (_progress * 0.8f), 0f);
+
+		LColor renderColor;
+		if (_afterEffect) {
+			renderColor = _baseChopColor.interpolate(_baseColor, _progress);
+			renderColor.a = alpha;
+			g.setColor(renderColor);
+		} else {
+			renderColor = _baseColor;
+			renderColor.a = alpha;
+			g.setColor(renderColor);
+		}
+
+		switch (_direction) {
 		case LTCROSS:
 			paintChop(g, ChopDirection.LTR, tx, ty);
 			paintChop(g, ChopDirection.TTB, tx, ty);
@@ -324,13 +353,45 @@ public class PixelChopEffect extends PixelBaseEffect {
 			paintChop(g, ChopDirection.NETSW, tx, ty);
 			break;
 		default:
-			paintChop(g, this._direction, tx, ty);
+			paintChop(g, _direction, tx, ty);
 			break;
 		}
-		g.setColor(tmp);
+
+		if (_afterEffect && alpha > 0.15f) {
+			LColor shadowColor = renderColor.mul(0.45f);
+			g.setColor(shadowColor);
+			paintChop(g, _direction, tx + 1.5f, ty + 1.5f);
+		}
+
+		g.setColor(oldColor);
+
 		if (super._frame >= _limit) {
 			super._completed = true;
 		}
+	}
+
+	public float getProgress() {
+		return _progress;
+	}
+
+	public boolean isAfterEffect() {
+		return _afterEffect;
+	}
+
+	public PixelChopEffect setAfterEffect(boolean afterimage) {
+		_afterEffect = afterimage;
+		return this;
+	}
+
+	public PixelChopEffect setBaseChopColor(LColor c) {
+		if (c != null) {
+			_baseChopColor.setColor(c);
+		}
+		return this;
+	}
+
+	public LColor getBaseChopColor() {
+		return _baseChopColor;
 	}
 
 	public int getMode() {

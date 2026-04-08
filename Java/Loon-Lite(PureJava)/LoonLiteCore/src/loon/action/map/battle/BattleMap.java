@@ -173,6 +173,8 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	private final TileIsoHighlighter _highlighter = new TileIsoHighlighter();
 
+	private final BattleSkill _defaultGlobalSkill = new BattleSkill(0, "map");
+
 	public BattleMap(BattleTileMake make, Field2D field2d, Screen screen, GameEventBus<Object> events,
 			IsoConfig config) {
 		this(make, field2d, 0, 0, screen, events, config);
@@ -231,6 +233,8 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		}
 		this._otherIsoGrid = new TileIsoRectGrid(row, col, x, y, config.tileWidth * config.scaleX,
 				(config.tileHeight * config.scaleY) / 2f);
+		_defaultGlobalSkill.setRunning(false);
+		_defaultGlobalSkill.setBattleMap(this);
 	}
 
 	public BattleMapObject addMapObject(int gx, int gy, int cw, int ch, String name, ISprite sprite,
@@ -524,8 +528,8 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		int startY = MathUtils.ifloor(worldLTY / tileH);
 		int endX = MathUtils.iceil(worldRBX / tileW);
 		int endY = MathUtils.iceil(worldRBY / tileH);
-		final int dynamicMarginX = mapTileW / 2 + 4;
-		final int dynamicMarginY = mapTileH / 2 + 4;
+		final int dynamicMarginX = mapTileW / 2 + 6;
+		final int dynamicMarginY = mapTileH / 2 + 6;
 		startX -= dynamicMarginX;
 		startY -= dynamicMarginY;
 		endX += dynamicMarginX;
@@ -566,6 +570,10 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		if (_mapSprites != null) {
 			_mapSprites.paint(g, posOffsetX, posOffsetY, startX * tileWidth, startY * tileHeight, endX * tileWidth,
 					endY * tileHeight);
+		}
+		if (_defaultGlobalSkill.running) {
+			_defaultGlobalSkill.updateSkill(_deltaTime);
+			_defaultGlobalSkill.drawSkillEffect(g, _deltaTime, offsetX, offsetY);
 		}
 	}
 
@@ -1485,6 +1493,14 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		return this;
 	}
 
+	public int getPixelInWidth() {
+		return _pixelInWidth;
+	}
+
+	public int getPixelInHeight() {
+		return _pixelInHeight;
+	}
+
 	public LTexture getBackground() {
 		return this._background;
 	}
@@ -1760,6 +1776,10 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		return this;
 	}
 
+	public BattleSkill getGlobalSkill() {
+		return _defaultGlobalSkill;
+	}
+
 	public BattleMap setOffsetX(float sx) {
 		this._offset.setX(sx);
 		return this;
@@ -1858,4 +1878,5 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		_collSpriteListener = null;
 		removeActionEvents(this);
 	}
+
 }
