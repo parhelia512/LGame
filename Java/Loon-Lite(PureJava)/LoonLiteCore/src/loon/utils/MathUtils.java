@@ -1775,6 +1775,238 @@ public final class MathUtils {
 		return b + cameraLerp(elapsed, r) * (t - b);
 	}
 
+	public static Vector2f toBarycoord(Vector2f p, Vector2f a, Vector2f b, Vector2f c, Vector2f barycentricOut) {
+		Vector2f tmp = TempVars.get().vec2f6;
+		Vector2f v0 = tmp.set(b).sub(a);
+		Vector2f v1 = tmp.set(c).sub(a);
+		Vector2f v2 = tmp.set(p).sub(a);
+		float d00 = v0.dot(v0);
+		float d01 = v0.dot(v1);
+		float d11 = v1.dot(v1);
+		float d20 = v2.dot(v0);
+		float d21 = v2.dot(v1);
+		float denom = d00 * d11 - d01 * d01;
+		barycentricOut.x = (d11 * d20 - d01 * d21) / denom;
+		barycentricOut.y = (d00 * d21 - d01 * d20) / denom;
+		return barycentricOut;
+	}
+
+	public static boolean barycoordInsideTriangle(Vector2f barycentric) {
+		return barycentric.x >= 0 && barycentric.y >= 0 && barycentric.x + barycentric.y <= 1;
+	}
+
+	public static Vector2f fromBarycoord(Vector2f barycentric, Vector2f a, Vector2f b, Vector2f c,
+			Vector2f interpolatedOut) {
+		float u = 1 - barycentric.x - barycentric.y;
+		interpolatedOut.x = u * a.x + barycentric.x * b.x + barycentric.y * c.x;
+		interpolatedOut.y = u * a.y + barycentric.x * b.y + barycentric.y * c.y;
+		return interpolatedOut;
+	}
+
+	public static float fromBarycoord(Vector2f barycentric, float a, float b, float c) {
+		float u = 1 - barycentric.x - barycentric.y;
+		return u * a + barycentric.x * b + barycentric.y * c;
+	}
+
+	public static float lowestPositiveRoot(float a, float b, float c) {
+		if (a == 0) {
+			if (b == 0) {
+				return Float.NaN;
+			}
+			float r = -c / b;
+			return r > 0 ? r : Float.NaN;
+		}
+		float det = b * b - 4 * a * c;
+		if (det < 0) {
+			return Float.NaN;
+		}
+		float sqrtD = sqrt(det);
+		float invA = 1 / (2 * a);
+		float r1 = (-b - sqrtD) * invA;
+		float r2 = (-b + sqrtD) * invA;
+		if (r1 > r2) {
+			float tmp = r2;
+			r2 = r1;
+			r1 = tmp;
+		}
+		if (r1 > 0) {
+			return r1;
+		}
+		if (r2 > 0) {
+			return r2;
+		}
+		return Float.NaN;
+	}
+
+	public static boolean colinear(float x1, float y1, float x2, float y2, float x3, float y3) {
+		float dx21 = x2 - x1, dy21 = y2 - y1;
+		float dx32 = x3 - x2, dy32 = y3 - y2;
+		float det = dx32 * dy21 - dx21 * dy32;
+		return Math.abs(det) < MathUtils.FLOAT_ROUNDING_ERROR;
+	}
+
+	public static Vector2f triangleCentroid(float x1, float y1, float x2, float y2, float x3, float y3,
+			Vector2f centroid) {
+		centroid.x = (x1 + x2 + x3) / 3;
+		centroid.y = (y1 + y2 + y3) / 3;
+		return centroid;
+	}
+
+	public static Vector2f triangleCircumcenter(float x1, float y1, float x2, float y2, float x3, float y3,
+			Vector2f circumcenter) {
+		float dx21 = x2 - x1, dy21 = y2 - y1;
+		float dx32 = x3 - x2, dy32 = y3 - y2;
+		float dx13 = x1 - x3, dy13 = y1 - y3;
+		float det = dx32 * dy21 - dx21 * dy32;
+		if (abs(det) < FLOAT_ROUNDING_ERROR) {
+			throw new IllegalArgumentException("The triangle points must not be colinear.");
+		}
+		det *= 2;
+		float sqr1 = x1 * x1 + y1 * y1, sqr2 = x2 * x2 + y2 * y2, sqr3 = x3 * x3 + y3 * y3;
+		circumcenter.set((sqr1 * dy32 + sqr2 * dy13 + sqr3 * dy21) / det,
+				-(sqr1 * dx32 + sqr2 * dx13 + sqr3 * dx21) / det);
+		return circumcenter;
+	}
+
+	public static float triangleQuality(float x1, float y1, float x2, float y2, float x3, float y3) {
+		float dx12 = x1 - x2, dy12 = y1 - y2;
+		float dx23 = x2 - x3, dy23 = y2 - y3;
+		float dx31 = x3 - x1, dy31 = y3 - y1;
+		float sqLength1 = dx12 * dx12 + dy12 * dy12;
+		float sqLength2 = dx23 * dx23 + dy23 * dy23;
+		float sqLength3 = dx31 * dx31 + dy31 * dy31;
+		return sqrt(min(sqLength1, min(sqLength2, sqLength3))) / triangleCircumradius(x1, y1, x2, y2, x3, y3);
+	}
+
+	public static float triangleCircumradius(float x1, float y1, float x2, float y2, float x3, float y3) {
+		float m1, m2, mx1, mx2, my1, my2, x, y;
+		if (abs(y2 - y1) < FLOAT_ROUNDING_ERROR) {
+			m2 = -(x3 - x2) / (y3 - y2);
+			mx2 = (x2 + x3) / 2;
+			my2 = (y2 + y3) / 2;
+			x = (x2 + x1) / 2;
+			y = m2 * (x - mx2) + my2;
+		} else if (abs(y3 - y2) < FLOAT_ROUNDING_ERROR) {
+			m1 = -(x2 - x1) / (y2 - y1);
+			mx1 = (x1 + x2) / 2;
+			my1 = (y1 + y2) / 2;
+			x = (x3 + x2) / 2;
+			y = m1 * (x - mx1) + my1;
+		} else {
+			m1 = -(x2 - x1) / (y2 - y1);
+			m2 = -(x3 - x2) / (y3 - y2);
+			mx1 = (x1 + x2) / 2;
+			mx2 = (x2 + x3) / 2;
+			my1 = (y1 + y2) / 2;
+			my2 = (y2 + y3) / 2;
+			x = (m1 * mx1 - m2 * mx2 + my2 - my1) / (m1 - m2);
+			y = m1 * (x - mx1) + my1;
+		}
+		float dx = x1 - x, dy = y1 - y;
+		return sqrt(dx * dx + dy * dy);
+	}
+
+	public static float triangleArea(float x1, float y1, float x2, float y2, float x3, float y3) {
+		return abs((x1 - x3) * (y2 - y1) - (x1 - x2) * (y3 - y1)) * 0.5f;
+	}
+
+	public static Vector2f quadrilateralCentroid(float x1, float y1, float x2, float y2, float x3, float y3, float x4,
+			float y4, Vector2f centroid) {
+		float cx1 = (x1 + x2 + x3) / 3, cy1 = (y1 + y2 + y3) / 3;
+		float cx2 = (x1 + x3 + x4) / 3, cy2 = (y1 + y3 + y4) / 3;
+		float area1 = abs((x1 - x3) * (y2 - y1) - (x1 - x2) * (y3 - y1)) * 0.5f;
+		float area2 = abs((x1 - x3) * (y4 - y1) - (x1 - x4) * (y3 - y1)) * 0.5f;
+		float total = area1 + area2;
+		if (total == 0) {
+			centroid.x = cx1;
+			centroid.y = cy1;
+		} else {
+			centroid.x = (cx1 * area1 + cx2 * area2) / total;
+			centroid.y = (cy1 * area1 + cy2 * area2) / total;
+		}
+		return centroid;
+	}
+
+	public static Vector2f polygonCentroid(float[] polygon, int offset, int count, Vector2f centroid) {
+		if (count < 6) {
+			return new Vector2f();
+		}
+		float area = 0, x = 0, y = 0;
+		int last = offset + count - 2;
+		float x1 = polygon[last], y1 = polygon[last + 1];
+		for (int i = offset; i <= last; i += 2) {
+			float x2 = polygon[i], y2 = polygon[i + 1];
+			float a = x1 * y2 - x2 * y1;
+			area += a;
+			x += (x1 + x2) * a;
+			y += (y1 + y2) * a;
+			x1 = x2;
+			y1 = y2;
+		}
+		if (area == 0) {
+			centroid.x = 0;
+			centroid.y = 0;
+		} else {
+			area *= 0.5f;
+			centroid.x = x / (6 * area);
+			centroid.y = y / (6 * area);
+		}
+		return centroid;
+	}
+
+	public static float polygonArea(float[] polys, int offset, int count) {
+		float area = 0;
+		int last = offset + count - 2;
+		float x1 = polys[last], y1 = polys[last + 1];
+		for (int i = offset; i <= last; i += 2) {
+			float x2 = polys[i], y2 = polys[i + 1];
+			area += x1 * y2 - x2 * y1;
+			x1 = x2;
+			y1 = y2;
+		}
+		return abs(area * 0.5f);
+	}
+
+	public static void ensureCCW(float[] polys) {
+		ensureCCW(polys, 0, polys.length);
+	}
+
+	public static void ensureCCW(float[] polys, int offset, int count) {
+		if (isCCW(polys, offset, count)) {
+			return;
+		}
+		reverseVertices(polys, offset, count);
+	}
+
+	public static void reverseVertices(float[] polys, int offset, int count) {
+		int lastX = offset + count - 2;
+		for (int i = offset, n = offset + count / 2; i < n; i += 2) {
+			int other = lastX - i;
+			float x = polys[i];
+			float y = polys[i + 1];
+			polys[i] = polys[other];
+			polys[i + 1] = polys[other + 1];
+			polys[other] = x;
+			polys[other + 1] = y;
+		}
+	}
+
+	public static boolean isCCW(float[] polys, int offset, int count) {
+		if (count < 6) {
+			return false;
+		}
+		float area = 0;
+		int last = offset + count - 2;
+		float x1 = polys[last], y1 = polys[last + 1];
+		for (int i = offset; i <= last; i += 2) {
+			float x2 = polys[i], y2 = polys[i + 1];
+			area += x1 * y2 - x2 * y1;
+			x1 = x2;
+			y1 = y2;
+		}
+		return area < 0;
+	}
+
 	public static float hermite(float value1, float tangent1, float value2, float tangent2, float amount) {
 		float v1 = value1, v2 = value2, t1 = tangent1, t2 = tangent2, s = amount, result;
 		float sCubed = s * s * s;

@@ -30,6 +30,8 @@ import loon.action.map.battle.BattleMap;
 import loon.action.map.battle.BattleMapGenerator;
 import loon.action.map.battle.BattleMapObject;
 import loon.action.map.battle.BattlePathFinder.PathResult;
+import loon.action.map.battle.BattleSkill.SKillEventType;
+import loon.action.map.battle.BattleSkill;
 import loon.action.map.battle.BattleTileMake;
 import loon.action.map.battle.BattleTileMake.TileAnimation;
 import loon.action.map.battle.BattleTileType;
@@ -65,7 +67,7 @@ public class BattleTest extends Stage {
 		// 瓦片大小32x32
 		config.setTileSize(32, 32);
 		// 显示时按照缩放2倍处理
-		// config.setScale(2f);
+		config.setScale(1f);
 		// 构建一个随机地图，瓦片数量32x24
 		BattleMapGenerator generator = new BattleMapGenerator(32, 24);
 
@@ -228,17 +230,42 @@ public class BattleTest extends Stage {
 		});
 		// 将地图对象缩放2倍(瓦片的缩放和地图对象的缩放不通用，需分别设置)
 		// obj.setScale(2f);
-		
+
 		// 构建一个纹理动画用于特技画面
-		Animation skillAni = Animation.getDefaultAnimation("rasaksingle.png",192,192,50);
-		
+		Animation skillAni = Animation.getDefaultAnimation("rasaksingle.png", 192, 192, 50);
+
 		// 启动全局特技(battleMap中特技默认应该注入BattleMapObject，但是我绑定了一个全局特技对象，方便用于点击即攻击，剧情特效之类)
 		newMap.getGlobalSkill().setRunning(true);
+		// 注入特技主动画(最多三个，分别是底层背景动画(天崩地裂血海什么的bgEffectAnim)，主动画（就是这个skillEffectAnim）,还有一个攻击动画(attackEffectAnim))
+		// 一般注入一个就够了，若是大招或者混合特效之类，可以加入三个混合效果
 		newMap.getGlobalSkill().setSkillEffectAnim(skillAni);
+		// 循环一次
 		newMap.getGlobalSkill().setLoopCount(1);
+		// 攻击范围3
 		newMap.getGlobalSkill().setRangeRadius(3);
 		// 设置特技效果大小
 		newMap.getGlobalSkill().setSize(300, 300);
+		// 攻击范围十字
+		newMap.getGlobalSkill().setRangeType(RangeType.CROSS);
+		// 8方向攻击范围
+		// newMap.getGlobalSkill().setAllDirection(true);
+		// 为增加表现力，默认是有出招地图震荡模式的，当然也可关闭
+		// newMap.getGlobalSkill().setShakeEnable(false);
+		newMap.getGlobalSkill().castEffect(obj);
+		// 触发特技事件监听，此处可以处理各种事务，loon默认是ON_HIT后调用effect接口，推荐在setEffect设定参数,但不强制要求，毕竟loon是框架不是直接的rmvx
+		newMap.getGlobalSkill().addTriggerEvent(new BattleSkill.SkillTriggerEvent() {
+
+			@Override
+			public boolean onEvent(SKillEventType eventType, BattleMapObject caster, BattleMapObject target) {
+				System.out.println(eventType);
+				return false;
+			}
+
+			@Override
+			public String getDescription() {
+				return null;
+			}
+		});
 		// 拖拽地图
 		drag((x, y) -> {
 			newMap.scroll(x, y);
@@ -247,7 +274,9 @@ public class BattleTest extends Stage {
 		up((x, y) -> {
 			// 在指定坐标触发特技
 			newMap.getGlobalSkill().castEffect(x, y);
-		
+			// 在指定地图对象上触发特技
+			// newMap.getGlobalSkill().castEffect(obj);
+
 			// 以像素坐标,获得实际瓦片坐标
 			// Vector2f pos = newMap.findTileXY(x, y);
 			// 请求指定地图对象到指定像素坐标的寻径，并返回瓦片坐标的寻径结果

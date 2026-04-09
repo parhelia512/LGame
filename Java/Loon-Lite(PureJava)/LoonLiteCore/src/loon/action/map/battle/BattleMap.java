@@ -37,7 +37,6 @@ import loon.action.map.TileMapCollision;
 import loon.action.map.Field2D.MapSwitchMaker;
 import loon.action.map.TileIsoHighlighter;
 import loon.action.map.TileIsoHighlighter.EffectType;
-import loon.action.map.TileIsoRectGrid;
 import loon.action.map.battle.BattleMovementManager.MovementListener;
 import loon.action.map.battle.BattlePathFinder.PathResult;
 import loon.action.map.battle.BattleTile.EffectService;
@@ -61,6 +60,7 @@ import loon.geom.PointI;
 import loon.geom.RectBox;
 import loon.geom.Sized;
 import loon.geom.Vector2f;
+import loon.geom.XY;
 import loon.opengl.GLEx;
 import loon.utils.ISOUtils;
 import loon.utils.ISOUtils.IsoConfig;
@@ -116,7 +116,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	private BattleTile[][] _mapTiles;
 
 	// 地图自身存储子精灵的的Sprites
-	private Sprites _mapSprites;
+	private final Sprites _mapSprites;
 
 	// 显示Map的上级Sprites
 	private Sprites _screenSprites;
@@ -168,8 +168,6 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	private LColor _drawGridColor = LColor.red;
 
 	private boolean _drawGrid, _useOtherGrid;
-
-	private TileIsoRectGrid _otherIsoGrid;
 
 	private final TileIsoHighlighter _highlighter = new TileIsoHighlighter();
 
@@ -224,15 +222,11 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		this._visible = _playAnimation = true;
 		this._mapSprites = new Sprites("BattleMapSprites", screen == null ? LSystem.getProcess().getScreen() : screen,
 				_pixelInWidth, _pixelInHeight);
-		final int row = _field2d == null ? MathUtils.iceil(_pixelInWidth / config.tileWidth) : _field2d.getWidth();
-		final int col = _field2d == null ? MathUtils.iceil(_pixelInHeight / config.tileHeight) : _field2d.getHeight();
 		if (x == 0 && y == 0) {
 			this.fixMapLocationToCenter();
 		} else {
 			this.setLocation(x, y);
 		}
-		this._otherIsoGrid = new TileIsoRectGrid(row, col, x, y, config.tileWidth * config.scaleX,
-				(config.tileHeight * config.scaleY) / 2f);
 		_defaultGlobalSkill.setRunning(false);
 		_defaultGlobalSkill.setBattleMap(this);
 	}
@@ -377,10 +371,6 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		return new Vector2f();
 	}
 
-	public TileIsoRectGrid getTileIsoRectGrid() {
-		return _otherIsoGrid;
-	}
-
 	public boolean isDrawGrid() {
 		return _drawGrid;
 	}
@@ -473,16 +463,11 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	@Override
 	public void update(long elapsedTime) {
+		if (!_visible) {
+			return;
+		}
 		_deltaTime = MathUtils.max(Duration.toS(elapsedTime), LSystem.MIN_SECONE_SPEED_FIXED);
 		_highlighter.update(_deltaTime);
-		if (_useOtherGrid && _otherIsoGrid != null) {
-			_otherIsoGrid.update(elapsedTime);
-		}
-		for (BattleMapObject o : _objects) {
-			if (o != null) {
-				o.update(_deltaTime);
-			}
-		}
 		if (_mapSprites != null) {
 			_mapSprites.update(elapsedTime);
 		}
@@ -564,16 +549,20 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 				}
 			}
 		}
-		if (_useOtherGrid && _otherIsoGrid != null) {
-			_otherIsoGrid.createUI(g, posOffsetX, posOffsetY);
-		}
-		if (_mapSprites != null) {
-			_mapSprites.paint(g, posOffsetX, posOffsetY, startX * tileWidth, startY * tileHeight, endX * tileWidth,
-					endY * tileHeight);
+		_mapSprites.paint(g, posOffsetX, posOffsetY, startX * tileWidth, startY * tileHeight, endX * tileWidth,
+				endY * tileHeight);
+		for (int i = 0; i < _objects.size; i++) {
+			BattleMapObject o = _objects.get(i);
+			if (o != null) {
+				o.paint(g, _deltaTime, posOffsetX, posOffsetY);
+			}
 		}
 		if (_defaultGlobalSkill.running) {
 			_defaultGlobalSkill.updateSkill(_deltaTime);
-			_defaultGlobalSkill.drawSkillEffect(g, _deltaTime, offsetX, offsetY);
+			_defaultGlobalSkill.drawSkillEffect(g, _deltaTime, posOffsetX, posOffsetY);
+		}
+		if (_drawListener != null) {
+			_drawListener.draw(g, posOffsetX, posOffsetY);
 		}
 	}
 
@@ -661,9 +650,21 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		_objects.sort(OBJ_COMPARATOR);
 	}
 
+	public Vector2f findOffsetScreenXY(float touchX, float touchY) {
+		return findOffsetScreenXY(touchX, touchY, 0f, 0f);
+	}
+
+	public Vector2f findOffsetScreenXY(float touchX, float touchY, float offsetX, float offsetY) {
+		Vector2f pos = findTileXY(touchX, touchY);
+		if (pos.x >= 0 && pos.y >= 0) {
+			return getTileToScreen(pos.x(), pos.y(), 0, 0, offsetX, offsetY);
+		}
+		return null;
+	}
+
 	public Vector2f findTileXY(float touchX, float touchY) {
-		int tx = MathUtils.floor(touchX - _offset.x - _objectLocation.x - _isoConfig.offsetX);
-		int ty = MathUtils.floor(touchY - _offset.y - _objectLocation.y - _isoConfig.offsetY);
+		int tx = MathUtils.floor(offsetXNScalePixel(touchX));
+		int ty = MathUtils.floor(offsetYNScalePixel(touchY));
 		Vector2f gridPos = ISOUtils.screenToGrid(tx, ty, _isoConfig, _tempPosition);
 		return gridPos;
 	}
@@ -1443,6 +1444,40 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		return pixelsToTilesHeight(offsetYPixel(y));
 	}
 
+	public Vector2f offsetNScalePixels(XY pos) {
+		if (pos == null) {
+			return offsetPixels(0, 0);
+		}
+		return offsetPixels(pos.getX(), pos.getY());
+	}
+
+	public Vector2f offsetNScalePixels(float x, float y) {
+		return new Vector2f(offsetXNScalePixel(x), offsetYNScalePixel(y));
+	}
+
+	public int getNScalePixelX(float x) {
+		return MathUtils.iceil((x - _objectLocation.x));
+	}
+
+	public int getNScalePixelY(float y) {
+		return MathUtils.iceil((y - _objectLocation.y));
+	}
+
+	public int offsetXNScalePixel(float x) {
+		return MathUtils.iceil(x - _offset.x - _objectLocation.x - _isoConfig.offsetX);
+	}
+
+	public int offsetYNScalePixel(float y) {
+		return MathUtils.iceil(y - _offset.y - _objectLocation.y - _isoConfig.offsetY);
+	}
+
+	public Vector2f offsetPixels(XY pos) {
+		if (pos == null) {
+			return offsetPixels(0, 0);
+		}
+		return offsetPixels(pos.getX(), pos.getY());
+	}
+
 	public Vector2f offsetPixels(float x, float y) {
 		return new Vector2f(offsetXPixel(x), offsetYPixel(y));
 	}
@@ -1461,6 +1496,44 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	public int offsetYPixel(float y) {
 		return MathUtils.iceil((y - _offset.y - _objectLocation.y - _isoConfig.offsetY) / _isoConfig.scaleY);
+	}
+
+	public Vector2f getScreenPixel(XY pos) {
+		if (pos == null) {
+			return getScreenPixel(0, 0);
+		}
+		return getScreenPixel(pos.getX(), pos.getY());
+	}
+
+	public Vector2f getScreenPixel(float x, float y) {
+		return new Vector2f(getScreenPixelX(x), getScreenPixelY(y));
+	}
+
+	public float getScreenPixelX(float x) {
+		return (x + _objectLocation.x + _offset.x + _isoConfig.offsetX) / _isoConfig.scaleX;
+	}
+
+	public float getScreenPixelY(float y) {
+		return (y + _objectLocation.y + _offset.y + _isoConfig.offsetY) / _isoConfig.scaleY;
+	}
+
+	public Vector2f getScreenNScalePixel(XY pos) {
+		if (pos == null) {
+			return getScreenNScalePixel(0, 0);
+		}
+		return getScreenNScalePixel(pos.getX(), pos.getY());
+	}
+
+	public Vector2f getScreenNScalePixel(float x, float y) {
+		return new Vector2f(getScreenPixelX(x), getScreenPixelY(y));
+	}
+
+	public float getScreenNScalePixelX(float x) {
+		return (x + _objectLocation.x + _offset.x + _isoConfig.offsetX);
+	}
+
+	public float getScreenNScalePixelY(float y) {
+		return (y + _objectLocation.y + _offset.y + _isoConfig.offsetY);
 	}
 
 	public boolean inMap(int x, int y) {
@@ -1593,11 +1666,6 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	public Sprites getMapSprites() {
 		return _mapSprites;
-	}
-
-	public BattleMap setMapSprites(Sprites s) {
-		_mapSprites = s;
-		return this;
 	}
 
 	@Override
@@ -1868,12 +1936,18 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		_roll = false;
 		if (_mapSprites != null) {
 			_mapSprites.close();
-			_mapSprites = null;
 		}
 		if (_background != null) {
 			_background.close();
 			_background = null;
 		}
+		for (int i = 0; i < _objects.size; i++) {
+			BattleMapObject o = _objects.get(i);
+			if (o != null) {
+				o.close();
+			}
+		}
+		_defaultGlobalSkill.close();
 		_resizeListener = null;
 		_collSpriteListener = null;
 		removeActionEvents(this);

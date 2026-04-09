@@ -28,6 +28,25 @@ import loon.utils.MathUtils;
  *
  */
 public abstract class RoleValue {
+	/**
+	 * 移动类型
+	 */
+	public static class MoveType {
+		// 步兵
+		public static final int INFANTRY = 0;
+		// 骑兵
+		public static final int CAVALRY = 1;
+		// 飞行
+		public static final int FLY = 2;
+		// 重装
+		public static final int ARMOR = 3;
+		// 魔兽
+		public static final int HOOVES = 4;
+		// 魔法
+		public static final int MAGIC = 5;
+		// 远程
+		public static final int RANGE = 6;
+	}
 
 	private final int _id;
 	private boolean _locked;
@@ -52,6 +71,7 @@ public abstract class RoleValue {
 	protected int movePoints;
 	protected int turnPoints;
 	protected int actionPoints;
+	protected int hitRateBonus;
 
 	protected boolean isAttack;
 	protected boolean isDefense;
@@ -62,6 +82,10 @@ public abstract class RoleValue {
 
 	protected RoleEquip info;
 
+	protected MoveType moveType;
+
+	protected JobType jobType;
+
 	public RoleValue(int id, RoleEquip info, int maxHealth, int maxMana, int attack, int defence, int strength,
 			int intelligence, int fitness, int dexterity, int agility, int lv) {
 		this(id, LSystem.UNKNOWN, info, maxHealth, maxMana, attack, defence, strength, intelligence, fitness, dexterity,
@@ -71,24 +95,24 @@ public abstract class RoleValue {
 	public RoleValue(int id, String name, RoleEquip info, int maxHealth, int maxMana, int attack, int defence,
 			int strength, int intelligence, int fitness, int dexterity, int agility, int lv) {
 		this._id = id;
-		this._roleName = name;
-		this.info = info;
-		this.maxHealth = maxHealth;
-		this.maxMana = maxMana;
-		this.health = maxHealth;
-		this.mana = maxMana;
-		this.agility = agility;
-		this.attack = attack;
-		this.defence = defence;
-		this.strength = strength;
-		this.intelligence = intelligence;
-		this.fitness = fitness;
-		this.dexterity = dexterity;
-		this.level = lv;
+		this._roleName = (name == null) ? LSystem.UNKNOWN : name;
+		this.info = (info == null) ? new RoleEquip(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) : info;
+		this.maxHealth = MathUtils.max(maxHealth, 1);
+		this.maxMana = MathUtils.max(maxMana, 0);
+		this.health = this.maxHealth;
+		this.mana = this.maxMana;
+		this.agility = MathUtils.max(agility, 0);
+		this.attack = MathUtils.max(attack, 0);
+		this.defence = MathUtils.max(defence, 0);
+		this.strength = MathUtils.max(strength, 0);
+		this.intelligence = MathUtils.max(intelligence, 0);
+		this.fitness = MathUtils.max(fitness, 0);
+		this.dexterity = MathUtils.max(dexterity, 0);
+		this.level = MathUtils.max(lv, 1);
 	}
 
 	public RoleValue setActionPriority(int a) {
-		this.actionPriority = a;
+		this.actionPriority = MathUtils.max(a, 0);
 		return this;
 	}
 
@@ -99,17 +123,15 @@ public abstract class RoleValue {
 	public float updateTurnPoints() {
 		int randomBuffer = MathUtils.nextInt(100);
 		this.turnPoints += this.fitness + randomBuffer / 100;
-		if (this.turnPoints > 100) {
-			this.turnPoints = 100;
-		}
+		this.turnPoints = MathUtils.min(this.turnPoints, 100);
 		return this.turnPoints;
 	}
 
 	public int calculateDamage(int enemyDefence, int damageBufferMax) {
+		enemyDefence = MathUtils.max(enemyDefence, 0);
 		float damage = this.attack + 0.5f * this.strength - 0.5f * enemyDefence;
-		if ((damage = MathUtils.ceil(this.variance(damage, damageBufferMax, true))) < 1f) {
-			damage = 1f;
-		}
+		damage = this.variance(damage, damageBufferMax, true);
+		damage = MathUtils.max(damage, 1f);
 		return MathUtils.ifloor(damage);
 	}
 
@@ -122,17 +144,23 @@ public abstract class RoleValue {
 	}
 
 	public int hit(int enemyDex, int enemyAgi, int enemyFitness, int maxChance, int minChance, float hitChance) {
+		hitChance += hitRateBonus;
 		hitChance += (this.dexterity - enemyDex) + 0.5 * (this.fitness - enemyFitness) - enemyAgi;
-		if ((hitChance = this.variance(hitChance, 10, true)) > maxChance) {
-			hitChance = maxChance;
-		} else if (hitChance < minChance) {
-			hitChance = minChance;
-		}
+		hitChance = this.variance(hitChance, 10, true);
+		hitChance = MathUtils.clamp(hitChance, minChance, maxChance);
 		return MathUtils.ceil(hitChance);
 	}
 
 	public RoleValue damage(float damageTaken) {
+		if (this.isInvincible) {
+			return this;
+		}
+		damageTaken = MathUtils.max(damageTaken, 0);
 		this.health = MathUtils.ifloor(this.health - damageTaken);
+		if (this.health <= 0) {
+			this.health = 0;
+			this.die();
+		}
 		return this;
 	}
 
@@ -142,16 +170,9 @@ public abstract class RoleValue {
 
 	public boolean flee(int enemyLevel, int enemyFitness, int maxChance, int minChance, int hitChance) {
 		int fleeChance = hitChance - 3 * (enemyFitness - this.fitness);
-		if (fleeChance > maxChance) {
-			fleeChance = maxChance;
-		} else if (fleeChance < minChance) {
-			fleeChance = minChance;
-		}
+		fleeChance = MathUtils.clamp(fleeChance, minChance, maxChance);
 		int fleeRoll = MathUtils.nextInt(100);
-		if (fleeRoll <= fleeChance) {
-			return true;
-		}
-		return false;
+		return fleeRoll <= fleeChance;
 	}
 
 	public int getID() {
@@ -159,29 +180,29 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue changeHeal(int healChange) {
-		if (healChange != 0) {
-			if (healChange + health > maxHealth) {
-				health = maxHealth;
-			} else if (healChange + health < 1) {
-				health = 0;
-			} else {
-				health += healChange;
+		if (healChange == 0 || isDead) {
+			return this;
+		}
+		if (healChange > 0) {
+			this.health = MathUtils.min(this.health + healChange, this.maxHealth);
+		} else {
+			this.health = MathUtils.max(this.health + healChange, 0);
+			if (this.health == 0) {
+				this.die();
 			}
 		}
 		return this;
 	}
 
 	public RoleValue heal(int healCost, int healAmount) {
-		if (this.getMana() >= healCost) {
-			healAmount = MathUtils.ifloor(this.variance(healAmount, 20, true));
-			this.health += healAmount;
-			if (this.health > this.maxHealth) {
-				this.health = this.maxHealth;
-			}
-			this.mana -= healCost;
+		if (isDead || this.getMana() < healCost) {
+			return this;
 		}
+		healAmount = MathUtils.ifloor(this.variance(healAmount, 20, true));
+		healAmount = MathUtils.max(healAmount, 0);
+		this.health = MathUtils.min(this.health + healAmount, this.maxHealth);
+		this.mana -= healCost;
 		return this;
-
 	}
 
 	public RoleValue heal() {
@@ -194,78 +215,78 @@ public abstract class RoleValue {
 
 	public int regenerateMana(int minRegen, int maxRegen) {
 		int regen = intelligence / 4;
-		if (regen < minRegen) {
-			regen = minRegen;
-		}
-		if (regen > maxRegen) {
-			regen = maxRegen;
-		}
-
+		regen = MathUtils.clamp(regen, minRegen, maxRegen);
+		this.mana = MathUtils.min(this.mana + regen, this.maxMana);
 		return regen;
 	}
 
 	private float variance(float base, int variance, boolean negativeAllowed) {
-		if (variance < 1) {
-			variance = 1;
-		} else if (variance > 100) {
-			variance = 100;
-		}
+		variance = MathUtils.clamp(variance, 1, 100);
 		int buffer = MathUtils.nextInt(++variance);
 		if (MathUtils.nextBoolean() && negativeAllowed) {
 			buffer = -buffer;
 		}
 		float percent = (float) (100 - buffer) / 100f;
-		float variedValue = base * percent;
-		return variedValue;
+		return base * percent;
 	}
 
 	public RoleValue updateAttack(float attackModifier) {
 		this.info.updateAttack(attackModifier);
+		syncEquipToStatus();
 		return this;
 	}
 
 	public RoleValue updateDefence(float defenceModifier) {
 		this.info.updateDefence(defenceModifier);
+		syncEquipToStatus();
 		return this;
 	}
 
 	public RoleValue updateStrength(float strengthModifier) {
 		this.info.updateStrength(strengthModifier);
+		syncEquipToStatus();
 		return this;
 	}
 
 	public RoleValue updateIntelligence(float intelligenceModifier) {
 		this.info.updateIntelligence(intelligenceModifier);
+		syncEquipToStatus();
 		return this;
 	}
 
 	public RoleValue updateFitness(float fitnessModifier) {
 		this.info.updateFitness(fitnessModifier);
+		syncEquipToStatus();
 		return this;
 	}
 
 	public RoleValue updateDexterity(float dexterityModifier) {
 		this.info.updateDexterity(dexterityModifier);
+		syncEquipToStatus();
 		return this;
 	}
 
 	public RoleValue updateMaxHealth(float maxHealthModifier) {
 		this.info.updateMaxHealth(maxHealthModifier);
+		syncEquipToStatus();
 		return this;
 	}
 
 	public RoleValue updateSkillPoints(float skillModifier) {
 		this.info.updateSkillPoints(skillModifier);
+		syncEquipToStatus();
 		return this;
 	}
 
 	public RoleValue updateManaPoints(float manaModifier) {
 		this.info.updateManaPoints(manaModifier);
+		syncEquipToStatus();
 		return this;
 	}
 
 	public RoleValue updateAgility(float agilityModifier) {
 		this.info.updateAgility(agilityModifier);
+		syncEquipToStatus();
 		return this;
 	}
 
@@ -288,7 +309,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setAttack(int attack) {
-		this.attack = attack;
+		this.attack = MathUtils.max(attack, 0);
 		return this;
 	}
 
@@ -297,7 +318,8 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setMaxMana(int maxMana) {
-		this.maxMana = maxMana;
+		this.maxMana = MathUtils.max(maxMana, 0);
+		this.mana = MathUtils.min(this.mana, this.maxMana);
 		return this;
 	}
 
@@ -306,7 +328,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setDefence(int defence) {
-		this.defence = defence;
+		this.defence = MathUtils.max(defence, 0);
 		return this;
 	}
 
@@ -315,7 +337,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setStrength(int strength) {
-		this.strength = strength;
+		this.strength = MathUtils.max(strength, 0);
 		return this;
 	}
 
@@ -324,7 +346,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setIntelligence(int intelligence) {
-		this.intelligence = intelligence;
+		this.intelligence = MathUtils.max(intelligence, 0);
 		return this;
 	}
 
@@ -333,7 +355,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setFitness(int fitness) {
-		this.fitness = fitness;
+		this.fitness = MathUtils.max(fitness, 0);
 		return this;
 	}
 
@@ -342,20 +364,21 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setDexterity(int dexterity) {
-		this.dexterity = dexterity;
+		this.dexterity = MathUtils.max(dexterity, 0);
 		return this;
 	}
 
 	public RoleValue setHealth(int health) {
-		this.health = health;
-		if (this.health <= 0) {
-			this.isDead = true;
+		if (isInvincible) {
+			return this;
 		}
+		this.health = MathUtils.max(health, 0);
+		this.isDead = this.health <= 0;
 		return this;
 	}
 
 	public RoleValue setMana(int mana) {
-		this.mana = mana;
+		this.mana = MathUtils.clamp(mana, 0, this.maxMana);
 		return this;
 	}
 
@@ -364,7 +387,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setTurnPoints(int turnPoints) {
-		this.turnPoints = turnPoints;
+		this.turnPoints = MathUtils.max(turnPoints, 0);
 		return this;
 	}
 
@@ -407,7 +430,10 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setMaxHealth(int maxHealth) {
-		this.maxHealth = maxHealth;
+		this.maxHealth = MathUtils.max(maxHealth, 1);
+		if (this.health > this.maxHealth) {
+			this.health = this.maxHealth;
+		}
 		return this;
 	}
 
@@ -416,7 +442,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setAgility(int agility) {
-		this.agility = agility;
+		this.agility = MathUtils.max(agility, 0);
 		return this;
 	}
 
@@ -434,7 +460,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setMovePoints(int movePoints) {
-		this.movePoints = movePoints;
+		this.movePoints = MathUtils.max(movePoints, 0);
 		return this;
 	}
 
@@ -513,6 +539,7 @@ public abstract class RoleValue {
 
 	public RoleValue die() {
 		this.isDead = true;
+		this.health = 0;
 		return this;
 	}
 
@@ -529,13 +556,13 @@ public abstract class RoleValue {
 		return info;
 	}
 
-	public RoleValue setInfo(RoleEquip info) {
-		this.info = info;
+	public RoleValue setInfo(RoleEquip i) {
+		this.info = i;
 		return this;
 	}
 
 	public RoleValue setLevel(int level) {
-		this.level = level;
+		this.level = MathUtils.max(level, 1);
 		return this;
 	}
 
@@ -544,7 +571,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setActionPoints(int actionPoints) {
-		this.actionPoints = actionPoints;
+		this.actionPoints = MathUtils.max(actionPoints, 0);
 		return this;
 	}
 
@@ -553,7 +580,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setRoleName(String n) {
-		this._roleName = n;
+		this._roleName = (n == null) ? LSystem.UNKNOWN : n;
 		return this;
 	}
 
@@ -563,11 +590,7 @@ public abstract class RoleValue {
 	}
 
 	public boolean isLocked() {
-		if (isDead) {
-			return _locked;
-		} else {
-			return false;
-		}
+		return _locked;
 	}
 
 	public int getMaxExp() {
@@ -575,7 +598,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setMaxExp(int maxExp) {
-		this.maxExp = maxExp;
+		this.maxExp = MathUtils.max(maxExp, 0);
 		return this;
 	}
 
@@ -584,7 +607,7 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue setExp(int exp) {
-		this.exp = exp;
+		this.exp = MathUtils.max(exp, 0);
 		return this;
 	}
 
@@ -612,10 +635,13 @@ public abstract class RoleValue {
 		this.isDead = false;
 		this.isInvincible = false;
 		this._locked = false;
+		this.health = this.maxHealth;
+		this.mana = this.maxMana;
 		return this;
 	}
 
 	public RoleValue setStatus(int v) {
+		v = MathUtils.max(v, 0);
 		this.maxHealth = v;
 		this.maxMana = v;
 		this.health = v;
@@ -656,17 +682,18 @@ public abstract class RoleValue {
 		this.maxMana = (e.getBaseManaPoint() + e.getEquipManaPoint());
 		this.health = maxHealth;
 		this.mana = maxMana;
-		this.attack += e.getEquipAttack();
-		this.defence += e.getEquipDefence();
-		this.strength += e.getEquipStrength();
-		this.intelligence += e.getEquipIntelligence();
-		this.agility += e.getEquipAgility();
-		this.fitness += e.getEquipFitness();
-		this.dexterity += e.getEquipDexterity();
+		this.attack = MathUtils.max(this.attack + e.getEquipAttack(), 0);
+		this.defence = MathUtils.max(this.defence + e.getEquipDefence(), 0);
+		this.strength = MathUtils.max(this.strength + e.getEquipStrength(), 0);
+		this.intelligence = MathUtils.max(this.intelligence + e.getEquipIntelligence(), 0);
+		this.agility = MathUtils.max(this.agility + e.getEquipAgility(), 0);
+		this.fitness = MathUtils.max(this.fitness + e.getEquipFitness(), 0);
+		this.dexterity = MathUtils.max(this.dexterity + e.getEquipDexterity(), 0);
 		return this;
 	}
 
 	public RoleValue mulStatus(int v) {
+		v = MathUtils.max(v, 1);
 		this.maxHealth *= v;
 		this.maxMana *= v;
 		this.health *= v;
@@ -682,48 +709,96 @@ public abstract class RoleValue {
 	}
 
 	public RoleValue addStatus(int v) {
-		this.maxHealth += v;
-		this.maxMana += v;
-		this.health += v;
-		this.mana += v;
-		this.attack += v;
-		this.defence += v;
-		this.strength += v;
-		this.intelligence += v;
-		this.agility += v;
-		this.fitness += v;
-		this.dexterity += v;
+		this.maxHealth = MathUtils.max(this.maxHealth + v, 1);
+		this.maxMana = MathUtils.max(this.maxMana + v, 0);
+		this.health = MathUtils.min(this.health + v, this.maxHealth);
+		this.mana = MathUtils.min(this.mana + v, this.maxMana);
+		this.attack = MathUtils.max(this.attack + v, 0);
+		this.defence = MathUtils.max(this.defence + v, 0);
+		this.strength = MathUtils.max(this.strength + v, 0);
+		this.intelligence = MathUtils.max(this.intelligence + v, 0);
+		this.agility = MathUtils.max(this.agility + v, 0);
+		this.fitness = MathUtils.max(this.fitness + v, 0);
+		this.dexterity = MathUtils.max(this.dexterity + v, 0);
 		return this;
 	}
 
 	public RoleValue subStatus(int v) {
-		this.maxHealth -= v;
-		this.maxMana -= v;
-		this.health -= v;
-		this.mana -= v;
-		this.attack -= v;
-		this.defence -= v;
-		this.strength -= v;
-		this.intelligence -= v;
-		this.agility -= v;
-		this.fitness -= v;
-		this.dexterity -= v;
+		v = MathUtils.max(v, 0);
+		this.maxHealth = MathUtils.max(this.maxHealth - v, 1);
+		this.maxMana = MathUtils.max(this.maxMana - v, 0);
+		this.health = MathUtils.clamp(this.health - v, 0, this.maxHealth);
+		this.mana = MathUtils.clamp(this.mana - v, 0, this.maxMana);
+		this.attack = MathUtils.max(this.attack - v, 0);
+		this.defence = MathUtils.max(this.defence - v, 0);
+		this.strength = MathUtils.max(this.strength - v, 0);
+		this.intelligence = MathUtils.max(this.intelligence - v, 0);
+		this.agility = MathUtils.max(this.agility - v, 0);
+		this.fitness = MathUtils.max(this.fitness - v, 0);
+		this.dexterity = MathUtils.max(this.dexterity - v, 0);
+		if (this.health == 0) {
+			this.die();
+		}
 		return this;
 	}
 
 	public RoleValue divStatus(int v) {
-		this.maxHealth /= v;
-		this.maxMana /= v;
-		this.health /= v;
-		this.mana /= v;
-		this.attack /= v;
-		this.defence /= v;
-		this.strength /= v;
-		this.intelligence /= v;
-		this.agility /= v;
-		this.fitness /= v;
-		this.dexterity /= v;
+		if (v <= 1) {
+			return this;
+		}
+		this.maxHealth = MathUtils.max(this.maxHealth / v, 1);
+		this.maxMana = MathUtils.max(this.maxMana / v, 0);
+		this.health = MathUtils.clamp(this.health / v, 0, this.maxHealth);
+		this.mana = MathUtils.clamp(this.mana / v, 0, this.maxMana);
+		this.attack = MathUtils.max(this.attack / v, 0);
+		this.defence = MathUtils.max(this.defence / v, 0);
+		this.strength = MathUtils.max(this.strength / v, 0);
+		this.intelligence = MathUtils.max(this.intelligence / v, 0);
+		this.agility = MathUtils.max(this.agility / v, 0);
+		this.fitness = MathUtils.max(this.fitness / v, 0);
+		this.dexterity = MathUtils.max(this.dexterity / v, 0);
+		if (this.health == 0) {
+			this.die();
+		}
 		return this;
+	}
+
+	private void syncEquipToStatus() {
+		if (info == null) {
+			return;
+		}
+		this.maxHealth = info.getBaseMaxHealth() + info.getEquipMaxHealth();
+		this.maxMana = info.getBaseManaPoint() + info.getEquipManaPoint();
+		this.attack = info.getBaseAttack() + info.getEquipAttack();
+		this.defence = info.getBaseDefence() + info.getEquipDefence();
+		this.strength = info.getBaseStrength() + info.getEquipStrength();
+		this.intelligence = info.getBaseIntelligence() + info.getEquipIntelligence();
+		this.agility = info.getBaseAgility() + info.getEquipAgility();
+		this.fitness = info.getBaseFitness() + info.getEquipFitness();
+		this.dexterity = info.getBaseDexterity() + info.getEquipDexterity();
+	}
+
+	private void clearAllActionState() {
+		isAttack = false;
+		isDefense = false;
+		isSkill = false;
+		isMoved = false;
+	}
+
+	public JobType getJobType() {
+		return jobType;
+	}
+
+	public void setJobType(JobType jobType) {
+		this.jobType = jobType;
+	}
+
+	public MoveType getMoveType() {
+		return moveType;
+	}
+
+	public void setMoveType(MoveType moveType) {
+		this.moveType = moveType;
 	}
 
 	public RoleValue clear() {
@@ -752,7 +827,43 @@ public abstract class RoleValue {
 		this.isMoved = false;
 		this.isDead = false;
 		this.isInvincible = false;
+		this.clearAllActionState();
 		return this;
 	}
 
+	public RoleValue addStatusToMaxHp(int v) {
+		this.maxHealth += v;
+		this.health = this.maxHealth;
+		return this;
+	}
+
+	public RoleValue addStatusToMaxMp(int v) {
+		this.maxMana += v;
+		this.mana = this.maxMana;
+		return this;
+	}
+
+	public RoleValue revive() {
+		this.isDead = false;
+		this.health = maxHealth;
+		this.mana = maxMana;
+		undoneAction();
+		return this;
+	}
+
+	public boolean isFullMana() {
+		return this.mana == this.maxMana;
+	}
+
+	public boolean canAction() {
+		return isAlive() && !isLocked();
+	}
+
+	public int getHitRateBonus() {
+		return hitRateBonus;
+	}
+
+	public void setHitRateBonus(int hitRateBonus) {
+		this.hitRateBonus = hitRateBonus;
+	}
 }

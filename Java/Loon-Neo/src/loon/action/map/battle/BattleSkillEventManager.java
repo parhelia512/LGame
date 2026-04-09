@@ -104,16 +104,17 @@ public class BattleSkillEventManager {
 		private float delay;
 		private float elapsed;
 		private TArray<QueuedEvent> chainedEvents;
+		private SKillEventType eventType;
 
 		public QueuedEvent(SkillTriggerEvent event, BattleMapObject caster, BattleMapObject target, int priority,
 				float delay) {
+			this.chainedEvents = new TArray<QueuedEvent>();
 			this.event = event;
 			this.caster = caster;
 			this.target = target;
 			this.priority = priority;
 			this.delay = delay;
 			this.elapsed = 0;
-			this.chainedEvents = new TArray<QueuedEvent>();
 		}
 
 		public void addChainedEvent(QueuedEvent nextEvent) {
@@ -131,8 +132,12 @@ public class BattleSkillEventManager {
 		}
 
 		public void execute(SkillEventQueue queue) {
+			execute(eventType, queue);
+		}
+
+		public void execute(SKillEventType eventType, SkillEventQueue queue) {
 			if (event != null) {
-				event.onEvent(caster, target);
+				event.onEvent(eventType, caster, target);
 			}
 			for (int i = 0; i < chainedEvents.size(); i++) {
 				queue.addEvent(chainedEvents.get(i));
@@ -141,6 +146,14 @@ public class BattleSkillEventManager {
 
 		public int getPriority() {
 			return priority;
+		}
+
+		public void setEventType(SKillEventType st) {
+			eventType = st;
+		}
+
+		public SKillEventType getSkillEventType() {
+			return eventType;
 		}
 	}
 
@@ -178,8 +191,8 @@ public class BattleSkillEventManager {
 		eventMap.remove(type);
 	}
 
-	public void triggerEvent(SKillEventType type, BattleMapObject caster, BattleMapObject target) {
-		TArray<PrioritizedEvent> events = eventMap.get(type);
+	public void triggerEvent(SKillEventType eventType, BattleMapObject caster, BattleMapObject target) {
+		TArray<PrioritizedEvent> events = eventMap.get(eventType);
 		if (events != null) {
 			events.sort(new Comparator<PrioritizedEvent>() {
 				@Override
@@ -190,7 +203,7 @@ public class BattleSkillEventManager {
 			for (int i = 0; i < events.size(); i++) {
 				PrioritizedEvent pe = events.get(i);
 				if (pe.condition == null || pe.condition.canTrigger(caster, target)) {
-					boolean continueChain = pe.event.onEvent(caster, target);
+					boolean continueChain = pe.event.onEvent(eventType, caster, target);
 					if (!continueChain) {
 						break;
 					}

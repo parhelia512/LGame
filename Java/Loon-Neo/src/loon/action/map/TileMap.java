@@ -49,6 +49,7 @@ import loon.geom.PointI;
 import loon.geom.RectBox;
 import loon.geom.Sized;
 import loon.geom.Vector2f;
+import loon.geom.XY;
 import loon.opengl.GLEx;
 import loon.opengl.LTexturePack;
 import loon.opengl.LTexturePackClip;
@@ -1279,6 +1280,40 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 		return pixelsToTilesHeight(offsetYPixel(y));
 	}
 
+	public Vector2f offsetNScalePixels(XY pos) {
+		if (pos == null) {
+			return offsetPixels(0, 0);
+		}
+		return offsetPixels(pos.getX(), pos.getY());
+	}
+
+	public Vector2f offsetNScalePixels(float x, float y) {
+		return new Vector2f(offsetXNScalePixel(x), offsetYNScalePixel(y));
+	}
+
+	public int getNScalePixelX(float x) {
+		return MathUtils.iceil((x - _objectLocation.x));
+	}
+
+	public int getNScalePixelY(float y) {
+		return MathUtils.iceil((y - _objectLocation.y));
+	}
+
+	public int offsetXNScalePixel(float x) {
+		return MathUtils.iceil(x - _offset.x - _objectLocation.x);
+	}
+
+	public int offsetYNScalePixel(float y) {
+		return MathUtils.iceil(y - _offset.y - _objectLocation.y);
+	}
+
+	public Vector2f offsetPixels(XY pos) {
+		if (pos == null) {
+			return offsetPixels(0, 0);
+		}
+		return offsetPixels(pos.getX(), pos.getY());
+	}
+
 	public Vector2f offsetPixels(float x, float y) {
 		return new Vector2f(offsetXPixel(x), offsetYPixel(y));
 	}
@@ -1297,6 +1332,44 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 
 	public int offsetYPixel(float y) {
 		return MathUtils.iceil((y - _offset.y - _objectLocation.y) / _scaleY);
+	}
+
+	public Vector2f getScreenPixel(XY pos) {
+		if (pos == null) {
+			return getScreenPixel(0, 0);
+		}
+		return getScreenPixel(pos.getX(), pos.getY());
+	}
+
+	public Vector2f getScreenPixel(float x, float y) {
+		return new Vector2f(getScreenPixelX(x), getScreenPixelY(y));
+	}
+
+	public float getScreenPixelX(float x) {
+		return (x + _objectLocation.x + _offset.x) / _scaleX;
+	}
+
+	public float getScreenPixelY(float y) {
+		return (y + _objectLocation.y + _offset.y) / _scaleY;
+	}
+
+	public Vector2f getScreenNScalePixel(XY pos) {
+		if (pos == null) {
+			return getScreenNScalePixel(0, 0);
+		}
+		return getScreenNScalePixel(pos.getX(), pos.getY());
+	}
+
+	public Vector2f getScreenNScalePixel(float x, float y) {
+		return new Vector2f(getScreenPixelX(x), getScreenPixelY(y));
+	}
+
+	public float getScreenNScalePixelX(float x) {
+		return (x + _objectLocation.x + _offset.x);
+	}
+
+	public float getScreenNScalePixelY(float y) {
+		return (y + _objectLocation.y + _offset.y);
 	}
 
 	public boolean inMap(int x, int y) {

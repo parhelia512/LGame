@@ -36,7 +36,7 @@ public class GameEventBus<T> implements LRelease {
 
 	private boolean loggingEnabled = false;
 
-	public void subscribe(GameEventType type, GameEventListener<T> listener) {
+	public synchronized void subscribe(GameEventType type, GameEventListener<T> listener) {
 		TArray<GameEventListener<T>> typeListeners = listeners.get(type);
 		if (typeListeners == null) {
 			typeListeners = new TArray<GameEventListener<T>>();
@@ -45,7 +45,7 @@ public class GameEventBus<T> implements LRelease {
 		typeListeners.add(listener);
 	}
 
-	public void unsubscribe(GameEventType type, GameEventListener<T> listener) {
+	public synchronized void unsubscribe(GameEventType type, GameEventListener<T> listener) {
 		TArray<GameEventListener<T>> typeListeners = listeners.get(type);
 		if (typeListeners != null) {
 			typeListeners.remove(listener);
@@ -55,7 +55,7 @@ public class GameEventBus<T> implements LRelease {
 		}
 	}
 
-	public void publish(GameEvent<T> event) {
+	public synchronized void publish(GameEvent<T> event) {
 		if (isProcessing) {
 			eventQueue.add(event);
 			return;
@@ -84,13 +84,13 @@ public class GameEventBus<T> implements LRelease {
 		}
 	}
 
-	public void publishAll(TArray<GameEvent<T>> events) {
+	public synchronized void publishAll(TArray<GameEvent<T>> events) {
 		for (GameEvent<T> event : events) {
 			publish(event);
 		}
 	}
 
-	public void publishBatch(TArray<GameEvent<T>> events) {
+	public synchronized void publishBatch(TArray<GameEvent<T>> events) {
 		for (GameEvent<T> event : events) {
 			publish(event);
 		}

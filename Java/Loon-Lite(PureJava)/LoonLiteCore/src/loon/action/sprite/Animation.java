@@ -554,6 +554,33 @@ public class Animation implements IArray, LRelease {
 	}
 
 	/**
+	 * 是否刚开始播放
+	 * 
+	 * @return
+	 */
+	public boolean isBeginPlaying() {
+		return length > 0 && currentFrameIndex == 0;
+	}
+
+	/**
+	 * 判断是否播放过半
+	 * 
+	 * @return
+	 */
+	public boolean isHalfwayPlaying() {
+		return length > 0 && currentFrameIndex >= length / 2;
+	}
+
+	/**
+	 * 是否播放到一半
+	 * 
+	 * @return
+	 */
+	public boolean isEndPlaying() {
+		return length > 0 && currentFrameIndex >= length - 1;
+	}
+
+	/**
 	 * 检查当前动画是否越出最大显示帧(超过则重置)
 	 * 
 	 * @return

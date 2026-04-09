@@ -20,6 +20,7 @@
  */
 package loon.action.map.battle;
 
+import loon.LRelease;
 import loon.ZIndex;
 import loon.action.map.Direction;
 import loon.action.map.battle.BattleMovementManager.AnimationState;
@@ -28,6 +29,7 @@ import loon.action.map.battle.BattleMovementManager.MovementEffect;
 import loon.action.map.battle.BattleMovementManager.MovementListener;
 import loon.action.map.battle.BattleMovementManager.MovementMode;
 import loon.action.map.battle.BattleMovementManager.MovementState;
+import loon.action.map.battle.BattleSkill.BattleType;
 import loon.action.map.battle.BattleType.ObjectState;
 import loon.action.map.items.Role;
 import loon.action.map.items.RoleEquip;
@@ -37,6 +39,7 @@ import loon.events.GameEventType;
 import loon.geom.PointI;
 import loon.geom.Vector2f;
 import loon.geom.XY;
+import loon.opengl.GLEx;
 import loon.utils.Easing;
 import loon.utils.ISOUtils;
 import loon.utils.ISOUtils.IsoConfig;
@@ -48,7 +51,7 @@ import loon.utils.TArray;
 /**
  * 战斗地图专属的万能地图对象(所有地图对象相关操作功能全部内置，包括但不限于寻径移动，瓦片适配，动画切换，碰撞检查，队列行进之类，所以叫万能)
  */
-public class BattleMapObject extends Role {
+public class BattleMapObject extends Role implements LRelease {
 
 	// 对象主状态变更监听
 	public static interface ObjectStateListener {
@@ -102,15 +105,15 @@ public class BattleMapObject extends Role {
 		}
 	}
 
-	// 资源变化（HP/MP）
+	// 资源变化
 	public static class ResourceData {
 		public final String type;
-		public final int value;
+		public final BattleMapObject mapObj;
 		public final int change;
 
-		public ResourceData(String type, int value, int change) {
+		public ResourceData(String type, BattleMapObject value, int change) {
 			this.type = type;
-			this.value = value;
+			this.mapObj = value;
 			this.change = change;
 		}
 	}
@@ -291,6 +294,10 @@ public class BattleMapObject extends Role {
 
 	public int getCharHeight() {
 		return MathUtils.iceil(charInMapHeight * getCharScaleY());
+	}
+
+	public Vector2f getCharCenterInScreenPixel() {
+		return new Vector2f(getX() + (charInMapWidth / 2), getY() + (charInMapHeight / 2)).addSelf(moveOffsetPixel);
 	}
 
 	public float getCharScaleX() {
@@ -546,23 +553,22 @@ public class BattleMapObject extends Role {
 			performAttack(allObjects);
 			// 重置攻击状态
 			attackProgress = 0f;
-			setState(ObjectState.IDLE);
 		}
 		if (objectStateListener != null) {
 			objectStateListener.onAttackEnd(this, deltaTime);
 		}
 	}
 
-	public boolean isInAttackRange(BattleMapObject target) {
+	public boolean isInSkillRange(BattleMapObject target) {
 		int dx = MathUtils.abs(gridX - target.gridX);
 		int dy = MathUtils.abs(gridY - target.gridY);
 		int maxRange = currentSkill != null ? currentSkill.rangeRadius : 1;
 		return MathUtils.max(dx, dy) <= maxRange;
 	}
 
-	private BattleMapObject findAttackTarget(TArray<BattleMapObject> allObjects) {
+	private BattleMapObject findSkillTarget(TArray<BattleMapObject> allObjects) {
 		for (BattleMapObject obj : allObjects) {
-			if (obj != this && obj.state != ObjectState.DEAD && isInAttackRange(obj)) {
+			if (obj != this && obj.state != ObjectState.DEAD && isInSkillRange(obj)) {
 				currentDirection = Direction.fromDelta(obj.gridX - gridX, obj.gridY - gridY);
 				if (listener != null) {
 					listener.onDirectionChanged(this, currentDirection);
@@ -577,8 +583,8 @@ public class BattleMapObject extends Role {
 		if (currentSkill == null) {
 			return;
 		}
-		// 查找攻击范围内的目标
-		BattleMapObject target = findAttackTarget(allObjects);
+		// 查找指定范围内的目标
+		BattleMapObject target = findSkillTarget(allObjects);
 		if (target == null || target.state == ObjectState.DEAD) {
 			setState(ObjectState.IDLE);
 			return;
@@ -596,8 +602,8 @@ public class BattleMapObject extends Role {
 		if (currentSkill.mpCost > 0) {
 			mana -= currentSkill.mpCost;
 			if (battleMap != null) {
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.MP_CHANGED, this, target,
-						new ResourceData("mp", mana, -currentSkill.mpCost)));
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, this, target,
+						new ResourceData("mp", this, -currentSkill.mpCost)));
 			}
 		}
 		// 攻击命中判定
@@ -612,8 +618,8 @@ public class BattleMapObject extends Role {
 				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
 						new AttackData(true, "hit", 0, MathUtils.random() <= currentSkill.critRate)));
 				// 发布HP变化事件
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.HP_CHANGED, target, this,
-						new ResourceData("hp", target.health, 0)));
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, target, this,
+						new ResourceData("hp", this, target.health)));
 			}
 
 			// 检查是否击杀
@@ -691,43 +697,51 @@ public class BattleMapObject extends Role {
 		}
 		mana -= currentSkill.mpCost;
 		if (battleMap != null) {
-			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.MP_CHANGED, this, null,
-					new ResourceData("mp", mana, -currentSkill.mpCost)));
+			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, this, null,
+					new ResourceData("mp", this, -currentSkill.mpCost)));
 		}
 		// 根据技能类型执行不同逻辑
 		switch (currentSkill.battleType) {
 		case HEAL:
-			// 治疗自己
-			int healAmount = MathUtils.abs(currentSkill.damage);
-			health = MathUtils.min(health, health + healAmount);
-			if (battleMap != null) {
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
-						new SkillData(currentSkill.name, "heal", healAmount)));
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.HP_CHANGED, this, null,
-						new ResourceData("hp", health, healAmount)));
+		case BUFF:
+		case DEBUFF:
+			if (currentSkill.battleType == BattleType.HEAL || currentSkill.battleType == BattleType.BUFF
+					|| currentSkill.battleType == BattleType.DEBUFF) {
+				// 查找技能对象
+				BattleMapObject target = findSkillTarget(allObjects);
+				if (target != null && target.state != ObjectState.DEAD) {
+					currentSkill.castEffect(this, target);
+				} else {
+					currentSkill.castEffect(this, this);
+				}
+				if (battleMap != null) {
+					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
+							new SkillData(currentSkill.name, "state", 0)));
+					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, this, null,
+							new ResourceData("state", this, health)));
+				}
 			}
-
 			break;
 		case RANGE:
 		case MELEE:
 			// 远程近战技能攻击
-			BattleMapObject target = findAttackTarget(allObjects);
+			BattleMapObject target = findSkillTarget(allObjects);
 			if (target != null && target.state != ObjectState.DEAD) {
 				boolean isCrit = MathUtils.random() <= currentSkill.critRate;
-				// 实际调用技能效果
-				currentSkill.castEffect(this, target);
-
-				if (battleMap != null) {
-					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
-							new AttackData(true, "hit", 0, isCrit)));
-					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.HP_CHANGED, target, null,
-							new ResourceData("hp", target.health, 0)));
-				}
-
-				if (target.health <= 0) {
-					setState(ObjectState.DEAD);
+				if (currentSkill.battleType == BattleType.RANGE || currentSkill.battleType == BattleType.MELEE) {
+					// 实际调用技能效果
+					currentSkill.castEffect(this, target);
 					if (battleMap != null) {
-						battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, target, this));
+						battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
+								new AttackData(true, "hit", 0, isCrit)));
+						battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, target, null,
+								new ResourceData("state", this, target.health)));
+					}
+					if (target.health <= 0) {
+						setState(ObjectState.DEAD);
+						if (battleMap != null) {
+							battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, target, this));
+						}
 					}
 				}
 			}
@@ -735,10 +749,6 @@ public class BattleMapObject extends Role {
 		default:
 			break;
 		}
-
-		// 重置状态
-		setState(ObjectState.IDLE);
-
 	}
 
 	private void handleSkillState(float deltaTime, TArray<BattleMapObject> allObjects) {
@@ -748,7 +758,6 @@ public class BattleMapObject extends Role {
 			performSkill(allObjects);
 			// 重置技能状态
 			skillProgress = 0f;
-			setState(ObjectState.IDLE);
 		}
 		if (objectStateListener != null) {
 			objectStateListener.onSkillEnd(this, deltaTime);
@@ -965,14 +974,16 @@ public class BattleMapObject extends Role {
 
 	public void setBlockedTiles(TArray<PointI> blocked) {
 		blockedTiles.clear();
-		if (blocked != null)
+		if (blocked != null) {
 			blockedTiles.addAll(blocked);
+		}
 	}
 
 	public void setAllowedTiles(TArray<PointI> allowed) {
 		allowedTiles.clear();
-		if (allowed != null)
+		if (allowed != null) {
 			allowedTiles.addAll(allowed);
+		}
 	}
 
 	public void addCharacter(BattleMapObject o) {
@@ -983,6 +994,10 @@ public class BattleMapObject extends Role {
 
 	public void removeCharacter(BattleMapObject o) {
 		otherCharacters.remove(o);
+	}
+
+	public void clearCharacter() {
+		otherCharacters.clear();
 	}
 
 	public TArray<PointI> getPath() {
@@ -1362,6 +1377,16 @@ public class BattleMapObject extends Role {
 		}
 	}
 
+	public void paint(GLEx g, float deltaTime, float posX, float posY) {
+		if (isVisible() && (state != ObjectState.DEAD)) {
+			update(deltaTime);
+			if (currentSkill != null && currentSkill.running) {
+				currentSkill.updateSkill(deltaTime);
+				currentSkill.drawSkillEffect(g, deltaTime, posX, posY);
+			}
+		}
+	}
+
 	public boolean isMoving() {
 		return isMoving;
 	}
@@ -1455,5 +1480,16 @@ public class BattleMapObject extends Role {
 
 	public void setObjectStateListener(ObjectStateListener l) {
 		this.objectStateListener = l;
+	}
+
+	@Override
+	public void close() {
+		if (_roleObject != null) {
+			_roleObject.close();
+		}
+		if (currentSkill != null) {
+			currentSkill.close();
+			currentSkill = null;
+		}
 	}
 }
