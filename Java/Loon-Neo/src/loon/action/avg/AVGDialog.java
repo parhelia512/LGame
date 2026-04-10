@@ -37,9 +37,11 @@ public final class AVGDialog {
 	private static AVGDialog _instance = null;
 
 	public static AVGDialog shared() {
-		synchronized (AVGDialog.class) {
-			if (_instance == null) {
-				_instance = new AVGDialog();
+		if (_instance == null) {
+			synchronized (AVGDialog.class) {
+				if (_instance == null) {
+					_instance = new AVGDialog();
+				}
 			}
 		}
 		return _instance;
@@ -208,7 +210,7 @@ public final class AVGDialog {
 						tmp = null;
 						g.draw(rightDown, right, height - size);
 					}
-					
+
 					lazy = lazyImage.texture();
 
 					lazyImage.close();

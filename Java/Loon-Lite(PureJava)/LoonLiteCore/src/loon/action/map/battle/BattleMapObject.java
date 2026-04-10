@@ -72,8 +72,19 @@ public class BattleMapObject extends Role implements LRelease {
 
 		void onSkillEnd(BattleMapObject obj, float deltaTime);
 
+		// 防御事件
+		void onDefenced(BattleMapObject obj, float deltaTime);
+
 		// 死亡事件
 		void onDead(BattleMapObject obj, float deltaTime);
+
+		// 行为合规性判断器只有合规行为才能真正触发
+		boolean checkAllowAttack(BattleType eventType, BattleSkill skill, BattleMapObject caster,
+				BattleMapObject target);
+
+		boolean checkAllowSkill(BattleType eventType, BattleSkill skill, BattleMapObject caster,
+				BattleMapObject target);
+
 	}
 
 	// 移动数据
@@ -589,7 +600,7 @@ public class BattleMapObject extends Role implements LRelease {
 			setState(ObjectState.IDLE);
 			return;
 		}
-		// 消耗MP（如果技能需要）
+		// 消耗MP不足判定（如果技能需要）
 		if (currentSkill.mpCost > 0 && getMana() < currentSkill.mpCost) {
 			if (battleMap != null) {
 				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK, this, target,
@@ -598,51 +609,36 @@ public class BattleMapObject extends Role implements LRelease {
 			setState(ObjectState.IDLE);
 			return;
 		}
-		// 扣除MP
-		if (currentSkill.mpCost > 0) {
-			mana -= currentSkill.mpCost;
-			if (battleMap != null) {
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, this, target,
-						new ResourceData("mp", this, -currentSkill.mpCost)));
-			}
-		}
-		// 攻击命中判定
-		boolean hit = MathUtils.random() <= currentSkill.hitRate;
-		if (hit) {
 
-			// 触发实际技能效果
-			currentSkill.castEffect(this, target);
-
-			if (battleMap != null) {
-				// 发布命中事件
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
-						new AttackData(true, "hit", 0, MathUtils.random() <= currentSkill.critRate)));
-				// 发布HP变化事件
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, target, this,
-						new ResourceData("hp", this, target.health)));
-			}
-
-			// 检查是否击杀
-			if (target.health <= 0) {
-				setState(ObjectState.DEAD);
-				if (battleMap != null) {
-					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, target, this));
-				}
-				target.endCombat(this);
-			}
-		} else {
-			// 未命中
-			if (battleMap != null) {
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_MISS, this, target,
-						new AttackData(false, "miss", 0, false)));
-			}
+		// 如果不允许攻击则跳过
+		if (objectStateListener != null
+				&& !objectStateListener.checkAllowAttack(currentSkill.battleType, currentSkill, this, target)) {
+			setState(ObjectState.IDLE);
+			return;
 		}
 
-		// 若目标死亡，结束战斗
+		// 触发实际技能效果
+		currentSkill.castEffect(this, target);
+
+		if (battleMap != null) {
+			// 发布命中事件
+			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
+					new AttackData(true, "hit", 0, MathUtils.random() <= currentSkill.critRate)));
+			// 发布HP变化事件
+			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, target, this,
+					new ResourceData("hp", this, target.health)));
+		}
+
+		// 检查是否击杀
 		if (target.health <= 0) {
 			setState(ObjectState.DEAD);
-			endCombat(target);
+			if (battleMap != null) {
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, target, this));
+			}
+			// 若目标死亡，结束战斗
+			setState(ObjectState.DEAD);
 		}
+
 	}
 
 	/**
@@ -673,6 +669,10 @@ public class BattleMapObject extends Role implements LRelease {
 		}
 	}
 
+	public void endCombat() {
+		endCombat(this);
+	}
+
 	private void performSkill(TArray<BattleMapObject> allObjects) {
 		if (currentSkill == null) {
 			return;
@@ -686,7 +686,7 @@ public class BattleMapObject extends Role implements LRelease {
 			setState(ObjectState.IDLE);
 			return;
 		}
-		// 消耗MP
+		// 判断MP是否允许释放技能
 		if (mana < currentSkill.mpCost) {
 			if (battleMap != null) {
 				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
@@ -695,11 +695,17 @@ public class BattleMapObject extends Role implements LRelease {
 			setState(ObjectState.IDLE);
 			return;
 		}
-		mana -= currentSkill.mpCost;
-		if (battleMap != null) {
-			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, this, null,
-					new ResourceData("mp", this, -currentSkill.mpCost)));
+
+		// 查找技能对象
+		BattleMapObject target = findSkillTarget(allObjects);
+
+		// 如果不允许技能则跳过
+		if (objectStateListener != null
+				&& !objectStateListener.checkAllowSkill(currentSkill.battleType, currentSkill, this, target)) {
+			setState(ObjectState.IDLE);
+			return;
 		}
+
 		// 根据技能类型执行不同逻辑
 		switch (currentSkill.battleType) {
 		case HEAL:
@@ -707,8 +713,6 @@ public class BattleMapObject extends Role implements LRelease {
 		case DEBUFF:
 			if (currentSkill.battleType == BattleType.HEAL || currentSkill.battleType == BattleType.BUFF
 					|| currentSkill.battleType == BattleType.DEBUFF) {
-				// 查找技能对象
-				BattleMapObject target = findSkillTarget(allObjects);
 				if (target != null && target.state != ObjectState.DEAD) {
 					currentSkill.castEffect(this, target);
 				} else {
@@ -725,15 +729,13 @@ public class BattleMapObject extends Role implements LRelease {
 		case RANGE:
 		case MELEE:
 			// 远程近战技能攻击
-			BattleMapObject target = findSkillTarget(allObjects);
 			if (target != null && target.state != ObjectState.DEAD) {
-				boolean isCrit = MathUtils.random() <= currentSkill.critRate;
 				if (currentSkill.battleType == BattleType.RANGE || currentSkill.battleType == BattleType.MELEE) {
 					// 实际调用技能效果
 					currentSkill.castEffect(this, target);
 					if (battleMap != null) {
 						battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
-								new AttackData(true, "hit", 0, isCrit)));
+								new AttackData(true, "hit", 0, MathUtils.random() <= currentSkill.critRate)));
 						battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, target, null,
 								new ResourceData("state", this, target.health)));
 					}
@@ -793,6 +795,9 @@ public class BattleMapObject extends Role implements LRelease {
 			break;
 		case MOVING:
 			handleMoveState(deltaTime);
+			break;
+		case DEFENSEING:
+			handleDefenceState(deltaTime);
 			break;
 		case ATTACKING:
 			handleAttackState(deltaTime, otherCharacters);
@@ -1273,7 +1278,10 @@ public class BattleMapObject extends Role implements LRelease {
 		// 地图边界检查
 		if (battleMap != null) {
 			BattleTile battleTile = battleMap.getMapTile(tile.x, tile.y);
-			if (battleTile == null || !battleTile.isPassable()) {
+			if (battleTile == null) {
+				return false;
+			}
+			if (!battleTile.isPassable() && !isFlying()) {
 				return false;
 			}
 		}
@@ -1329,6 +1337,13 @@ public class BattleMapObject extends Role implements LRelease {
 		this.movePoints = MathUtils.max(0, points);
 	}
 
+	@Override
+	public BattleMapObject die() {
+		super.die();
+		setState(ObjectState.DEAD);
+		return this;
+	}
+
 	public void resetPathState() {
 		resetPathState(movePoints);
 	}
@@ -1371,6 +1386,10 @@ public class BattleMapObject extends Role implements LRelease {
 		}
 		this.state = newState;
 		this.isMoving = (state == ObjectState.MOVING);
+		this.isDead = (state == ObjectState.DEAD);
+		if (isDead) {
+			endCombat();
+		}
 		// 死亡状态强制停止移动
 		if (state == ObjectState.DEAD) {
 			clearPath();
@@ -1378,9 +1397,9 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public void paint(GLEx g, float deltaTime, float posX, float posY) {
-		if (isVisible() && (state != ObjectState.DEAD)) {
+		if (isVisible()) {
 			update(deltaTime);
-			if (currentSkill != null && currentSkill.running) {
+			if (currentSkill != null) {
 				currentSkill.updateSkill(deltaTime);
 				currentSkill.drawSkillEffect(g, deltaTime, posX, posY);
 			}
@@ -1402,6 +1421,17 @@ public class BattleMapObject extends Role implements LRelease {
 			startMoving();
 		} else if (path.isEmpty()) {
 			endMovement();
+		}
+	}
+
+	/**
+	 * 防御状态
+	 * 
+	 * @param deltaTime
+	 */
+	protected void handleDefenceState(float deltaTime) {
+		if (objectStateListener != null) {
+			objectStateListener.onDefenced(this, deltaTime);
 		}
 	}
 
@@ -1441,7 +1471,7 @@ public class BattleMapObject extends Role implements LRelease {
 			return false;
 		}
 		BattleTile tile = battleMap.getMapTile(x, y);
-		return tile != null && tile.isPassable();
+		return (tile != null && (tile.isPassable() || isFlying()));
 	}
 
 	public BattleMap getBattleMap() {
@@ -1474,6 +1504,66 @@ public class BattleMapObject extends Role implements LRelease {
 		}
 	}
 
+	public float getTargetSpeed() {
+		return targetSpeed;
+	}
+
+	public void setTargetSpeed(float targetSpeed) {
+		this.targetSpeed = targetSpeed;
+	}
+
+	public float getSkillProgress() {
+		return skillProgress;
+	}
+
+	public void setSkillProgress(float skillProgress) {
+		this.skillProgress = skillProgress;
+	}
+
+	public MovementListener getListener() {
+		return listener;
+	}
+
+	public void setListener(MovementListener listener) {
+		this.listener = listener;
+	}
+
+	public int getTargetX() {
+		return targetX;
+	}
+
+	public int getTargetY() {
+		return targetY;
+	}
+
+	public Direction getCurrentDirection() {
+		return currentDirection;
+	}
+
+	public float getCurrentSpeed() {
+		return currentSpeed;
+	}
+
+	public int getCurrentStep() {
+		return currentStep;
+	}
+
+	public Vector2f getMovePixel() {
+		return movePixel;
+	}
+
+	public Vector2f getMoveOffsetPixel() {
+		return moveOffsetPixel;
+	}
+
+	public MovementMode getCurrentMode() {
+		return currentMode;
+	}
+
+	public float getMoveProgress() {
+		return moveProgress;
+	}
+
 	public ObjectStateListener getObjectStateListener() {
 		return objectStateListener;
 	}
@@ -1492,4 +1582,5 @@ public class BattleMapObject extends Role implements LRelease {
 			currentSkill = null;
 		}
 	}
+
 }

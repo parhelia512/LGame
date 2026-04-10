@@ -55,12 +55,14 @@ public final class LSTRDictionary implements LRelease {
 	}
 
 	public final static LSTRDictionary get() {
-		synchronized (LSTRDictionary.class) {
-			if (instance == null) {
-				instance = make();
+		if (instance == null) {
+			synchronized (LSTRDictionary.class) {
+				if (instance == null) {
+					instance = new LSTRDictionary();
+				}
 			}
-			return instance;
 		}
+		return instance;
 	}
 
 	public final Canvas createFontCanvas(float w, float h) {

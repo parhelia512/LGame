@@ -61,12 +61,14 @@ public final class ActionControl implements LRelease {
 	 * 获得缓动动画控制器实例
 	 */
 	public static final ActionControl get() {
-		synchronized (ActionControl.class) {
-			if (_instanceAction == null) {
-				_instanceAction = new ActionControl();
+		if (_instanceAction == null) {
+			synchronized (ActionControl.class) {
+				if (_instanceAction == null) {
+					_instanceAction = new ActionControl();
+				}
 			}
-			return _instanceAction;
 		}
+		return _instanceAction;
 	}
 
 	/**

@@ -39,6 +39,7 @@ public class BattlePathFinder implements LRelease {
 
 	// 封装坐标和成本
 	public static class Node {
+
 		public final int x, y, gCost, hCost, fCost;
 
 		public Node(int x, int y, int gCost, int hCost) {
@@ -52,11 +53,8 @@ public class BattlePathFinder implements LRelease {
 
 	// 路径结果类
 	public static class PathResult {
-
 		public final boolean success;
-
 		public final String message;
-
 		public TArray<PointI> path;
 
 		public PathResult(boolean success, String message) {
@@ -87,7 +85,6 @@ public class BattlePathFinder implements LRelease {
 
 	public static TArray<PointI> sortVectors(TArray<PointI> list, final boolean ascending, final SortMode mode) {
 		list.sort(new Comparator<PointI>() {
-
 			@Override
 			public int compare(PointI o1, PointI o2) {
 				int cmp = 0;
@@ -106,7 +103,6 @@ public class BattlePathFinder implements LRelease {
 					break;
 				}
 				return ascending ? cmp : -cmp;
-
 			}
 		});
 		return list;
@@ -127,10 +123,15 @@ public class BattlePathFinder implements LRelease {
 	private final IntMap<TArray<PointI>> pathCache = new IntMap<TArray<PointI>>();
 	// 寻径启发函数权重
 	private final float heuristicWeight = 1.0f;
-
 	private final GameEventBus<PathResult> eventBus;
 
 	private boolean allowSmoothPath = true;
+	// 飞行选项
+	private boolean flying = false;
+	// 飞行时是否忽略地形消耗
+	private boolean flyIgnoreTerrainCost = false;
+	// 是否向上提交移动事件
+	private boolean isPublishPathEvent = false;
 
 	public BattlePathFinder(GameEventBus<PathResult> bus, BattleTile[][] map, int width, int height) {
 		this(bus, map, width, height, true);
@@ -194,7 +195,7 @@ public class BattlePathFinder implements LRelease {
 	}
 
 	/**
-	 * 加入地形移动成本、高度惩罚、路径缓存、迭代限制
+	 * 移动寻径，会默认加入地形移动成本、高度惩罚、路径缓存、迭代限制、是否飞行等判定
 	 * 
 	 * @param sx
 	 * @param sy
@@ -203,7 +204,12 @@ public class BattlePathFinder implements LRelease {
 	 * @return
 	 */
 	public TArray<PointI> findPath(int sx, int sy, int ex, int ey) {
-		if (!isValid(sx, sy) || !isValid(ex, ey) || !map[ex][ey].isPassable()) {
+		if (!flying) {
+			if (!isValid(sx, sy) || !isValid(ex, ey) || !map[ex][ey].isPassable()) {
+				publishPathEvent(false, "Invalid or impassable start/end point", null);
+				return new TArray<PointI>();
+			}
+		} else if (!isValid(sx, sy) || !isValid(ex, ey)) {
 			publishPathEvent(false, "Invalid or impassable start/end point", null);
 			return new TArray<PointI>();
 		}
@@ -267,17 +273,27 @@ public class BattlePathFinder implements LRelease {
 				int nx = cx + dir[0], ny = cy + dir[1];
 				int baseCost = dir[2];
 
-				if (!isValid(nx, ny) || closed[nx][ny] || !map[nx][ny].isPassable()) {
-					continue;
-				}
 				// 斜向移动合法性检查
-				if (dir[0] != 0 && dir[1] != 0) {
-					if (!map[cx + dir[0]][cy].isPassable() || !map[cx][cy + dir[1]].isPassable()) {
+				if (!flying) {
+					if (!isValid(nx, ny) || closed[nx][ny] || !map[nx][ny].isPassable()) {
 						continue;
 					}
+					if (dir[0] != 0 && dir[1] != 0) {
+						if (!map[cx + dir[0]][cy].isPassable() || !map[cx][cy + dir[1]].isPassable()) {
+							continue;
+						}
+					}
+				} else if (!isValid(nx, ny) || closed[nx][ny]) {
+					continue;
 				}
+
 				BattleTile tile = map[nx][ny];
-				float terrainMultiplier = tile.pathCost;
+				float terrainMultiplier;
+				if (flying) {
+					terrainMultiplier = flyIgnoreTerrainCost ? 1.0f : tile.pathCost;
+				} else {
+					terrainMultiplier = tile.pathCost;
+				}
 
 				float dirCost = (dir[0] != 0 && dir[1] != 0) ? PATH_DIAGONAL_COST : 1.0f;
 				int newG = gCost[cx][cy] + (int) (baseCost * terrainMultiplier * dirCost);
@@ -332,20 +348,22 @@ public class BattlePathFinder implements LRelease {
 		int dy = MathUtils.abs(y - ey);
 		int manhattan = dx + dy;
 		float euclidean = MathUtils.sqrt(dx * dx + dy * dy);
-		return (int) ((manhattan + euclidean) * heuristicWeight);
+		return MathUtils.ifloor((manhattan + euclidean) * heuristicWeight);
 	}
 
 	/**
-	 * 发布寻径事件
+	 * 发布寻径事件,一边上级程序操作
 	 * 
 	 * @param success
 	 * @param message
 	 * @param path
 	 */
 	private void publishPathEvent(boolean success, String message, TArray<PointI> path) {
-		PathResult result = new PathResult(success, message, path);
-		eventBus.publish(new GameEvent<PathResult>(success ? GameEventType.PATH_FOUND : GameEventType.PATH_FAILED, this,
-				null, result));
+		if (isPublishPathEvent) {
+			PathResult result = new PathResult(success, message, path);
+			eventBus.publish(new GameEvent<PathResult>(success ? GameEventType.PATH_FOUND : GameEventType.PATH_FAILED,
+					this, null, result));
+		}
 	}
 
 	/**
@@ -433,7 +451,8 @@ public class BattlePathFinder implements LRelease {
 			if (x == ex && y == ey) {
 				break;
 			}
-			if (!map[x][y].isPassable()) {
+			// 飞行时忽略阻挡
+			if (!flying && !map[x][y].isPassable()) {
 				return false;
 			}
 			int e2 = 2 * err;
@@ -485,9 +504,30 @@ public class BattlePathFinder implements LRelease {
 		}
 	}
 
-	/**
-	 * 清理路径缓存
-	 */
+	public boolean isFlying() {
+		return flying;
+	}
+
+	public void setFlying(boolean f) {
+		this.flying = f;
+	}
+
+	public void setFlyIgnoreTerrainCost(boolean ignore) {
+		this.flyIgnoreTerrainCost = ignore;
+	}
+
+	public boolean isFlyIgnoreTerrainCost() {
+		return flyIgnoreTerrainCost;
+	}
+
+	public boolean isPublishPathEvent() {
+		return isPublishPathEvent;
+	}
+
+	public void setPublishPathEvent(boolean p) {
+		this.isPublishPathEvent = p;
+	}
+
 	public void clearCache() {
 		pathCache.clear();
 	}
@@ -496,4 +536,5 @@ public class BattlePathFinder implements LRelease {
 	public void close() {
 		clearCache();
 	}
+
 }

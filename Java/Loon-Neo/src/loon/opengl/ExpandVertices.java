@@ -130,6 +130,17 @@ public final class ExpandVertices implements LRelease {
 		return this.vertices;
 	}
 
+	public final void setBatch(int startIndex, float[] data, int offset, int length) {
+		if (expand(startIndex + length)) {
+			maxSize = getSize();
+		}
+		System.arraycopy(data, offset, this.vertices, startIndex, length);
+	}
+
+	public final void setBatch(int startIndex, float[] data) {
+		setBatch(startIndex, data, 0, data.length);
+	}
+
 	public final float[] cpy() {
 		return CollectionUtils.copyOf(this.vertices);
 	}

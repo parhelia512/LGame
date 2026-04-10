@@ -29,12 +29,14 @@ public final class TempVars {
 	private static TempVars instance;
 
 	public static final TempVars get() {
-		synchronized (TempVars.class) {
-			if (instance == null) {
-				instance = new TempVars();
+		if (instance == null) {
+			synchronized (TempVars.class) {
+				if (instance == null) {
+					instance = new TempVars();
+				}
 			}
-			return instance;
 		}
+		return instance;
 	}
 
 	private TempVars() {

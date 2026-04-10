@@ -37,12 +37,14 @@ public class GameTime {
 	}
 
 	public static GameTime shared() {
-		synchronized (GameTime.class) {
-			if (_instance == null) {
-				_instance = new GameTime();
+		if (_instance == null) {
+			synchronized (GameTime.class) {
+				if (_instance == null) {
+					_instance = new GameTime();
+				}
 			}
-			return _instance;
 		}
+		return _instance;
 	}
 
 	private boolean _syncFpsScaled = false;

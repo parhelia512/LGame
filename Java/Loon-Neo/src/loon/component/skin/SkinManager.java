@@ -36,12 +36,14 @@ public class SkinManager implements LRelease {
 	}
 
 	public final static SkinManager get() {
-		synchronized (SkinManager.class) {
-			if (instance == null) {
-				instance = make();
+		if (instance == null) {
+			synchronized (SkinManager.class) {
+				if (instance == null) {
+					instance = new SkinManager();
+				}
 			}
-			return instance;
 		}
+		return instance;
 	}
 
 	private CheckBoxSkin checkBoxSkin;

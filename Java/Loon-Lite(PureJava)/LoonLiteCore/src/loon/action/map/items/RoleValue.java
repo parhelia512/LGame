@@ -24,7 +24,7 @@ import loon.LSystem;
 import loon.utils.MathUtils;
 
 /**
- * 一个基本的游戏角色数值模板,可以套用其扩展自己的游戏属性以及属性变更算法(和RoleInfo的关系在于这个更接近角色参数)
+ * 一个基本的游戏角色数值模板,可以套用其扩展自己的游戏属性以及属性变更算法,这些参数尽可能多的适配多种游戏，但并不是都必须用(和RoleInfo的关系在于这个更接近角色参数)
  *
  */
 public abstract class RoleValue {
@@ -46,6 +46,52 @@ public abstract class RoleValue {
 		public static final int MAGIC = 5;
 		// 远程
 		public static final int RANGE = 6;
+	}
+
+	/**
+	 * 角色元素属性
+	 */
+	public static class Element {
+
+		public static final int NONE = 0;
+
+		public static final int FIRE = 1;
+
+		public static final int ICE = 2;
+
+		public static final int WIND = 3;
+
+		public static final int THUNDER = 4;
+
+		public static final int HOLY = 5;
+
+		public static final int DARK = 6;
+
+		public static final int POISON = 7;
+	}
+
+	/**
+	 * 额外属性子系统全局开关
+	 */
+	public static class SystemSwitch {
+		// 有疲劳值
+		public static boolean ENABLE_BREAK_SYSTEM = true;
+		// 有属性相克
+		public static boolean ENABLE_ELEMENT_SYSTEM = true;
+		// 有士气影响
+		public static boolean ENABLE_MORALE_SYSTEM = true;
+		// 有格挡机制
+		public static boolean ENABLE_BLOCK_SYSTEM = true;
+		// 有反击机制
+		public static boolean ENABLE_COUNTER_SYSTEM = true;
+		// 有等级压制
+		public static boolean ENABLE_LEVEL_PRESSURE = true;
+		// 有魔力护盾
+		public static boolean ENABLE_MANA_SHIELD = true;
+		// 有吸血功能
+		public static boolean ENABLE_LIFE_STEAL = true;
+		// 有伤害反弹
+		public static boolean ENABLE_DAMAGE_REFLECT = true;
 	}
 
 	private final int _id;
@@ -81,10 +127,49 @@ public abstract class RoleValue {
 	protected boolean isInvincible;
 
 	protected RoleEquip info;
-
-	protected MoveType moveType;
-
+	protected int moveType;
 	protected JobType jobType;
+
+	// 负面状态
+	protected boolean isPoisoned;
+	protected boolean isWounded;
+	protected boolean isParalyzed;
+	protected int poisonDamage;
+	protected int poisonDuration;
+	protected int woundDefenceReduce;
+	protected int woundDuration;
+	protected int paralyzeDuration;
+
+	// 战斗属性
+	protected int dodgeRate;
+	protected int defencePenetration;
+	protected int critRate;
+	protected int critDamage;
+	protected int healBonus;
+	protected int damageReduce;
+
+	// 额外参数
+	protected int morale; // 士气
+	protected int counterAttackCount; // 反击次数
+	protected boolean isDefendStance; // 防御架势(防御加成)
+	protected int blockRate; // 格挡率
+	protected int blockDamageReduce; // 格挡减伤
+	protected int weaponElementType; // 武器属性
+	protected int[] resistElements; // 各属性耐性 0~200%
+	protected int[] weakElements; // 弱点属性
+	protected int manaShield; // 魔力护盾（魔力抵消伤害）
+	protected int killExpBonus; // 击杀敌人额外经验
+	protected int breakCount; // 疲劳累积
+	protected int breakResist; // 疲劳抗性
+	protected boolean isBroken; // 处于疲劳状态（防御为0、无法行动）
+	protected int breakDuration;
+	protected boolean isFocus; // 会心状态（下次攻击命中与暴击增加）
+	protected boolean isCounterStrike; // 反击姿态
+	protected boolean canCounterAttack = true;
+	protected boolean isNaturalRegen = false;
+	protected int damageReflect; // 伤害反弹
+	protected int lifeSteal; // 吸血
+	protected int damageTakenMultiplier = 100;
 
 	public RoleValue(int id, RoleEquip info, int maxHealth, int maxMana, int attack, int defence, int strength,
 			int intelligence, int fitness, int dexterity, int agility, int lv) {
@@ -109,6 +194,46 @@ public abstract class RoleValue {
 		this.fitness = MathUtils.max(fitness, 0);
 		this.dexterity = MathUtils.max(dexterity, 0);
 		this.level = MathUtils.max(lv, 1);
+
+		initAllExtraAttributes();
+	}
+
+	private void initAllExtraAttributes() {
+		// 战斗基础
+		dodgeRate = agility / 3;
+		defencePenetration = 0;
+		critRate = 5;
+		critDamage = 150;
+		healBonus = 0;
+		damageReduce = 0;
+		morale = 100;
+		counterAttackCount = 1;
+		isDefendStance = false;
+		blockRate = agility / 4;
+		blockDamageReduce = 30;
+		// 默认元素
+		weaponElementType = Element.NONE;
+		resistElements = new int[8];
+		weakElements = new int[8];
+		for (int i = 0; i < 8; i++) {
+			resistElements[i] = 100;
+			weakElements[i] = 100;
+		}
+		manaShield = 0;
+		killExpBonus = 10;
+		// 疲劳
+		breakCount = 0;
+		breakResist = 5;
+		isBroken = false;
+		breakDuration = 0;
+		// 是否会心状态
+		isFocus = false;
+		isCounterStrike = false;
+
+		damageReflect = 0;
+		lifeSteal = 0;
+		damageTakenMultiplier = 100;
+		clearNegativeStates();
 	}
 
 	public RoleValue setActionPriority(int a) {
@@ -156,11 +281,52 @@ public abstract class RoleValue {
 			return this;
 		}
 		damageTaken = MathUtils.max(damageTaken, 0);
+
+		// 魔力护盾（开关控制）
+		if (SystemSwitch.ENABLE_MANA_SHIELD && manaShield > 0 && mana > 0) {
+			int absorb = MathUtils.min((int) damageTaken, mana);
+			damageTaken -= absorb;
+			mana -= absorb;
+		}
+
+		float finalDefence = defence;
+
+		// 若极度疲劳
+		if (SystemSwitch.ENABLE_BREAK_SYSTEM && isBroken) {
+			// 防御减半
+			finalDefence = finalDefence / 2;
+			// 同时额外增伤50%
+			damageTaken *= 1.5f;
+		}
+
+		// 防御减伤运算
+		float defenceReduction = MathUtils.max(finalDefence * 0.5f, 0);
+		damageTaken = MathUtils.max(damageTaken - defenceReduction, 1);
+
+		// 全局伤害倍率
+		damageTaken = damageTaken * damageTakenMultiplier / 100f;
+
+		// 伤害反弹
+		if (SystemSwitch.ENABLE_DAMAGE_REFLECT && damageReflect > 0) {
+			int reflectDmg = MathUtils.ifloor(damageTaken * damageReflect / 100f);
+			if (reflectDmg > 0 && !isDead) {
+				damage(reflectDmg);
+			}
+		}
+
+		// 扣血
 		this.health = MathUtils.ifloor(this.health - damageTaken);
 		if (this.health <= 0) {
 			this.health = 0;
 			this.die();
 		}
+
+		// 吸血系统
+		if (SystemSwitch.ENABLE_LIFE_STEAL && lifeSteal > 0 && damageTaken > 0) {
+			int healVal = MathUtils.ifloor(damageTaken * lifeSteal / 100f);
+			changeHeal(healVal);
+		}
+
 		return this;
 	}
 
@@ -443,6 +609,7 @@ public abstract class RoleValue {
 
 	public RoleValue setAgility(int agility) {
 		this.agility = MathUtils.max(agility, 0);
+		this.dodgeRate = agility / 3;
 		return this;
 	}
 
@@ -540,6 +707,7 @@ public abstract class RoleValue {
 	public RoleValue die() {
 		this.isDead = true;
 		this.health = 0;
+		clearNegativeStates();
 		return this;
 	}
 
@@ -637,6 +805,8 @@ public abstract class RoleValue {
 		this._locked = false;
 		this.health = this.maxHealth;
 		this.mana = this.maxMana;
+		clearNegativeStates();
+		initAllExtraAttributes();
 		return this;
 	}
 
@@ -662,8 +832,6 @@ public abstract class RoleValue {
 		}
 		this.maxHealth = (e.getBaseMaxHealth() + e.getEquipMaxHealth());
 		this.maxMana = (e.getBaseManaPoint() + e.getEquipManaPoint());
-		this.health = maxHealth;
-		this.mana = maxMana;
 		this.attack = (e.getBaseAttack() + e.getEquipAttack());
 		this.defence = (e.getBaseDefence() + e.getEquipDefence());
 		this.strength = (e.getBaseStrength() + e.getEquipStrength());
@@ -680,8 +848,6 @@ public abstract class RoleValue {
 		}
 		this.maxHealth = (e.getBaseMaxHealth() + e.getEquipMaxHealth());
 		this.maxMana = (e.getBaseManaPoint() + e.getEquipManaPoint());
-		this.health = maxHealth;
-		this.mana = maxMana;
 		this.attack = MathUtils.max(this.attack + e.getEquipAttack(), 0);
 		this.defence = MathUtils.max(this.defence + e.getEquipDefence(), 0);
 		this.strength = MathUtils.max(this.strength + e.getEquipStrength(), 0);
@@ -785,6 +951,10 @@ public abstract class RoleValue {
 		isMoved = false;
 	}
 
+	public boolean isFlying() {
+		return (moveType == MoveType.FLY);
+	}
+
 	public JobType getJobType() {
 		return jobType;
 	}
@@ -793,11 +963,11 @@ public abstract class RoleValue {
 		this.jobType = jobType;
 	}
 
-	public MoveType getMoveType() {
+	public int getMoveType() {
 		return moveType;
 	}
 
-	public void setMoveType(MoveType moveType) {
+	public void setMoveType(int moveType) {
 		this.moveType = moveType;
 	}
 
@@ -820,7 +990,7 @@ public abstract class RoleValue {
 		this.team = Team.Unknown;
 		this.movePoints = 0;
 		this.turnPoints = 0;
-		this.actionPoints = 0;
+		this.actionPoints = 10;
 		this.isAttack = false;
 		this.isDefense = false;
 		this.isSkill = false;
@@ -828,6 +998,8 @@ public abstract class RoleValue {
 		this.isDead = false;
 		this.isInvincible = false;
 		this.clearAllActionState();
+		clearNegativeStates();
+		initAllExtraAttributes();
 		return this;
 	}
 
@@ -848,6 +1020,7 @@ public abstract class RoleValue {
 		this.health = maxHealth;
 		this.mana = maxMana;
 		undoneAction();
+		clearNegativeStates();
 		return this;
 	}
 
@@ -856,7 +1029,8 @@ public abstract class RoleValue {
 	}
 
 	public boolean canAction() {
-		return isAlive() && !isLocked();
+		boolean paralyzeCheck = !SystemSwitch.ENABLE_BREAK_SYSTEM || !isParalyzed;
+		return isAlive() && !isLocked() && paralyzeCheck && !isBroken;
 	}
 
 	public int getHitRateBonus() {
@@ -866,4 +1040,680 @@ public abstract class RoleValue {
 	public void setHitRateBonus(int hitRateBonus) {
 		this.hitRateBonus = hitRateBonus;
 	}
+
+	public RoleValue applyJobAttributes() {
+		if (jobType == null) {
+			return this;
+		}
+		JobTemplate tpl = JobTree.get(jobType);
+		if (tpl == null) {
+			return this;
+		}
+		this.maxHealth = tpl.maxHealth;
+		this.maxMana = tpl.maxMana;
+		this.attack = tpl.attack;
+		this.defence = tpl.defence;
+		this.strength = tpl.strength;
+		this.intelligence = tpl.intelligence;
+		this.agility = tpl.agility;
+		this.fitness = tpl.fitness;
+		this.dexterity = tpl.dexterity;
+		this.movePoints = tpl.movePoints;
+		this.health = this.maxHealth;
+		this.mana = this.maxMana;
+		if (jobType.isFastMove()) {
+			this.movePoints += 2;
+		}
+		if (jobType.isFlyOver()) {
+			this.movePoints += 3;
+		}
+		if (jobType.isHeavyArmor()) {
+			this.defence += 3;
+		}
+		undoneAction();
+		return this;
+	}
+
+	/**
+	 * 最终命中率计算
+	 * 
+	 * @param target
+	 * @return
+	 */
+	public int getFinalHitRate(RoleValue target) {
+		int baseHit = hit(target.getDexterity(), target.getAgility(), target.getFitness());
+		// 士气惩罚
+		if (SystemSwitch.ENABLE_MORALE_SYSTEM && isMoraleLow()) {
+			baseHit -= 20;
+		}
+		int finalHit = baseHit - target.getDodgeRate();
+		return MathUtils.clamp(finalHit, 0, 100);
+	}
+
+	/**
+	 * 最终闪避率
+	 */
+	public int getDodgeRate() {
+		int finalDodge = dodgeRate + (isWounded ? -woundDefenceReduce : 0);
+		return MathUtils.clamp(finalDodge, 0, 100);
+	}
+
+	public void setDodgeRate(int dodgeRate) {
+		this.dodgeRate = MathUtils.max(dodgeRate, 0);
+	}
+
+	/**
+	 * 攻击伤害判定
+	 */
+	public int attackTarget(RoleValue target) {
+		if (!canAction() || target.isInvincible() || target.isDead()) {
+			return 0;
+		}
+		// 命中判定
+		int hitRoll = MathUtils.nextInt(100);
+		int finalHit = getFinalHitRate(target);
+		if (hitRoll > finalHit) {
+			// 闪避则无伤
+			return 0;
+		}
+		// 格挡(击中但不破防)判定
+		if (SystemSwitch.ENABLE_BLOCK_SYSTEM && target.tryBlock()) {
+			return -1;
+		}
+		// 疲劳积累
+		if (SystemSwitch.ENABLE_BREAK_SYSTEM) {
+			target.addBreak(10);
+		}
+		// 计算最终伤害
+		int damage = calculateFinalDamage(target);
+
+		// 等级压制
+		if (SystemSwitch.ENABLE_LEVEL_PRESSURE) {
+			float lvlFactor = getLevelFactor(target);
+			damage = MathUtils.ifloor(damage * lvlFactor);
+		}
+
+		// 元素倍率
+		if (SystemSwitch.ENABLE_ELEMENT_SYSTEM) {
+			int eleMul = target.getElementMultiplier(weaponElementType);
+			damage = MathUtils.ifloor(damage * eleMul / 100f);
+		}
+
+		// 暴击
+		boolean crit = MathUtils.nextInt(100) < (isFocus ? critRate + 30 : critRate);
+		if (crit) {
+			damage = damage * critDamage / 100;
+		}
+		target.damage(damage);
+		isFocus = false;
+		return damage;
+	}
+
+	/**
+	 * 最终伤害计算
+	 * 
+	 * @param target
+	 * @return
+	 */
+	public int calculateFinalDamage(RoleValue target) {
+		int realDefence = MathUtils.max(target.getDefence() - defencePenetration, 0);
+		float damage = attack + 0.5f * strength - 0.5f * realDefence;
+		damage = variance(damage, 20, true);
+		damage *= (100 - target.damageReduce) / 100f;
+		return MathUtils.max(MathUtils.ifloor(damage), 1);
+	}
+
+	/**
+	 * 治疗
+	 * 
+	 * @param manaCost
+	 * @param baseHeal
+	 * @return
+	 */
+	public RoleValue healAdvanced(int manaCost, int baseHeal) {
+		if (isDead || mana < manaCost || isParalyzed) {
+			return this;
+		}
+		int bonusHeal = (int) (intelligence * 0.3f + healBonus);
+		int totalHeal = baseHeal + bonusHeal;
+		totalHeal = MathUtils.ifloor(variance(totalHeal, 15, true));
+		changeHeal(totalHeal);
+		mana -= manaCost;
+		return this;
+	}
+
+	/**
+	 * 自然恢复（每回合少量回血回蓝）
+	 */
+	public RoleValue naturalRegen() {
+		if (isDead || isPoisoned) {
+			return this;
+		}
+		if ((SystemSwitch.ENABLE_BREAK_SYSTEM && isBroken) || isParalyzed) {
+			return this;
+		}
+		int hpRegen = fitness / 5;
+		changeHeal(hpRegen);
+		regenerateMana();
+		return this;
+	}
+
+	/**
+	 * 中毒，持续掉血，无法自然回血
+	 * 
+	 * @param damage
+	 * @param duration
+	 * @return
+	 */
+	public RoleValue applyPoison(int damage, int duration) {
+		if (isDead || isInvincible) {
+			return this;
+		}
+		isPoisoned = true;
+		poisonDamage = MathUtils.max(damage, 1);
+		poisonDuration = MathUtils.max(duration, 1);
+		return this;
+	}
+
+	/**
+	 * 重伤，降低防御、闪避
+	 * 
+	 * @param defenceReduce
+	 * @param duration
+	 * @return
+	 */
+	public RoleValue applyWound(int defenceReduce, int duration) {
+		if (isDead) {
+			return this;
+		}
+		isWounded = true;
+		woundDefenceReduce = MathUtils.max(defenceReduce, 0);
+		woundDuration = MathUtils.max(duration, 1);
+		return this;
+	}
+
+	/**
+	 * 麻痹,无法行动
+	 * 
+	 * @param duration
+	 * @return
+	 */
+	public RoleValue applyParalyze(int duration) {
+		if (isDead)
+			return this;
+		isParalyzed = true;
+		paralyzeDuration = MathUtils.max(duration, 1);
+		doneAction();
+		return this;
+	}
+
+	/**
+	 * 每回合负面状态生效（必须在回合结束调用）
+	 */
+	public void onTurnEndNegativeEffect() {
+		if (isDead) {
+			return;
+		}
+		// 中毒
+		if (isPoisoned) {
+			damage(poisonDamage);
+			poisonDuration--;
+			if (poisonDuration <= 0) {
+				clearPoison();
+			}
+		}
+		// 重伤
+		if (isWounded) {
+			woundDuration--;
+			if (woundDuration <= 0) {
+				clearWound();
+			}
+		}
+		// 麻痹
+		if (isParalyzed) {
+			paralyzeDuration--;
+			if (paralyzeDuration <= 0) {
+				clearParalyze();
+			}
+		}
+	}
+
+	/**
+	 * 清除所有负面状态
+	 */
+	public void clearNegativeStates() {
+		clearPoison();
+		clearWound();
+		clearParalyze();
+	}
+
+	public void clearPoison() {
+		isPoisoned = false;
+		poisonDamage = 0;
+		poisonDuration = 0;
+	}
+
+	public void clearWound() {
+		isWounded = false;
+		woundDefenceReduce = 0;
+		woundDuration = 0;
+	}
+
+	public void clearParalyze() {
+		isParalyzed = false;
+		paralyzeDuration = 0;
+		undoneAction();
+	}
+
+	/**
+	 * 士气（类三国游戏必备）
+	 * 
+	 * @param v
+	 */
+	public void addMorale(int v) {
+		if (!SystemSwitch.ENABLE_MORALE_SYSTEM) {
+			return;
+		}
+		morale = MathUtils.clamp(morale + v, 0, 100);
+	}
+
+	/**
+	 * 士气低落
+	 * 
+	 * @return
+	 */
+	public boolean isMoraleLow() {
+		if (!SystemSwitch.ENABLE_MORALE_SYSTEM) {
+			return false;
+		}
+		return morale <= 30;
+	}
+
+	public boolean tryBlock() {
+		if (!SystemSwitch.ENABLE_BLOCK_SYSTEM) {
+			return false;
+		}
+		if (isBroken || isMoraleLow()) {
+			return false;
+		}
+		int rate = blockRate;
+		if (isDefendStance) {
+			rate += 20;
+		}
+		return MathUtils.nextInt(100) < rate;
+	}
+
+	/**
+	 * 增加疲劳
+	 * 
+	 * @param value
+	 */
+	public void addBreak(int value) {
+		if (!SystemSwitch.ENABLE_BREAK_SYSTEM || isBroken) {
+			return;
+		}
+		breakCount += MathUtils.max(value - breakResist, 1);
+		if (breakCount >= 100) {
+			isBroken = true;
+			breakDuration = 1;
+			breakCount = 0;
+		}
+	}
+
+	public void onTurnEndBreak() {
+		if (!SystemSwitch.ENABLE_BREAK_SYSTEM || !isBroken) {
+			return;
+		}
+		breakDuration--;
+		if (breakDuration <= 0) {
+			isBroken = false;
+		}
+	}
+
+	public boolean canCounter() {
+		if (!SystemSwitch.ENABLE_COUNTER_SYSTEM) {
+			return false;
+		}
+		return canCounterAttack && !isDead && !isBroken && !isParalyzed && !isMoraleLow() && counterAttackCount > 0;
+	}
+
+	public void doCounterAttack(RoleValue target) {
+		if (!canCounter()) {
+			return;
+		}
+		int dmg = attackTarget(target);
+		if (dmg > 0) {
+			counterAttackCount--;
+		}
+	}
+
+	public int getElementMultiplier(int element) {
+		if (!SystemSwitch.ENABLE_ELEMENT_SYSTEM) {
+			return 100;
+		}
+		if (element == Element.NONE) {
+			return 100;
+		}
+		int res = resistElements[element];
+		int weak = weakElements[element];
+		return MathUtils.clamp(weak - res, 50, 200);
+	}
+
+	public void setElementResist(int element, int value) {
+		if (!SystemSwitch.ENABLE_ELEMENT_SYSTEM) {
+			return;
+		}
+		resistElements[element] = MathUtils.clamp(value, 0, 200);
+	}
+
+	public void setElementWeak(int element, int value) {
+		if (!SystemSwitch.ENABLE_ELEMENT_SYSTEM) {
+			return;
+		}
+		weakElements[element] = MathUtils.clamp(value, 100, 200);
+	}
+
+	public void enterDefendStance() {
+		isDefendStance = true;
+		damageReduce += 30;
+		blockRate += 15;
+	}
+
+	public void exitDefendStance() {
+		isDefendStance = false;
+		damageReduce = MathUtils.max(damageReduce - 30, 0);
+		blockRate = agility / 4;
+	}
+
+	public void focus() {
+		focus(30, 20);
+	}
+
+	/**
+	 * 会心状态 (命中与暴击增加)
+	 * 
+	 * @param hit
+	 * @param crit
+	 */
+	public void focus(int hit, int crit) {
+		isFocus = true;
+		hitRateBonus += hit;
+		critRate += crit;
+	}
+
+	/**
+	 * 等级压制
+	 * 
+	 * @param target
+	 * @return
+	 */
+	public float getLevelFactor(RoleValue target) {
+		if (!SystemSwitch.ENABLE_LEVEL_PRESSURE) {
+			return 1.0f;
+		}
+		int diff = level - target.level;
+		if (diff >= 10) {
+			return 1.5f;
+		}
+		if (diff <= -10) {
+			return 0.6f;
+		}
+		return 1.0f + diff * 0.02f;
+	}
+
+	/**
+	 * 回合开始统一更新（需要手动调用）
+	 */
+	public void onTurnBegin() {
+		if (isDead) {
+			return;
+		}
+		undoneAction();
+		this.actionPoints = 10;
+		this.turnPoints = 0;
+		this.isFocus = false;
+		this.isDefendStance = false;
+		exitDefendStance();
+		if (SystemSwitch.ENABLE_BREAK_SYSTEM) {
+			if (isBroken && breakDuration <= 0) {
+				isBroken = false;
+				breakCount = 0;
+			}
+		}
+		if (isParalyzed && paralyzeDuration <= 0) {
+			clearParalyze();
+		}
+	}
+
+	/**
+	 * 回合结束统一更新（需要手动调用）
+	 */
+	public void onTurnEnd() {
+		onTurnEndNegativeEffect();
+		if (SystemSwitch.ENABLE_BREAK_SYSTEM) {
+			onTurnEndBreak();
+		}
+		if (isNaturalRegen) {
+			naturalRegen();
+		}
+		exitDefendStance();
+		counterAttackCount = 1;
+	}
+
+	public boolean isPoisoned() {
+		return isPoisoned;
+	}
+
+	public boolean isWounded() {
+		return isWounded;
+	}
+
+	public boolean isParalyzed() {
+		return isParalyzed;
+	}
+
+	public int getDefencePenetration() {
+		return defencePenetration;
+	}
+
+	public void setDefencePenetration(int dp) {
+		defencePenetration = MathUtils.max(dp, 0);
+	}
+
+	public int getCritRate() {
+		return critRate;
+	}
+
+	public void setCritRate(int crit) {
+		critRate = MathUtils.clamp(crit, 0, 100);
+	}
+
+	public int getCritDamage() {
+		return critDamage;
+	}
+
+	public void setCritDamage(int cd) {
+		critDamage = MathUtils.max(cd, 100);
+	}
+
+	public int getHealBonus() {
+		return healBonus;
+	}
+
+	public void setHealBonus(int bonus) {
+		healBonus = MathUtils.max(bonus, 0);
+	}
+
+	public int getDamageReduce() {
+		return damageReduce;
+	}
+
+	public void setDamageReduce(int dr) {
+		damageReduce = MathUtils.clamp(dr, 0, 80);
+	}
+
+	public int getMorale() {
+		return morale;
+	}
+
+	public void setMorale(int m) {
+		morale = MathUtils.clamp(m, 0, 100);
+	}
+
+	public int getCounterAttackCount() {
+		return counterAttackCount;
+	}
+
+	public void setCounterAttackCount(int c) {
+		counterAttackCount = MathUtils.max(c, 0);
+	}
+
+	public boolean isDefendStance() {
+		return isDefendStance;
+	}
+
+	public int getBlockRate() {
+		return blockRate;
+	}
+
+	public void setBlockRate(int b) {
+		blockRate = MathUtils.max(b, 0);
+	}
+
+	public int getBlockDamageReduce() {
+		return blockDamageReduce;
+	}
+
+	public void setBlockDamageReduce(int b) {
+		blockDamageReduce = MathUtils.max(b, 0);
+	}
+
+	public int getWeaponElementType() {
+		return weaponElementType;
+	}
+
+	public void setWeaponElementType(int w) {
+		weaponElementType = w;
+	}
+
+	public int[] getResistElements() {
+		return resistElements;
+	}
+
+	public int[] getWeakElements() {
+		return weakElements;
+	}
+
+	public int getManaShield() {
+		return manaShield;
+	}
+
+	public void setManaShield(int m) {
+		manaShield = MathUtils.max(m, 0);
+	}
+
+	public int getKillExpBonus() {
+		return killExpBonus;
+	}
+
+	public void setKillExpBonus(int k) {
+		killExpBonus = MathUtils.max(k, 0);
+	}
+
+	public int getBreakCount() {
+		return breakCount;
+	}
+
+	public void setBreakCount(int b) {
+		breakCount = MathUtils.max(b, 0);
+	}
+
+	public int getBreakResist() {
+		return breakResist;
+	}
+
+	public void setBreakResist(int b) {
+		breakResist = MathUtils.max(b, 0);
+	}
+
+	public boolean isBroken() {
+		return isBroken;
+	}
+
+	public int getBreakDuration() {
+		return breakDuration;
+	}
+
+	public boolean isNaturalRegen() {
+		return isNaturalRegen;
+	}
+
+	public void setNaturalRegen(boolean naturalRegen) {
+		this.isNaturalRegen = naturalRegen;
+	}
+
+	public boolean isFocus() {
+		return isFocus;
+	}
+
+	public boolean isCounterStrike() {
+		return isCounterStrike;
+	}
+
+	public void setCounterStrike(boolean c) {
+		isCounterStrike = c;
+	}
+
+	public boolean isCanCounterAttack() {
+		return canCounterAttack;
+	}
+
+	public void setCanCounterAttack(boolean c) {
+		canCounterAttack = c;
+	}
+
+	public int getDamageReflect() {
+		return damageReflect;
+	}
+
+	public void setDamageReflect(int d) {
+		damageReflect = MathUtils.max(d, 0);
+	}
+
+	public int getLifeSteal() {
+		return lifeSteal;
+	}
+
+	public void setLifeSteal(int ls) {
+		lifeSteal = MathUtils.max(ls, 0);
+	}
+
+	public int getDamageTakenMultiplier() {
+		return damageTakenMultiplier;
+	}
+
+	public void setDamageTakenMultiplier(int d) {
+		damageTakenMultiplier = MathUtils.max(d, 50);
+	}
+
+	public int getPoisonDamage() {
+		return poisonDamage;
+	}
+
+	public int getPoisonDuration() {
+		return poisonDuration;
+	}
+
+	public int getWoundDefenceReduce() {
+		return woundDefenceReduce;
+	}
+
+	public int getWoundDuration() {
+		return woundDuration;
+	}
+
+	public int getParalyzeDuration() {
+		return paralyzeDuration;
+	}
+
 }

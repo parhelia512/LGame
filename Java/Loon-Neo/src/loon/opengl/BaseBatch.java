@@ -68,24 +68,16 @@ public abstract class BaseBatch extends LTextureBind {
 	}
 
 	public void addQuad(LTexture tex, int tint, Affine2f xf, float x, float y, float w, float h) {
-		if (tex == null || tex.isClosed()) {
-			return;
-		}
-		if (w < 1f || h < 1f) {
-			return;
-		}
-		if (LColor.getAlpha(tint) <= 0) {
+		if (tex == null || tex.isClosed() || w < 1f || h < 1f || LColor.getAlpha(tint) <= 0) {
 			return;
 		}
 
 		setTexture(tex);
 
-		final boolean childTexture = (tex.isScale() || tex.isCopy());
-
-		if (childTexture) {
-			float u2 = tex.getFormat().repeatX ? w / tex.width() : tex.widthRatio();
-			float uv = tex.getFormat().repeatY ? h / tex.height() : tex.heightRatio();
-			addQuad(tint, xf, x, y, x + w, y + h, tex.xOff(), tex.yOff(), u2, uv);
+		if (tex.isScale() || tex.isCopy()) {
+			final float u2 = tex.getFormat().repeatX ? w / tex.width() : tex.widthRatio();
+			final float v2 = tex.getFormat().repeatY ? h / tex.height() : tex.heightRatio();
+			addQuad(tint, xf, x, y, x + w, y + h, tex.xOff(), tex.yOff(), u2, v2);
 		} else {
 			addQuad(tint, xf, x, y, x + w, y + h, 0f, 0f, 1f, 1f);
 		}
@@ -93,46 +85,31 @@ public abstract class BaseBatch extends LTextureBind {
 
 	public void addQuad(LTexture tex, int tint, Affine2f xf, float dx, float dy, float dw, float dh, float sx, float sy,
 			float sw, float sh) {
-		if (tex == null || tex.isClosed()) {
-			return;
-		}
-		if (dw < 1f || dh < 1f || sw < 1f || sh < 1f) {
-			return;
-		}
-		if (LColor.getAlpha(tint) <= 0) {
+		if (tex == null || tex.isClosed() || dw < 1f || dh < 1f || sw < 1f || sh < 1f || LColor.getAlpha(tint) <= 0) {
 			return;
 		}
 
 		setTexture(tex);
 
 		final boolean childTexture = (tex.isScale() || tex.isCopy());
+		final LTexture baseTex = childTexture ? LTexture.firstFather(tex) : tex;
 
-		if (!childTexture) {
-			float displayWidth = tex.width();
-			float displayHeight = tex.height();
-			float xOff = ((sx / displayWidth) * tex.widthRatio()) + tex.xOff();
-			float yOff = ((sy / displayHeight) * tex.heightRatio()) + tex.yOff();
-			float widthRatio = ((sw / displayWidth) * tex.widthRatio()) + xOff;
-			float heightRatio = ((sh / displayHeight) * tex.heightRatio()) + yOff;
-			addQuad(tint, xf, dx, dy, dx + dw, dy + dh, xOff, yOff, widthRatio, heightRatio);
-		} else {
-			LTexture forefather = LTexture.firstFather(tex);
-			float displayWidth = forefather.width();
-			float displayHeight = forefather.height();
-			float xOff = ((sx / displayWidth) * forefather.widthRatio()) + forefather.xOff() + tex.xOff();
-			float yOff = ((sy / displayHeight) * forefather.heightRatio()) + forefather.yOff() + tex.yOff();
-			float widthRatio = ((sw / displayWidth) * forefather.widthRatio()) + xOff;
-			float heightRatio = ((sh / displayHeight) * forefather.heightRatio()) + yOff;
-			addQuad(tint, xf, dx, dy, dx + dw, dy + dh, xOff, yOff, widthRatio, heightRatio);
-		}
+		final float displayWidth = baseTex.width();
+		final float displayHeight = baseTex.height();
+
+		final float xOff = ((sx / displayWidth) * baseTex.widthRatio()) + baseTex.xOff()
+				+ (childTexture ? tex.xOff() : 0f);
+		final float yOff = ((sy / displayHeight) * baseTex.heightRatio()) + baseTex.yOff()
+				+ (childTexture ? tex.yOff() : 0f);
+		final float widthRatio = ((sw / displayWidth) * baseTex.widthRatio()) + xOff;
+		final float heightRatio = ((sh / displayHeight) * baseTex.heightRatio()) + yOff;
+
+		addQuad(tint, xf, dx, dy, dx + dw, dy + dh, xOff, yOff, widthRatio, heightRatio);
 	}
 
 	public void quad(LTexture tex, int tint, Affine2f xf, float x1, float y1, float x2, float y2, float x3, float y3,
 			float x4, float y4) {
-		if (tex == null || tex.isClosed()) {
-			return;
-		}
-		if (LColor.getAlpha(tint) <= 0) {
+		if (tex == null || tex.isClosed() || LColor.getAlpha(tint) <= 0) {
 			return;
 		}
 		setTexture(tex);

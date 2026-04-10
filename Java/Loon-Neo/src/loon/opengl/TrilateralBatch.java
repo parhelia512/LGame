@@ -33,32 +33,31 @@ public final class TrilateralBatch extends BaseBatch {
 	private final static String BATCHNAME = "trilbatch";
 
 	private final Matrix4 _viewMatrix;
-
 	private final ExpandVertices _expandVertices;
 
 	private float _ubufWidth = 0;
-
 	private float _ubufHeight = 0;
-
 	private float _currentFloatColor = -1f;
 
 	private int _currentBlendMode = -1;
-
 	private int _currentAlpha;
-
 	private int _currentIndexCount = 0;
-
 	private int _maxVertsInBatch = 0;
-
 	private int _currentIntColor = -1;
 
 	private boolean _uflip = true;
-
 	private boolean _loaded = false, _locked = false;
 
 	private ShaderProgram _currentBatchShader;
-
 	private Submit _currentSubmit;
+
+	private final static int COORD_SIZE = 8;
+	private final static int VERT_SIZE = 20;
+
+	private final float[] _coordCache = new float[COORD_SIZE];
+	private final float[] _vertCache = new float[VERT_SIZE];
+
+	private final Affine2f _affineCache = new Affine2f();
 
 	public TrilateralBatch(GL20 gl) {
 		this(gl, LSystem.DEF_SOURCE);
@@ -79,10 +78,8 @@ public final class TrilateralBatch extends BaseBatch {
 	@Override
 	public void init() {
 		this._currentSubmit = Submit.create();
-		this._currentBlendMode = -1;
-		this._currentIntColor = -1;
 		this._currentFloatColor = LColor.white.toFloatBits();
-		this._currentAlpha = 255;
+		reset();
 	}
 
 	private final float toFloatColor(int tint) {
@@ -101,14 +98,6 @@ public final class TrilateralBatch extends BaseBatch {
 		return _currentFloatColor;
 	}
 
-	protected final static float addX(float m00, float m01, float m10, float m11, float x, float y, float tx) {
-		return m00 * x + m10 * y + tx;
-	}
-
-	protected final static float addY(float m00, float m01, float m10, float m11, float x, float y, float ty) {
-		return m01 * x + m11 * y + ty;
-	}
-
 	@Override
 	public void addQuad(int tint, float m00, float m01, float m10, float m11, float tx, float ty, float x1, float y1,
 			float sx1, float sy1, float x2, float y2, float sx2, float sy2, float x3, float y3, float sx3, float sy3,
@@ -118,58 +107,45 @@ public final class TrilateralBatch extends BaseBatch {
 			return;
 		}
 
-		this.updateTexture();
+		updateTexture();
 
 		final float colorFloat = toFloatColor(tint);
 
-		final float nx1 = addX(m00, m01, m10, m11, x1, y1, tx);
-		final float ny1 = addY(m00, m01, m10, m11, x1, y1, ty);
-		final float nx2 = addX(m00, m01, m10, m11, x2, y2, tx);
-		final float ny2 = addY(m00, m01, m10, m11, x2, y2, ty);
-		final float nx3 = addX(m00, m01, m10, m11, x3, y3, tx);
-		final float ny3 = addY(m00, m01, m10, m11, x3, y3, ty);
-		final float nx4 = addX(m00, m01, m10, m11, x4, y4, tx);
-		final float ny4 = addY(m00, m01, m10, m11, x4, y4, ty);
+		_coordCache[0] = m00 * x1 + m10 * y1 + tx;
+		_coordCache[1] = m01 * x1 + m11 * y1 + ty;
+		_coordCache[2] = m00 * x2 + m10 * y2 + tx;
+		_coordCache[3] = m01 * x2 + m11 * y2 + ty;
+		_coordCache[4] = m00 * x3 + m10 * y3 + tx;
+		_coordCache[5] = m01 * x3 + m11 * y3 + ty;
+		_coordCache[6] = m00 * x4 + m10 * y4 + tx;
+		_coordCache[7] = m01 * x4 + m11 * y4 + ty;
 
-		int index = this._currentIndexCount;
-
+		final int index = _currentIndexCount;
 		_expandVertices.expand(index);
-		
-		_expandVertices.set(index++, nx1);
-		_expandVertices.set(index++, ny1);
-		_expandVertices.set(index++, colorFloat);
-		_expandVertices.set(index++, sx1);
-		_expandVertices.set(index++, sy1);
 
-		_expandVertices.set(index++, nx2);
-		_expandVertices.set(index++, ny2);
-		_expandVertices.set(index++, colorFloat);
-		_expandVertices.set(index++, sx2);
-		_expandVertices.set(index++, sy2);
+		_vertCache[0] = _coordCache[0];
+		_vertCache[1] = _coordCache[1];
+		_vertCache[2] = colorFloat;
+		_vertCache[3] = sx1;
+		_vertCache[4] = sy1;
+		_vertCache[5] = _coordCache[2];
+		_vertCache[6] = _coordCache[3];
+		_vertCache[7] = colorFloat;
+		_vertCache[8] = sx2;
+		_vertCache[9] = sy2;
+		_vertCache[10] = _coordCache[6];
+		_vertCache[11] = _coordCache[7];
+		_vertCache[12] = colorFloat;
+		_vertCache[13] = sx4;
+		_vertCache[14] = sy4;
+		_vertCache[15] = _coordCache[4];
+		_vertCache[16] = _coordCache[5];
+		_vertCache[17] = colorFloat;
+		_vertCache[18] = sx3;
+		_vertCache[19] = sy3;
 
-		_expandVertices.set(index++, nx4);
-		_expandVertices.set(index++, ny4);
-		_expandVertices.set(index++, colorFloat);
-		_expandVertices.set(index++, sx4);
-		_expandVertices.set(index++, sy4);
-
-		_expandVertices.set(index++, nx3);
-		_expandVertices.set(index++, ny3);
-		_expandVertices.set(index++, colorFloat);
-		_expandVertices.set(index++, sx3);
-		_expandVertices.set(index++, sy3);
-
-		this._currentIndexCount = index;
-	}
-
-	@Override
-	public void quad(int tint, float m00, float m01, float m10, float m11, float tx, float ty, float x1, float y1,
-			float x2, float y2, float x3, float y3, float x4, float y4, float u, float v, float u2, float v2) {
-
-		final float colorFloat = toFloatColor(tint);
-
-		quad(m00, m01, m10, m11, tx, ty, x1, y1, colorFloat, x2, y2, colorFloat, x3, y3, colorFloat, x4, y4, colorFloat,
-				u, v, u2, v2);
+		_expandVertices.setBatch(index, _vertCache);
+		_currentIndexCount = index + VERT_SIZE;
 	}
 
 	@Override
@@ -181,46 +157,51 @@ public final class TrilateralBatch extends BaseBatch {
 			return;
 		}
 
-		this.updateTexture();
+		updateTexture();
 
-		final float nx1 = addX(m00, m01, m10, m11, x1, y1, tx);
-		final float ny1 = addY(m00, m01, m10, m11, x1, y1, ty);
-		final float nx2 = addX(m00, m01, m10, m11, x2, y2, tx);
-		final float ny2 = addY(m00, m01, m10, m11, x2, y2, ty);
-		final float nx3 = addX(m00, m01, m10, m11, x3, y3, tx);
-		final float ny3 = addY(m00, m01, m10, m11, x3, y3, ty);
-		final float nx4 = addX(m00, m01, m10, m11, x4, y4, tx);
-		final float ny4 = addY(m00, m01, m10, m11, x4, y4, ty);
+		_coordCache[0] = m00 * x1 + m10 * y1 + tx;
+		_coordCache[1] = m01 * x1 + m11 * y1 + ty;
+		_coordCache[2] = m00 * x2 + m10 * y2 + tx;
+		_coordCache[3] = m01 * x2 + m11 * y2 + ty;
+		_coordCache[4] = m00 * x3 + m10 * y3 + tx;
+		_coordCache[5] = m01 * x3 + m11 * y3 + ty;
+		_coordCache[6] = m00 * x4 + m10 * y4 + tx;
+		_coordCache[7] = m01 * x4 + m11 * y4 + ty;
 
-		int index = this._currentIndexCount;
-
+		final int index = _currentIndexCount;
 		_expandVertices.expand(index);
-		
-		_expandVertices.set(index++, nx1);
-		_expandVertices.set(index++, ny1);
-		_expandVertices.set(index++, c1);
-		_expandVertices.set(index++, u);
-		_expandVertices.set(index++, v);
 
-		_expandVertices.set(index++, nx2);
-		_expandVertices.set(index++, ny2);
-		_expandVertices.set(index++, c2);
-		_expandVertices.set(index++, u);
-		_expandVertices.set(index++, v2);
+		_vertCache[0] = _coordCache[0];
+		_vertCache[1] = _coordCache[1];
+		_vertCache[2] = c1;
+		_vertCache[3] = u;
+		_vertCache[4] = v;
+		_vertCache[5] = _coordCache[2];
+		_vertCache[6] = _coordCache[3];
+		_vertCache[7] = c2;
+		_vertCache[8] = u;
+		_vertCache[9] = v2;
+		_vertCache[10] = _coordCache[4];
+		_vertCache[11] = _coordCache[5];
+		_vertCache[12] = c3;
+		_vertCache[13] = u2;
+		_vertCache[14] = v2;
+		_vertCache[15] = _coordCache[6];
+		_vertCache[16] = _coordCache[7];
+		_vertCache[17] = c4;
+		_vertCache[18] = u2;
+		_vertCache[19] = v;
 
-		_expandVertices.set(index++, nx3);
-		_expandVertices.set(index++, ny3);
-		_expandVertices.set(index++, c3);
-		_expandVertices.set(index++, u2);
-		_expandVertices.set(index++, v2);
+		_expandVertices.setBatch(index, _vertCache);
+		_currentIndexCount = index + VERT_SIZE;
+	}
 
-		_expandVertices.set(index++, nx4);
-		_expandVertices.set(index++, ny4);
-		_expandVertices.set(index++, c4);
-		_expandVertices.set(index++, u2);
-		_expandVertices.set(index++, v);
-
-		this._currentIndexCount = index;
+	@Override
+	public void quad(int tint, float m00, float m01, float m10, float m11, float tx, float ty, float x1, float y1,
+			float x2, float y2, float x3, float y3, float x4, float y4, float u, float v, float u2, float v2) {
+		final float colorFloat = toFloatColor(tint);
+		quad(m00, m01, m10, m11, tx, ty, x1, y1, colorFloat, x2, y2, colorFloat, x3, y3, colorFloat, x4, y4, colorFloat,
+				u, v, u2, v2);
 	}
 
 	@Override
@@ -232,16 +213,16 @@ public final class TrilateralBatch extends BaseBatch {
 			this._viewMatrix.setToOrtho2D(0, 0, _ubufWidth, _ubufHeight);
 			this._uflip = flip;
 			if (!flip) {
-				Affine2f a2f = new Affine2f();
 				float w = _ubufWidth / 2;
 				float h = _ubufHeight / 2;
-				a2f.translate(w, h);
-				a2f.scale(-1, 1);
-				a2f.translate(-w, -h);
-				a2f.translate(w, h);
-				a2f.rotateRadians(MathUtils.PI);
-				a2f.translate(-w, -h);
-				this._viewMatrix.mul(a2f);
+				_affineCache.idt();
+				_affineCache.translate(w, h);
+				_affineCache.scale(-1, 1);
+				_affineCache.translate(-w, -h);
+				_affineCache.translate(w, h);
+				_affineCache.rotateRadians(MathUtils.PI);
+				_affineCache.translate(-w, -h);
+				this._viewMatrix.mul(_affineCache);
 			}
 		}
 		final boolean dirty = isShaderDirty();
@@ -289,10 +270,11 @@ public final class TrilateralBatch extends BaseBatch {
 
 	@Override
 	public void flush() {
-		super.flush();
-		if (_currentIndexCount > 0) {
-			submit();
+		if (_currentIndexCount == 0) {
+			return;
 		}
+		super.flush();
+		submit();
 		if (_currentBatchShader != null) {
 			_currentBatchShader.end();
 		}
@@ -394,5 +376,4 @@ public final class TrilateralBatch extends BaseBatch {
 	public String toString() {
 		return "tris/" + _expandVertices.length();
 	}
-
 }

@@ -593,6 +593,24 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		return this;
 	}
 
+	public void onTurnBegin() {
+		for (int i = _objects.size - 1; i > -1; i--) {
+			BattleMapObject o = _objects.get(i);
+			if (o != null) {
+				o.onTurnBegin();
+			}
+		}
+	}
+
+	public void onTurnEnd() {
+		for (int i = _objects.size - 1; i > -1; i--) {
+			BattleMapObject o = _objects.get(i);
+			if (o != null) {
+				o.onTurnEnd();
+			}
+		}
+	}
+
 	public void createMap(GameEventBus<PathResult> pathResult, GameEventBus<BattleMapObject> bus) {
 		createMap(pathResult, bus, null, null);
 	}
@@ -673,7 +691,14 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		if (_pathFinder == null) {
 			return null;
 		}
+		if (obj == null) {
+			return null;
+		}
 		Vector2f pos = findTileXY(touchX, touchY);
+		if (pos.x < 0 || pos.y < 0) {
+			return null;
+		}
+		_pathFinder.setFlying(obj.isFlying());
 		TArray<PointI> result = _pathFinder.findPath(obj.getGridX(), obj.getGridY(), pos.x(), pos.y());
 		return result;
 	}

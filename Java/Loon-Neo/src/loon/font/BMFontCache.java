@@ -39,12 +39,14 @@ public final class BMFontCache extends CacheMap<BMFont> {
 	}
 
 	public static BMFontCache shared() {
-		synchronized (BMFontCache.class) {
-			if (_fontCache == null) {
-				_fontCache = new BMFontCache();
+		if (_fontCache == null) {
+			synchronized (BMFontCache.class) {
+				if (_fontCache == null) {
+					_fontCache = new BMFontCache();
+				}
 			}
-			return _fontCache;
 		}
+		return _fontCache;
 	}
 
 	private Created<BMFont> _createBMFont;

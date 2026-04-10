@@ -417,17 +417,16 @@ public class BattleSkill implements LRelease {
 		case AFTER_HIT:
 			if (stateTimer >= afterHitDuration && animFinished) {
 				if (targetObject != null
-						&& ((targetObject.getState() == ObjectState.DEAD) || targetObject.getHealth() <= 0)) {
+						&& ((targetObject.getState() != ObjectState.DEAD) && targetObject.getHealth() <= 0)) {
 					triggerEvents(caster, target, SKillEventType.ON_KILL);
+					targetObject.setState(ObjectState.DEAD);
 				}
 				setState(SkillState.FINISHED);
 				triggerEvents(caster, target, SKillEventType.ON_FINISH);
 				resetSkill();
 				castTriggered = true;
-			} else if (animFinished) {
-				if (caster != null) {
-					caster.setState(ObjectState.IDLE);
-				}
+			} else if (animFinished && (caster != null)) {
+				caster.setState(ObjectState.IDLE);
 			}
 			break;
 		default:

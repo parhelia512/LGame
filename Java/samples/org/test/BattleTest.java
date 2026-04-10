@@ -41,6 +41,7 @@ import loon.action.map.battle.BattleMovementManager.MovementMode;
 import loon.action.map.battle.BattleMovementManager.MovementState;
 import loon.action.map.battle.BattleType.ObjectState;
 import loon.action.map.battle.BattleType.RangeType;
+import loon.action.map.items.RoleValue.MoveType;
 import loon.action.sprite.Animation;
 import loon.action.sprite.AnimationManager;
 import loon.action.sprite.AnimationRenderer;
@@ -67,7 +68,7 @@ public class BattleTest extends Stage {
 		// 瓦片大小32x32
 		config.setTileSize(32, 32);
 		// 显示时按照缩放2倍处理
-		config.setScale(1f);
+		// config.setScale(2f);
 		// 构建一个随机地图，瓦片数量32x24
 		BattleMapGenerator generator = new BattleMapGenerator(32, 24);
 
@@ -266,6 +267,8 @@ public class BattleTest extends Stage {
 				return null;
 			}
 		});
+		// 角色飞行(地形无视)
+		// obj.setMoveType(MoveType.FLY);
 		// 拖拽地图
 		drag((x, y) -> {
 			newMap.scroll(x, y);

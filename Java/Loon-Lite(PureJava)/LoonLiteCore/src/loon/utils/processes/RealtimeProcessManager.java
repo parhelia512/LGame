@@ -115,12 +115,14 @@ public final class RealtimeProcessManager implements RealtimeProcessEvent, IArra
 	}
 
 	public static final RealtimeProcessManager get() {
-		synchronized (RealtimeProcessManager.class) {
-			if (_instance == null) {
-				_instance = new RealtimeProcessManager();
+		if (_instance == null) {
+			synchronized (RealtimeProcessManager.class) {
+				if (_instance == null) {
+					_instance = new RealtimeProcessManager();
+				}
 			}
-			return _instance;
 		}
+		return _instance;
 	}
 
 	public static boolean isScheduled() {
