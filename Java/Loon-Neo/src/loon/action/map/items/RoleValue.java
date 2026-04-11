@@ -29,9 +29,9 @@ import loon.utils.MathUtils;
  */
 public abstract class RoleValue {
 	/**
-	 * 移动类型
+	 * 大职业类型
 	 */
-	public static class MoveType {
+	public static class UnitType {
 		// 步兵
 		public static final int INFANTRY = 0;
 		// 骑兵
@@ -46,6 +46,14 @@ public abstract class RoleValue {
 		public static final int MAGIC = 5;
 		// 远程
 		public static final int RANGE = 6;
+		// 长枪
+		public static final int SPEARMAN = 7;
+		// 治疗者
+		public static final int HEALER = 8;
+		// 海军
+		public static final int NAVAL = 9;
+		// 亡灵
+		public static final int UNDEAD = 10;
 	}
 
 	/**
@@ -127,7 +135,7 @@ public abstract class RoleValue {
 	protected boolean isInvincible;
 
 	protected RoleEquip info;
-	protected int moveType;
+	protected int unitType;
 	protected JobType jobType;
 
 	// 负面状态
@@ -147,6 +155,8 @@ public abstract class RoleValue {
 	protected int critDamage;
 	protected int healBonus;
 	protected int damageReduce;
+	protected int baseAttackRange; // 基础攻击距离
+	protected int baseSkillRange; // 特技攻击距离 (特技本身也有攻击范围，是指能波及周围几格)
 
 	// 额外参数
 	protected int morale; // 士气
@@ -951,10 +961,6 @@ public abstract class RoleValue {
 		isMoved = false;
 	}
 
-	public boolean isFlying() {
-		return (moveType == MoveType.FLY);
-	}
-
 	public JobType getJobType() {
 		return jobType;
 	}
@@ -963,12 +969,12 @@ public abstract class RoleValue {
 		this.jobType = jobType;
 	}
 
-	public int getMoveType() {
-		return moveType;
+	public int getUnitType() {
+		return unitType;
 	}
 
-	public void setMoveType(int moveType) {
-		this.moveType = moveType;
+	public void setUnitType(int unitType) {
+		this.unitType = unitType;
 	}
 
 	public RoleValue clear() {
@@ -1500,6 +1506,10 @@ public abstract class RoleValue {
 		counterAttackCount = 1;
 	}
 
+	public boolean isDisabled() {
+		return isDead || isParalyzed;
+	}
+
 	public boolean isPoisoned() {
 		return isPoisoned;
 	}
@@ -1652,6 +1662,14 @@ public abstract class RoleValue {
 		this.isNaturalRegen = naturalRegen;
 	}
 
+	public float getHpRate() {
+		return health / maxHealth;
+	}
+
+	public float getMpRate() {
+		return mana / maxMana;
+	}
+
 	public boolean isFocus() {
 		return isFocus;
 	}
@@ -1714,6 +1732,124 @@ public abstract class RoleValue {
 
 	public int getParalyzeDuration() {
 		return paralyzeDuration;
+	}
+
+	public boolean isAllyOf(RoleValue o) {
+		if (o == null) {
+			return false;
+		}
+		return team == o.team || Team.Ally == o.team;
+	}
+
+	public boolean isEnemyOf(RoleValue o) {
+		if (o == null) {
+			return false;
+		}
+		return (team != o.team && team != Team.Ally);
+	}
+
+	public int getBaseAttackRange() {
+		return baseAttackRange;
+	}
+
+	public void setBaseAttackRange(int baseAttackRange) {
+		this.baseAttackRange = baseAttackRange;
+	}
+
+	public int getBaseSkillRange() {
+		return baseSkillRange;
+	}
+
+	public void setBaseSkillRange(int baseSkillRange) {
+		this.baseSkillRange = baseSkillRange;
+	}
+
+	public boolean isCavalry() {
+		return unitType == UnitType.CAVALRY;
+	}
+
+	public boolean isFlying() {
+		return unitType == UnitType.FLY;
+	}
+
+	public boolean isArmor() {
+		return unitType == UnitType.ARMOR;
+	}
+
+	public boolean isMagic() {
+		return unitType == UnitType.MAGIC;
+	}
+
+	public boolean isRange() {
+		return unitType == UnitType.RANGE;
+	}
+
+	public boolean isInfantry() {
+		return unitType == UnitType.INFANTRY;
+	}
+
+	public boolean isHooves() {
+		return unitType == UnitType.HOOVES;
+	}
+
+	public boolean isHealer() {
+		return unitType == UnitType.HEALER;
+	}
+
+	public boolean isNaval() {
+		return unitType == UnitType.NAVAL;
+	}
+
+	/**
+	 * 判断当前单位是否对另一个单位有兵种克制优势
+	 * 
+	 * @param target
+	 * @return
+	 */
+	public boolean hasAdvantageOver(RoleValue target) {
+		if (target == null) {
+			return false;
+		}
+		int mType = this.getUnitType();
+		int tType = target.getUnitType();
+		// 重甲克制长枪兵
+		if (mType == UnitType.ARMOR && tType == UnitType.SPEARMAN) {
+			return true;
+		}
+		// 长枪兵克制骑兵
+		if (mType == UnitType.SPEARMAN && tType == UnitType.CAVALRY) {
+			return true;
+		}
+		// 骑兵克制远程魔法步兵单位
+		if (mType == UnitType.CAVALRY
+				&& (tType == UnitType.RANGE || tType == UnitType.MAGIC || tType == UnitType.INFANTRY)) {
+			return true;
+		}
+		// 远程单位克制步兵与飞行
+		if (mType == UnitType.RANGE && (tType == UnitType.INFANTRY || tType == UnitType.FLY)) {
+			return true;
+		}
+		// 魔法单位克制重装与飞行单位
+		if (mType == UnitType.MAGIC && (tType == UnitType.ARMOR || tType == UnitType.FLY)) {
+			return true;
+		}
+		// 飞行单位克制海军与重甲单位
+		if (mType == UnitType.FLY && (tType == UnitType.NAVAL || tType == UnitType.ARMOR)) {
+			return true;
+		}
+		// 海军单位克制骑兵(应设置为水上有效)
+		if (mType == UnitType.NAVAL && tType == UnitType.CAVALRY) {
+			return true;
+		}
+		// 魔兽单位克制步兵与骑兵
+		if (mType == UnitType.HOOVES && (tType == UnitType.INFANTRY || tType == UnitType.CAVALRY)) {
+			return true;
+		}
+		// 治疗者克制亡灵
+		if (mType == UnitType.HEALER && tType == UnitType.UNDEAD) {
+			return true;
+		}
+		return false;
 	}
 
 }

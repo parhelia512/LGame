@@ -216,9 +216,17 @@ public final class ISOUtils {
 
 		public static IsoConfig defaultConfig() {
 			IsoConfig cfg = new IsoConfig();
-			cfg.lights.add(new IsoLight(0.5f, 0.5f, 1f, 1f, 1f, 0f, 16f));
-			cfg.lights.add(new IsoLight(0.2f, 0.3f, 0.8f, 0.8f, 0.8f, 0.2f, 32f, true, 0.002f, 0.1f));
+			cfg.lights.add(new IsoLight(0.5f, 0.5f, 10f, 1f, 1f, 0f, 128f));
+			cfg.lights.add(new IsoLight(0.2f, 0.3f, 10f, 0.8f, 0.8f, 0.2f, 256f, true, 0.0002f, 0.01f));
 			return cfg;
+		}
+
+		public static IsoLight createLight(float x, float y, float intensity) {
+			return createLight(x, y, 256, 20, intensity);
+		}
+
+		public static IsoLight createLight(float x, float y, float width, float height, float intensity) {
+			return new IsoLight(x, y, height, 1f, 1f, intensity, width, true, 0.0001f, 0.0005f);
 		}
 
 		public void updateDynamicLights(float deltaTime) {
@@ -368,6 +376,11 @@ public final class ISOUtils {
 		return isoTransform(gx, gy, cwidth, cheight, config, null, null);
 	}
 
+	public static IsoResult isoTransform(int gx, int gy, float cwidth, float cheight, IsoConfig config, Vector2f pos,
+			IsoResult isoResult) {
+		return isoTransform(gx, gy, cwidth, cheight, false, config, pos, isoResult);
+	}
+
 	/**
 	 * 正向投影
 	 * 
@@ -379,8 +392,8 @@ public final class ISOUtils {
 	 * @param pos
 	 * @return
 	 */
-	public static IsoResult isoTransform(int gx, int gy, float cwidth, float cheight, IsoConfig config, Vector2f pos,
-			IsoResult isoResult) {
+	public static IsoResult isoTransform(int gx, int gy, float cwidth, float cheight, boolean lighting,
+			IsoConfig config, Vector2f pos, IsoResult isoResult) {
 		if (pos == null) {
 			pos = new Vector2f();
 		}
@@ -431,17 +444,31 @@ public final class ISOUtils {
 		isoX = isoX * config.scaleX + config.offsetX;
 		isoY = isoY * config.scaleY + config.offsetY;
 
-		// 光照计算
-		float brightness = 0f;
-		for (IsoLight light : config.lights) {
-			float len = MathUtils.sqrt(light.x * light.x + light.y * light.y + light.z * light.z);
-			float lx = light.x / len, ly = light.y / len, lz = light.z / len;
-			float ndotl = MathUtils.max(0, lx * 0 + ly * 0 + lz * 1);
-			float diffuse = ndotl * light.diffuse;
-			float specular = MathUtils.pow(ndotl, light.shininess) * light.specular;
-			brightness += (diffuse + specular) * light.intensity;
+		// 光照计算(资源损耗较大，默认不开启)
+		float brightness = 1f;
+
+		if (lighting && config.lights != null && !config.lights.isEmpty()) {
+			brightness = 0f;
+			final float NX = 0.0f;
+			final float NY = 0.0f;
+			final float NZ = 1.0f;
+			for (IsoLight light : config.lights) {
+				float dx = light.x - gx;
+				float dy = light.y - gy;
+				float dz = light.z - 0;
+				float dist = MathUtils.sqrt(dx * dx + dy * dy + dz * dz);
+				float dirX = dx / dist;
+				float dirY = dy / dist;
+				float dirZ = dz / dist;
+				float ndotl = MathUtils.max(0, NX * dirX + NY * dirY + NZ * dirZ);
+				float attenuation = 1.0f / (1.0f + light.flickerRange * dist * dist);
+				float diffuse = ndotl * light.diffuse;
+				float specular = MathUtils.pow(ndotl, light.shininess) * light.specular;
+				brightness += (diffuse + specular) * light.intensity * attenuation;
+			}
+			brightness = MathUtils.clamp(brightness, 0f, 1f);
 		}
-		brightness = MathUtils.min(1f, brightness);
+
 		if (isoResult == null) {
 			isoResult = new IsoResult(pos.set(isoX, isoY), brightness);
 		} else {

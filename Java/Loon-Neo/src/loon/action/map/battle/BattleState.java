@@ -21,6 +21,7 @@
 package loon.action.map.battle;
 
 import loon.LSystem;
+import loon.action.map.items.Team;
 
 public class BattleState {
 
@@ -32,6 +33,8 @@ public class BattleState {
 
 	public final static int TurnEnemy = 60;
 
+	public final static int TurnAlly = 50;
+
 	public final static int TurnNpc = 40;
 
 	public final static int TurnOther = 20;
@@ -42,29 +45,42 @@ public class BattleState {
 
 	public final static BattleState TurnBeginState = new BattleState(TurnBegin, "TurnBegin");
 
-	public final static BattleState TurnPlayerState = new BattleState(TurnPlayer, "TurnPlayer");
+	public final static BattleState TurnPlayerState = new BattleState(TurnPlayer, Team.Player, "TurnPlayer");
 
-	public final static BattleState TurnEnemyState = new BattleState(TurnEnemy, "TurnEnemy");
+	public final static BattleState TurnEnemyState = new BattleState(TurnEnemy, Team.Enemy, "TurnEnemy");
 
-	public final static BattleState TurnNpcState = new BattleState(TurnNpc, "TurnNpc");
+	public final static BattleState TurnAllyState = new BattleState(TurnAlly, Team.Ally, "TurnAlly");
 
-	public final static BattleState TurnOtherState = new BattleState(TurnOther, "TurnOther");
+	public final static BattleState TurnNpcState = new BattleState(TurnNpc, Team.Npc, "TurnNpc");
+
+	public final static BattleState TurnOtherState = new BattleState(TurnOther, Team.Other, "TurnOther");
 
 	public final static BattleState TurnEndState = new BattleState(TurnEnd, "TurnEnd");
 
 	public final static BattleState TurnDoneState = new BattleState(TurnDone, "TurnDone");
 
-	private final int _priority;
-
 	private final String _name;
 
+	private final int _priority;
+
+	private final int _teamType;
+
 	public BattleState(int priority, String name) {
+		this(priority, Team.Unknown, name);
+	}
+
+	public BattleState(int priority, int team, String name) {
 		this._priority = priority;
+		this._teamType = team;
 		this._name = name;
 	}
 
 	public int getPriority() {
 		return this._priority;
+	}
+
+	public int getTeamType() {
+		return this._teamType;
 	}
 
 	public String getName() {
@@ -75,6 +91,7 @@ public class BattleState {
 	public int hashCode() {
 		int result = 38;
 		result = LSystem.unite(result, this._priority);
+		result = LSystem.unite(result, this._teamType);
 		result = LSystem.unite(result, this._name);
 		result = LSystem.unite(result, super.hashCode());
 		return result;
@@ -89,13 +106,16 @@ public class BattleState {
 			return false;
 		}
 		BattleState state = (BattleState) o;
-		if ((this._name == state._name || this._name.equals(state._name)) && this._priority == state._priority) {
+		if ((this._name == state._name || this._name.equals(state._name)) && this._priority == state._priority
+				&& this._teamType == state._teamType) {
 			return true;
 		}
-		if (state._name != null && state._name.equalsIgnoreCase(_name) && this._priority == state._priority) {
+		if (state._name != null && state._name.equalsIgnoreCase(_name) && this._priority == state._priority
+				&& this._teamType == state._teamType) {
 			return true;
 		}
-		if (this._name != null && this._name.equalsIgnoreCase(state._name) && this._priority == state._priority) {
+		if (this._name != null && this._name.equalsIgnoreCase(state._name) && this._priority == state._priority
+				&& this._teamType == state._teamType) {
 			return true;
 		}
 		return false;
@@ -103,6 +123,6 @@ public class BattleState {
 
 	@Override
 	public String toString() {
-		return "name = " + this._name + " , priority = " + this._priority;
+		return "name = " + this._name + " , priority = " + this._priority + " , team = " + this._teamType;
 	}
 }

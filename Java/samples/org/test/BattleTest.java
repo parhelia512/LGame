@@ -41,7 +41,6 @@ import loon.action.map.battle.BattleMovementManager.MovementMode;
 import loon.action.map.battle.BattleMovementManager.MovementState;
 import loon.action.map.battle.BattleType.ObjectState;
 import loon.action.map.battle.BattleType.RangeType;
-import loon.action.map.items.RoleValue.MoveType;
 import loon.action.sprite.Animation;
 import loon.action.sprite.AnimationManager;
 import loon.action.sprite.AnimationRenderer;
@@ -267,6 +266,8 @@ public class BattleTest extends Stage {
 				return null;
 			}
 		});
+		// 使用光照系统
+		// newMap.setUpdateBrightness(true);
 		// 角色飞行(地形无视)
 		// obj.setMoveType(MoveType.FLY);
 		// 拖拽地图
@@ -279,11 +280,14 @@ public class BattleTest extends Stage {
 			newMap.getGlobalSkill().castEffect(x, y);
 			// 在指定地图对象上触发特技
 			// newMap.getGlobalSkill().castEffect(obj);
-
+			// 刷新状态
+			obj.resetPathState();
+			// 转化鼠标坐标为瓦片坐标，再移动向指定瓦片坐标
+			obj.moveToGrid(newMap.findTileXY(x, y));
 			// 以像素坐标,获得实际瓦片坐标
 			// Vector2f pos = newMap.findTileXY(x, y);
 			// 请求指定地图对象到指定像素坐标的寻径，并返回瓦片坐标的寻径结果
-			TArray<PointI> result = newMap.findObjectMovePathToTile(obj, x, y);
+			/*TArray<PointI> result = newMap.findObjectMovePathToTile(obj, x, y);
 			if (result != null && result.size > 0) {
 				// 将移动路径以默认的move色彩高亮显示在地图上
 				newMap.highlighterRangePathToEffect(result, EffectType.MOVE);
@@ -297,7 +301,7 @@ public class BattleTest extends Stage {
 
 				// 上两步合一用此函数，为说明运行逻辑故此不调用
 				// obj.setResetPath(result);
-			}
+			}*/
 			// 产生一个圆形，范围大小为3，颜色象征攻击状态的高亮区域
 			// newMap.highlighterRange(pos.x(), pos.y(), RangeType.CIRCLE, 3,
 			// EffectType.ATTACK);

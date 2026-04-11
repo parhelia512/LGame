@@ -65,7 +65,7 @@ public class JobManager {
 			role.setMovePoints(role.getMovePoints() + 2);
 		}
 		if (job.isFlyOver()) {
-			role.setMovePoints(role.getMovePoints() + 3);
+			role.setMovePoints(role.getMovePoints() + 1);
 		}
 		if (job.isHeavyArmor()) {
 			role.setDefence(role.getDefence() + 3);

@@ -23,6 +23,7 @@ package loon.action.map.battle;
 import loon.LRelease;
 import loon.ZIndex;
 import loon.action.map.Direction;
+import loon.action.map.TileIsoHighlighter.EffectType;
 import loon.action.map.battle.BattleMovementManager.AnimationState;
 import loon.action.map.battle.BattleMovementManager.CollisionResponse;
 import loon.action.map.battle.BattleMovementManager.MovementEffect;
@@ -185,6 +186,8 @@ public class BattleMapObject extends Role implements LRelease {
 	private float attackProgress;
 	private float skillProgress;
 
+	private TArray<BattleSkill> skills = new TArray<BattleSkill>();
+
 	// 坐标缓存对象
 	private final Vector2f startPixel = new Vector2f();
 	private final Vector2f targetPixel = new Vector2f();
@@ -211,11 +214,18 @@ public class BattleMapObject extends Role implements LRelease {
 	private MovementListener listener;
 
 	// 当前所在瓦片
-	private final PointI currentMapTile = new PointI();
+	protected final PointI currentMapTile = new PointI();
 
 	private float moveProgress = 0f;
 
+	// 绘制移动路径
+	private boolean drawPath = true;
+
 	private BattleSkill currentSkill;
+
+	private BattleMapObject lastAttacker;
+
+	private boolean taunt;
 
 	public BattleMapObject(IsoConfig cfg, BattleMap map, ISprite sprite, int id, String name, int gx, int gy, int w,
 			int h, MovementListener l) {
@@ -590,6 +600,35 @@ public class BattleMapObject extends Role implements LRelease {
 		return null;
 	}
 
+	public void castAttack(PointI grid) {
+		if (grid == null) {
+			return;
+		}
+		castAttack(grid.x, grid.y);
+	}
+
+	public void castAttack(int gridX, int gridY) {
+		if (battleMap == null) {
+			return;
+		}
+		if (currentSkill != null) {
+			if (actionPoints > 0 && actionPoints < currentSkill.actionPointCost) {
+				if (battleMap != null) {
+					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK, this, null,
+							new AttackData(false, "Insufficient Attack", 0, false)));
+				}
+				setState(ObjectState.IDLE);
+				return;
+			}
+			if (objectStateListener != null
+					&& !objectStateListener.checkAllowAttack(currentSkill.battleType, currentSkill, this, null)) {
+				setState(ObjectState.IDLE);
+				return;
+			}
+			currentSkill.castTileEffect(gridX, gridY);
+		}
+	}
+
 	private void performAttack(TArray<BattleMapObject> allObjects) {
 		if (currentSkill == null) {
 			return;
@@ -600,11 +639,11 @@ public class BattleMapObject extends Role implements LRelease {
 			setState(ObjectState.IDLE);
 			return;
 		}
-		// 消耗MP不足判定（如果技能需要）
-		if (currentSkill.mpCost > 0 && getMana() < currentSkill.mpCost) {
+		// 消耗行动不足判定（如果技能需要）
+		if (actionPoints > 0 && actionPoints < currentSkill.actionPointCost) {
 			if (battleMap != null) {
 				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK, this, target,
-						new AttackData(false, "Insufficient Magic", 0, false)));
+						new AttackData(false, "Insufficient Attack", 0, false)));
 			}
 			setState(ObjectState.IDLE);
 			return;
@@ -635,8 +674,8 @@ public class BattleMapObject extends Role implements LRelease {
 			if (battleMap != null) {
 				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, target, this));
 			}
-			// 若目标死亡，结束战斗
-			setState(ObjectState.DEAD);
+		} else {
+			lastAttacker = target;
 		}
 
 	}
@@ -673,7 +712,44 @@ public class BattleMapObject extends Role implements LRelease {
 		endCombat(this);
 	}
 
-	private void performSkill(TArray<BattleMapObject> allObjects) {
+	public void castSkill(PointI grid) {
+		if (grid == null) {
+			return;
+		}
+		castSkill(grid.x, grid.y);
+	}
+
+	public void castSkill(int gridX, int gridY) {
+		if (battleMap == null) {
+			return;
+		}
+		if (currentSkill != null) {
+			if (!currentSkill.isReady()) {
+				if (battleMap != null) {
+					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
+							new SkillData(currentSkill.name, "Skill on cooldown", 0)));
+				}
+				setState(ObjectState.IDLE);
+				return;
+			}
+			if (mana < currentSkill.mpCost) {
+				if (battleMap != null) {
+					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
+							new SkillData(currentSkill.name, "Insufficient Magic", 0)));
+				}
+				setState(ObjectState.IDLE);
+				return;
+			}
+			if (objectStateListener != null
+					&& !objectStateListener.checkAllowSkill(currentSkill.battleType, currentSkill, this, null)) {
+				setState(ObjectState.IDLE);
+				return;
+			}
+			currentSkill.castTileEffect(gridX, gridY);
+		}
+	}
+
+	public void castSkill(BattleMapObject target) {
 		if (currentSkill == null) {
 			return;
 		}
@@ -695,9 +771,6 @@ public class BattleMapObject extends Role implements LRelease {
 			setState(ObjectState.IDLE);
 			return;
 		}
-
-		// 查找技能对象
-		BattleMapObject target = findSkillTarget(allObjects);
 
 		// 如果不允许技能则跳过
 		if (objectStateListener != null
@@ -744,12 +817,25 @@ public class BattleMapObject extends Role implements LRelease {
 						if (battleMap != null) {
 							battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, target, this));
 						}
+					} else {
+						lastAttacker = target;
 					}
 				}
 			}
 			break;
 		default:
 			break;
+		}
+	}
+
+	private void performSkill(TArray<BattleMapObject> allObjects) {
+		if (currentSkill == null) {
+			return;
+		}
+		// 查找技能对象
+		BattleMapObject target = findSkillTarget(allObjects);
+		if (target != null) {
+			castSkill(target);
 		}
 	}
 
@@ -997,6 +1083,19 @@ public class BattleMapObject extends Role implements LRelease {
 		}
 	}
 
+	public void addCharacters(TArray<BattleMapObject> s) {
+		if (s != otherCharacters) {
+			otherCharacters.addAll(s);
+		}
+	}
+
+	public void setCharacters(TArray<BattleMapObject> s) {
+		if (s != otherCharacters) {
+			otherCharacters.clear();
+			otherCharacters.addAll(s);
+		}
+	}
+
 	public void removeCharacter(BattleMapObject o) {
 		otherCharacters.remove(o);
 	}
@@ -1017,6 +1116,33 @@ public class BattleMapObject extends Role implements LRelease {
 		return paused;
 	}
 
+	public void moveToGrid(XY pos) {
+		if (pos != null) {
+			moveToGrid((int) pos.getX(), (int) pos.getY());
+		}
+	}
+
+	public void moveToGrid(int targetX, int targetY) {
+		moveToGrid(targetX, targetY, drawPath, EffectType.MOVE);
+	}
+
+	public void moveToGrid(int targetX, int targetY, boolean lightMovePath, EffectType effectType) {
+		if (battleMap != null) {
+			BattlePathFinder finder = battleMap.getPathFinder();
+			finder.setFlying(isFlying());
+			TArray<PointI> result = finder.findPath(gridX, gridY, targetX, targetY);
+			if (result.size > 0) {
+				if (battleMap.getObjectCount() > 0) {
+					setCharacters(battleMap._mapObjects);
+				}
+				if (lightMovePath) {
+					battleMap.highlighterRangePathToEffect(result, effectType);
+				}
+				setPath(result);
+			}
+		}
+	}
+
 	public PointI getCurrentMapTile() {
 		return new PointI(currentMapTile);
 	}
@@ -1027,6 +1153,10 @@ public class BattleMapObject extends Role implements LRelease {
 			this.gridX = tile.x;
 			this.gridY = tile.y;
 		}
+	}
+
+	public boolean canUltimateSkill() {
+		return (currentSkill != null && currentSkill.canUltimateSkill());
 	}
 
 	public Vector2f getPixelPosition() {
@@ -1564,12 +1694,89 @@ public class BattleMapObject extends Role implements LRelease {
 		return moveProgress;
 	}
 
+	public boolean isDrawPath() {
+		return drawPath;
+	}
+
+	public void setDrawPath(boolean d) {
+		this.drawPath = d;
+	}
+
 	public ObjectStateListener getObjectStateListener() {
 		return objectStateListener;
 	}
 
 	public void setObjectStateListener(ObjectStateListener l) {
 		this.objectStateListener = l;
+	}
+
+	public BattleMapObject getLastAttacker() {
+		return lastAttacker;
+	}
+
+	public void setLastAttacker(BattleMapObject lastAttacker) {
+		this.lastAttacker = lastAttacker;
+	}
+
+	public TArray<BattleSkill> getAllSkills() {
+		return new TArray<BattleSkill>(skills);
+	}
+
+	public TArray<BattleSkill> getUltimateSkills() {
+		TArray<BattleSkill> skillList = new TArray<BattleSkill>();
+		for (int i = skills.size - 1; i > -1; i--) {
+			BattleSkill s = skills.get(i);
+			if (s != null && s.canUltimateSkill() && (mana >= s.mpCost)) {
+				skillList.add(s);
+			}
+		}
+		return skillList;
+	}
+
+	public TArray<BattleSkill> getBuffSkills() {
+		TArray<BattleSkill> skillList = new TArray<BattleSkill>();
+		for (int i = skills.size - 1; i > -1; i--) {
+			BattleSkill s = skills.get(i);
+			if (s != null && s.canBuffSkill() && (mana >= s.mpCost)) {
+				skillList.add(s);
+			}
+		}
+		return skillList;
+	}
+
+	public TArray<BattleSkill> getBaseAttackSkills() {
+		TArray<BattleSkill> skillList = new TArray<BattleSkill>();
+		for (int i = skills.size - 1; i > -1; i--) {
+			BattleSkill s = skills.get(i);
+			if (s != null && s.canBaseAttackSkill() && (actionPoints >= s.actionPointCost)) {
+				skillList.add(s);
+			}
+		}
+		return skillList;
+	}
+
+	public void addSkills(BattleSkill skill) {
+		skills.addAll(skill);
+	}
+
+	public void addSkill(BattleSkill skill) {
+		skills.add(skill);
+	}
+
+	public void removeSkill(BattleSkill skill) {
+		skills.remove(skill);
+	}
+
+	public void clearSkill() {
+		skills.clear();
+	}
+
+	public boolean isTaunting() {
+		return taunt;
+	}
+
+	public void setTaunt(boolean taunt) {
+		this.taunt = taunt;
 	}
 
 	@Override
@@ -1581,6 +1788,12 @@ public class BattleMapObject extends Role implements LRelease {
 			currentSkill.close();
 			currentSkill = null;
 		}
+		for (BattleSkill skill : skills) {
+			if (skill != null) {
+				skill.close();
+			}
+		}
+		skills.clear();
 	}
 
 }

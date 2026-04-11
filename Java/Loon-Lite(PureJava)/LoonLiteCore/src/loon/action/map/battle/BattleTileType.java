@@ -21,7 +21,7 @@
 package loon.action.map.battle;
 
 import loon.action.map.battle.BattleType.MoveState;
-import loon.action.map.battle.BattleType.UnitType;
+import loon.action.map.items.RoleValue.UnitType;
 import loon.utils.IntMap;
 import loon.utils.MathUtils;
 
@@ -287,11 +287,10 @@ public class BattleTileType {
 		this.defaultMoveState = defaultMoveState;
 	}
 
-	public int getActionPointCost(UnitType unitType) {
+	public int getActionPointCost(int unitType) {
 		int cost = baseActionCost;
 		switch (unitType) {
-		case CAVALRY:
-		case LIGHT_CAVALRY:
+		case UnitType.CAVALRY:
 			if (this == MOUNTAIN || this == SWAMP || this == MARSH || this == DENSE_FOREST) {
 				cost *= 2;
 			}
@@ -299,8 +298,7 @@ public class BattleTileType {
 				cost = MathUtils.max(1, cost / 2);
 			}
 			break;
-
-		case HEAVY_INFANTRY:
+		case UnitType.INFANTRY:
 			if (this == WALL || this == CASTLE || this == FORT) {
 				cost = MathUtils.max(1, cost / 2);
 			}
@@ -308,15 +306,7 @@ public class BattleTileType {
 				cost *= 2;
 			}
 			break;
-
-		case ARCHER:
-		case ELITE_ARCHER:
-			if (this == HILL || this == MOUNTAIN) {
-				cost = MathUtils.max(1, cost);
-			}
-			break;
-
-		case NAVAL:
+		case UnitType.NAVAL:
 			if (this == RIVER || this == SEA || this == FORD || this == FERRY || this == PORT) {
 				cost = MathUtils.max(1, cost / 2);
 			}
@@ -324,14 +314,13 @@ public class BattleTileType {
 				cost *= 2;
 			}
 			break;
-
-		case CATAPULT:
-		case SIEGE:
-			if (this == FORT || this == CASTLE || this == CITY || this == WALL) {
+		case UnitType.RANGE:
+			if (this == HILL || this == MOUNTAIN) {
+				cost = MathUtils.max(1, cost);
+			} else if (this == FORT || this == CASTLE || this == CITY || this == WALL) {
 				cost *= 2;
 			}
 			break;
-
 		default:
 			break;
 		}
@@ -340,6 +329,11 @@ public class BattleTileType {
 
 	public float getTalentBonus(String talentId) {
 		return BettleTalentTileRegistry.getTalentBonus(talentId, this);
+	}
+
+	@Override
+	public String toString() {
+		return name + " , " + defaultMoveState;
 	}
 
 }

@@ -26,7 +26,6 @@ import loon.LTexture;
 import loon.action.map.battle.BattleType.ObjectState;
 import loon.action.map.battle.BattleType.RangeType;
 import loon.action.map.battle.BattleType.SkillType;
-import loon.action.map.battle.BattleType.UnitType;
 import loon.action.map.battle.BattleType.WeatherType;
 import loon.action.sprite.Animation;
 import loon.canvas.LColor;
@@ -34,6 +33,7 @@ import loon.geom.Vector2f;
 import loon.geom.XY;
 import loon.opengl.GLEx;
 import loon.utils.ISOUtils.IsoConfig;
+import loon.utils.IntArray;
 import loon.utils.MathUtils;
 import loon.utils.SortedList;
 import loon.utils.StrBuilder;
@@ -43,7 +43,7 @@ import loon.utils.TimeUtils;
 public class BattleSkill implements LRelease {
 
 	public static enum BattleType {
-		MELEE, RANGE, BUFF, DEBUFF, HEAL
+		BASEA_ATTACK, MELEE, RANGE, BUFF, DEBUFF, HEAL
 	}
 
 	public static enum LogicType {
@@ -215,7 +215,7 @@ public class BattleSkill implements LRelease {
 	protected String name;
 	protected String description;
 	protected SkillType skilltype;
-	protected UnitType[] limitUnits;
+	protected final IntArray limitUnits = new IntArray();
 	protected BattleTileType[] limitTiles;
 	protected WeatherType[] limitWeathers;
 	protected BattleType battleType;
@@ -314,8 +314,8 @@ public class BattleSkill implements LRelease {
 	}
 
 	public BattleSkill(int id, String name, String description, BattleType type, int damage, int mpCost, float hitRate,
-			float critRate, UnitType[] limitUnits, BattleTileType[] limitTiles, WeatherType[] limitWeathers,
-			int minLevel, boolean needCity, int priority, float baseSuccessRate, int moraleCost, int actionPointCost,
+			float critRate, int[] limitUnits, BattleTileType[] limitTiles, WeatherType[] limitWeathers, int minLevel,
+			boolean needCity, int priority, float baseSuccessRate, int moraleCost, int actionPointCost,
 			float cooldownDuration, RangeType rangeType, int rangeDistance, int rangeRadius) {
 		this.id = MathUtils.max(0, id);
 		this.name = (name == null) ? LSystem.UNKNOWN : name.trim();
@@ -325,7 +325,9 @@ public class BattleSkill implements LRelease {
 		this.mpCost = MathUtils.clamp(mpCost, 0, 100000);
 		this.hitRate = MathUtils.clamp(hitRate, 0f, 1f);
 		this.critRate = MathUtils.clamp(critRate, 0f, 1f);
-		this.limitUnits = limitUnits == null ? new UnitType[0] : limitUnits;
+		if (limitUnits != null) {
+			this.limitUnits.addAll(limitUnits);
+		}
 		this.limitTiles = limitTiles == null ? new BattleTileType[0] : limitTiles;
 		this.limitWeathers = limitWeathers == null ? new WeatherType[0] : limitWeathers;
 		this.running = true;
@@ -336,9 +338,9 @@ public class BattleSkill implements LRelease {
 		this.moraleCost = MathUtils.max(0, moraleCost);
 		this.actionPointCost = MathUtils.max(0, actionPointCost);
 		this.rangeType = rangeType == null ? RangeType.SINGLE : rangeType;
-		this.rangeDistance = Math.max(0, rangeDistance);
-		this.rangeRadius = Math.max(0, rangeRadius);
-		this.cooldownDuration = Math.max(0.1f, cooldownDuration);
+		this.rangeDistance = MathUtils.max(0, rangeDistance);
+		this.rangeRadius = MathUtils.max(0, rangeRadius);
+		this.cooldownDuration = MathUtils.max(0.1f, cooldownDuration);
 		this.cooldown = 0f;
 	}
 
@@ -543,23 +545,30 @@ public class BattleSkill implements LRelease {
 		this.height = h;
 	}
 
-	public void castEffect(float x, float y) {
+	public void castEffect(float touchX, float touchY) {
 		if (battleMap != null) {
-			Vector2f result = battleMap.findOffsetScreenXY(x, y);
+			Vector2f pos = battleMap.findTileXY(touchX, touchY);
+			if (battleMap.inTileGrid(pos.x(), pos.y())) {
+				castTileEffect(pos.x(), pos.y());
+			}
+		}
+	}
+
+	public void castTileEffect(int gridX, int gridY) {
+		if (battleMap != null) {
+			Vector2f result = battleMap.getTileToScreen(gridX, gridY, 0, 0, 0, 0);
 			if (result != null) {
 				setPosition(result);
 			} else {
 				return;
 			}
-		} else {
-			setPosition(x, y);
+			resetSkill();
+			setState(SkillState.CAST_START);
+			startCooldown();
+			startAnim();
+			triggerEvents(casterObject, targetObject, SKillEventType.ON_CAST_START);
+			castTriggered = false;
 		}
-		resetSkill();
-		setState(SkillState.CAST_START);
-		startCooldown();
-		startAnim();
-		triggerEvents(casterObject, targetObject, SKillEventType.ON_CAST_START);
-		castTriggered = false;
 	}
 
 	public void castEffect(BattleMapObject target) {
@@ -1268,12 +1277,12 @@ public class BattleSkill implements LRelease {
 		this.skilltype = skilltype;
 	}
 
-	public UnitType[] getLimitUnits() {
-		return limitUnits;
+	public int[] getLimitUnits() {
+		return limitUnits.items;
 	}
 
-	public void setLimitUnits(UnitType[] limitUnits) {
-		this.limitUnits = limitUnits;
+	public void setLimitUnits(int[] limitUnits) {
+		this.limitUnits.addAll(limitUnits);
 	}
 
 	public BattleTileType[] getLimitTiles() {
@@ -1639,6 +1648,33 @@ public class BattleSkill implements LRelease {
 
 	public float getFadeTimer() {
 		return fadeTimer;
+	}
+
+	public boolean canUltimateSkill() {
+		if (battleType != null
+				&& (battleType == BattleType.MELEE || battleType == BattleType.RANGE || battleType == BattleType.DEBUFF)
+				&& (battleType != BattleType.BASEA_ATTACK)) {
+			return true;
+		}
+		return false;
+	}
+
+	public boolean canBaseAttackSkill() {
+		if (battleType != null && (battleType == BattleType.BASEA_ATTACK)) {
+			return true;
+		}
+		return false;
+	}
+
+	public boolean canBuffSkill() {
+		if (battleType != null && (battleType == BattleType.BUFF || battleType == BattleType.HEAL)) {
+			return true;
+		}
+		return false;
+	}
+
+	public boolean canRange() {
+		return (rangeType != null && (rangeType != RangeType.SINGLE));
 	}
 
 	public void setFadeTimer(float fadeTimer) {

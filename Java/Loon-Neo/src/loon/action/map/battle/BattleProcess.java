@@ -985,6 +985,10 @@ public class BattleProcess extends CoroutineProcess {
 		return isCurrentState(BattleState.TurnEnemyState);
 	}
 
+	public boolean isCurrentAlly() {
+		return isCurrentState(BattleState.TurnAllyState);
+	}
+
 	public boolean isCurrentNpc() {
 		return isCurrentState(BattleState.TurnNpcState);
 	}

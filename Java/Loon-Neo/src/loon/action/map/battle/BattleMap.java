@@ -45,6 +45,7 @@ import loon.action.map.battle.BattleTileMake.TileAnimation;
 import loon.action.map.battle.BattleType.ObjectState;
 import loon.action.map.battle.BattleType.RangeType;
 import loon.action.map.items.RoleEquip;
+import loon.action.map.items.Team;
 import loon.action.sprite.AnimationManager;
 import loon.action.sprite.AnimationRenderer;
 import loon.action.sprite.ISprite;
@@ -76,13 +77,25 @@ import loon.utils.TArray;
  */
 public class BattleMap extends LObject<ISprite> implements TileMapCollision, Sized, ISprite {
 
-	private static class ObjectComparator implements Comparator<BattleMapObject> {
+	private final static class ObjectComparator implements Comparator<BattleMapObject> {
 
 		@Override
 		public int compare(BattleMapObject o1, BattleMapObject o2) {
 			return MathUtils.compare(o1.renderPriority, o2.renderPriority);
 		}
 
+	}
+
+	public final static BattleTile[][] reversalXandY(final BattleTile[][] array) {
+		int col = array[0].length;
+		int row = array.length;
+		BattleTile[][] result = new BattleTile[col][row];
+		for (int y = 0; y < col; y++) {
+			for (int x = 0; x < row; x++) {
+				result[y][x] = array[x][y];
+			}
+		}
+		return result;
 	}
 
 	private boolean _playAnimation;
@@ -121,7 +134,9 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	// 显示Map的上级Sprites
 	private Sprites _screenSprites;
 
-	private TArray<BattleMapObject> _objects = new TArray<BattleMapObject>();
+	private final TArray<PointI> _strategicPoint = new TArray<PointI>();
+
+	protected final TArray<BattleMapObject> _mapObjects = new TArray<BattleMapObject>();
 
 	private BattleMapObject _cameraTarget = null;
 
@@ -133,7 +148,9 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	private boolean _dragging = false;
 
-	private boolean _roll;
+	private boolean _updateBrightness = false;
+
+	private boolean _roll = false;;
 
 	private int _dragStartX, _dragStartY;
 
@@ -141,7 +158,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	private IsoConfig _isoConfig;
 
-	private final LColor _lightColor = new LColor();
+	private final LColor _tileColor = new LColor();
 
 	private float _deltaTime = LSystem.MIN_SECONE_SPEED_FIXED;
 
@@ -167,7 +184,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	private LColor _drawGridColor = LColor.red;
 
-	private boolean _drawGrid, _useOtherGrid;
+	private boolean _drawGrid;
 
 	private final TileIsoHighlighter _highlighter = new TileIsoHighlighter();
 
@@ -233,8 +250,9 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	public BattleMapObject addMapObject(int gx, int gy, int cw, int ch, String name, ISprite sprite,
 			MovementListener l) {
-		BattleMapObject obj = new BattleMapObject(_isoConfig, this, sprite, _objects.size(), name, gx, gy, cw, ch, l);
-		_objects.add(obj);
+		BattleMapObject obj = new BattleMapObject(_isoConfig, this, sprite, _mapObjects.size(), name, gx, gy, cw, ch,
+				l);
+		_mapObjects.add(obj);
 		if (sprite != null) {
 			_mapSprites.add(sprite);
 		}
@@ -243,9 +261,9 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	public BattleMapObject addMapObject(RoleEquip e, String name, int gx, int gy, int cw, int ch, ISprite sprite,
 			MovementListener l) {
-		BattleMapObject obj = new BattleMapObject(_isoConfig, this, sprite, _objects.size(), e, name, gx, gy, cw, ch,
+		BattleMapObject obj = new BattleMapObject(_isoConfig, this, sprite, _mapObjects.size(), e, name, gx, gy, cw, ch,
 				l);
-		_objects.add(obj);
+		_mapObjects.add(obj);
 		if (sprite != null) {
 			_mapSprites.add(sprite);
 		}
@@ -282,8 +300,9 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 			MovementListener l, float x, float y, float scaleX, float scaleY, boolean flipX, boolean flipY,
 			LColor color, int layerIndex) {
 		AnimationRenderer renderer = new AnimationRenderer(0, 0, cw, ch);
-		BattleMapObject obj = new BattleMapObject(_isoConfig, this, renderer, _objects.size(), name, gx, gy, cw, ch, l);
-		_objects.add(obj);
+		BattleMapObject obj = new BattleMapObject(_isoConfig, this, renderer, _mapObjects.size(), name, gx, gy, cw, ch,
+				l);
+		_mapObjects.add(obj);
 		if (manager != null) {
 			renderer.addCharacter(manager, x, y, scaleX, scaleY, flipX, flipY, color, layerIndex);
 		}
@@ -294,9 +313,9 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	public BattleMapObject addMapObject(RoleEquip e, String name, int gx, int gy, int cw, int ch,
 			AnimationManager manager, MovementListener l) {
 		AnimationRenderer renderer = new AnimationRenderer(0, 0, cw, ch);
-		BattleMapObject obj = new BattleMapObject(_isoConfig, this, renderer, _objects.size(), e, name, gx, gy, cw, ch,
-				l);
-		_objects.add(obj);
+		BattleMapObject obj = new BattleMapObject(_isoConfig, this, renderer, _mapObjects.size(), e, name, gx, gy, cw,
+				ch, l);
+		_mapObjects.add(obj);
 		if (manager != null) {
 			renderer.addCharacter(manager, 0, 0);
 		}
@@ -308,7 +327,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		if (o == null) {
 			return false;
 		}
-		boolean result = _objects.remove(o);
+		boolean result = _mapObjects.remove(o);
 		if (result) {
 			_mapSprites.remove(o.getRoleObject());
 		}
@@ -377,15 +396,6 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	public BattleMap setDrawGrid(boolean v) {
 		this._drawGrid = v;
-		return this;
-	}
-
-	public boolean isOtherGrid() {
-		return _useOtherGrid;
-	}
-
-	public BattleMap setOtherGrid(boolean v) {
-		this._useOtherGrid = v;
 		return this;
 	}
 
@@ -538,10 +548,11 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 				}
 				if (_playAnimation) {
 					tile.update(_deltaTime);
-					tile.updateBrightness();
-					_lightColor.setColor(tile.brightness, tile.brightness, tile.brightness, 1f);
+					if (_updateBrightness) {
+						tile.updateBrightness();
+					}
 				}
-				tile.paint(g, drawX, drawY, tileWidth, tileHeight, _lightColor);
+				tile.paint(g, drawX, drawY, tileWidth, tileHeight, _tileColor);
 				_highlighter.renderTileHighlight(g, x, y, drawX, drawY, tileWidth, tileHeight);
 				if (_drawGrid) {
 					drawIsoTileBorder(g, drawX + tileWidth / 2 - 2, drawY + tileHeight / 2 - 2, tileWidth + 1,
@@ -551,8 +562,8 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		}
 		_mapSprites.paint(g, posOffsetX, posOffsetY, startX * tileWidth, startY * tileHeight, endX * tileWidth,
 				endY * tileHeight);
-		for (int i = 0; i < _objects.size; i++) {
-			BattleMapObject o = _objects.get(i);
+		for (int i = 0; i < _mapObjects.size; i++) {
+			BattleMapObject o = _mapObjects.get(i);
 			if (o != null) {
 				o.paint(g, _deltaTime, posOffsetX, posOffsetY);
 			}
@@ -584,6 +595,15 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		g.setColor(oldColor);
 	}
 
+	public LColor getTileColor() {
+		return _tileColor;
+	}
+
+	public BattleMap setTileColor(LColor c) {
+		_tileColor.setColor(c);
+		return this;
+	}
+
 	public LColor getDrawGridColor() {
 		return _drawGridColor;
 	}
@@ -594,8 +614,8 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	public void onTurnBegin() {
-		for (int i = _objects.size - 1; i > -1; i--) {
-			BattleMapObject o = _objects.get(i);
+		for (int i = _mapObjects.size - 1; i > -1; i--) {
+			BattleMapObject o = _mapObjects.get(i);
 			if (o != null) {
 				o.onTurnBegin();
 			}
@@ -603,8 +623,8 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	public void onTurnEnd() {
-		for (int i = _objects.size - 1; i > -1; i--) {
-			BattleMapObject o = _objects.get(i);
+		for (int i = _mapObjects.size - 1; i > -1; i--) {
+			BattleMapObject o = _mapObjects.get(i);
 			if (o != null) {
 				o.onTurnEnd();
 			}
@@ -665,7 +685,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	protected void sortObjects() {
-		_objects.sort(OBJ_COMPARATOR);
+		_mapObjects.sort(OBJ_COMPARATOR);
 	}
 
 	public Vector2f findOffsetScreenXY(float touchX, float touchY) {
@@ -734,7 +754,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	public BattleMapObject findObjectTouch(float touchX, float touchY) {
-		for (BattleMapObject obj : _objects) {
+		for (BattleMapObject obj : _mapObjects) {
 			if (obj.state != ObjectState.DEAD) {
 				Vector2f objPos = obj.getInterpolatedPosition();
 				float drawX = objPos.x - _isoConfig.offsetX;
@@ -742,6 +762,17 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 				RectBox bounds = new RectBox(drawX - _isoConfig.tileWidth / 2, drawY - _isoConfig.tileHeight / 2,
 						_isoConfig.tileWidth, _isoConfig.tileHeight);
 				if (bounds.contains(touchX, touchY)) {
+					return obj;
+				}
+			}
+		}
+		return null;
+	}
+
+	public BattleMapObject findObjectTile(int gridX, int gridY) {
+		for (BattleMapObject obj : _mapObjects) {
+			if (obj.state != ObjectState.DEAD) {
+				if (obj.gridX == gridX && obj.gridY == gridY) {
 					return obj;
 				}
 			}
@@ -798,8 +829,43 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		this._pathFinder = p;
 	}
 
+	public int getObjectCount() {
+		return _mapObjects.size;
+	}
+
 	public TArray<BattleMapObject> getObjects() {
-		return new TArray<BattleMapObject>(_objects);
+		return new TArray<BattleMapObject>(_mapObjects);
+	}
+
+	public TArray<BattleMapObject> getTeamObjects(int t) {
+		final TArray<BattleMapObject> result = new TArray<BattleMapObject>();
+		for (int i = _mapObjects.size - 1; i > -1; i--) {
+			BattleMapObject o = _mapObjects.get(i);
+			if (o != null && o.getTeam() == t) {
+				result.add(o);
+			}
+		}
+		return result;
+	}
+
+	public TArray<BattleMapObject> getTeamPlayObjects() {
+		return getTeamObjects(Team.Player);
+	}
+
+	public TArray<BattleMapObject> getTeamEnemyObjects() {
+		return getTeamObjects(Team.Enemy);
+	}
+
+	public TArray<BattleMapObject> getTeamNpcObjects() {
+		return getTeamObjects(Team.Npc);
+	}
+
+	public TArray<BattleMapObject> getTeamAllyObjects() {
+		return getTeamObjects(Team.Ally);
+	}
+
+	public TArray<BattleMapObject> getTeamOtherObjects() {
+		return getTeamObjects(Team.Other);
 	}
 
 	public BattleMapObject getCameraTarget() {
@@ -993,6 +1059,20 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		return this;
 	}
 
+	public BattleTile findNearestStrategicPoint(PointI point) {
+		for (int i = _strategicPoint.size - 1; i > -1; i--) {
+			PointI result = _strategicPoint.get(i);
+			if (result != null && result.equals(point)) {
+				return getMapTile(point.x, point.y);
+			}
+		}
+		return null;
+	}
+
+	public boolean inTileGrid(int px, int py) {
+		return _field2d.contains(px, py);
+	}
+
 	@Override
 	public boolean isHit(int px, int py) {
 		return _field2d.isHit(px, py);
@@ -1059,6 +1139,10 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	public boolean isValid(int x, int y) {
 		return this._field2d.inside(x, y);
+	}
+
+	public boolean isValidTile(int x, int y) {
+		return x >= 0 && y >= 0 && x < _mapTiles.length && y < _mapTiles[0].length;
 	}
 
 	public BattleMap replaceType(int oldid, int newid) {
@@ -1679,6 +1763,28 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		return false;
 	}
 
+	public void addStrategicPoint(int gx, int gy) {
+		addStrategicPoint(new PointI(gx, gy));
+	}
+
+	public void addStrategicPoint(PointI p) {
+		if (p == null) {
+			return;
+		}
+		_strategicPoint.add(p);
+	}
+
+	public void removeStrategicPoint(PointI p) {
+		if (p == null) {
+			return;
+		}
+		_strategicPoint.remove(p);
+	}
+
+	public void clearStrategicPoint() {
+		_strategicPoint.clear();
+	}
+
 	@Override
 	public ActionTween selfAction() {
 		return PlayerUtils.set(this);
@@ -1786,6 +1892,14 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	public ISprite setFixedHeightOffset(float fixedHeightOffset) {
 		this._fixedHeightOffset = fixedHeightOffset;
 		return this;
+	}
+
+	public boolean isUpdateBrightness() {
+		return _updateBrightness;
+	}
+
+	public void setUpdateBrightness(boolean u) {
+		this._updateBrightness = u;
 	}
 
 	@Override
@@ -1955,7 +2069,6 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	@Override
 	protected void _onDestroy() {
-		_objects.clear();
 		_visible = false;
 		_playAnimation = false;
 		_roll = false;
@@ -1966,12 +2079,14 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 			_background.close();
 			_background = null;
 		}
-		for (int i = 0; i < _objects.size; i++) {
-			BattleMapObject o = _objects.get(i);
+		for (int i = 0; i < _mapObjects.size; i++) {
+			BattleMapObject o = _mapObjects.get(i);
 			if (o != null) {
 				o.close();
 			}
 		}
+		_mapObjects.clear();
+		_strategicPoint.clear();
 		_defaultGlobalSkill.close();
 		_resizeListener = null;
 		_collSpriteListener = null;

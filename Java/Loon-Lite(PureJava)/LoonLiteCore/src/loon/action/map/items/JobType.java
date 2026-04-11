@@ -20,7 +20,7 @@
  */
 package loon.action.map.items;
 
-import loon.action.map.items.RoleValue.MoveType;
+import loon.action.map.items.RoleValue.UnitType;
 
 /**
  * 角色职业
@@ -40,38 +40,40 @@ public class JobType {
 		public static final int MAGIC_FLOAT = 8;
 	}
 
-	public static final JobType NOVICE = new JobType(0, "Novice", 1, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType WARRIOR = new JobType(1, "Warrior", 1, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType KNIGHT = new JobType(2, "Knight", 1, MoveType.CAVALRY, MoveFlag.FAST_MOVE);
-	public static final JobType MAGE = new JobType(3, "Mage", 1, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType ARCHER = new JobType(4, "Archer", 1, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType THIEF = new JobType(5, "Thief", 1, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType CLERIC = new JobType(6, "Cleric", 1, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType PEGASUS = new JobType(7, "Pegasus Knight", 2, MoveType.FLY, MoveFlag.FLY_OVER);
-	public static final JobType DRAGON_KNIGHT = new JobType(8, "Dragon Knight", 3, MoveType.FLY, MoveFlag.FLY_OVER);
-	public static final JobType PALADIN = new JobType(9, "Paladin", 2, MoveType.CAVALRY, MoveFlag.FAST_MOVE);
-	public static final JobType SWORD_MASTER = new JobType(10, "Swordmaster", 2, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType ARCHMAGE = new JobType(11, "Archmage", 3, MoveType.MAGIC, MoveFlag.MAGIC_FLOAT);
-	public static final JobType PRINCESS = new JobType(20, "Princess", 2, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType MAID = new JobType(21, "Maid", 2, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType BERSERKER = new JobType(30, "Berserker", 2, MoveType.INFANTRY, MoveFlag.HEAVY_ARMOR);
-	public static final JobType DARK_KNIGHT = new JobType(31, "Dark Knight", 3, MoveType.CAVALRY,
+	public static final JobType NOVICE = new JobType(0, "Novice", 1, UnitType.INFANTRY, MoveFlag.NONE);
+	public static final JobType WARRIOR = new JobType(1, "Warrior", 1, UnitType.INFANTRY, MoveFlag.NONE);
+	public static final JobType KNIGHT = new JobType(2, "Knight", 1, UnitType.CAVALRY, MoveFlag.FAST_MOVE);
+	public static final JobType MAGE = new JobType(3, "Mage", 1, UnitType.INFANTRY, MoveFlag.NONE);
+	public static final JobType ARCHER = new JobType(4, "Archer", 1, UnitType.INFANTRY, MoveFlag.NONE);
+	public static final JobType THIEF = new JobType(5, "Thief", 1, UnitType.INFANTRY, MoveFlag.NONE);
+	public static final JobType CLERIC = new JobType(6, "Cleric", 1, UnitType.INFANTRY, MoveFlag.NONE);
+	public static final JobType PEGASUS = new JobType(7, "Pegasus Knight", 2, UnitType.FLY, MoveFlag.FLY_OVER);
+	public static final JobType DRAGON_KNIGHT = new JobType(8, "Dragon Knight", 3, UnitType.FLY, MoveFlag.FLY_OVER);
+	public static final JobType PALADIN = new JobType(9, "Paladin", 2, UnitType.CAVALRY, MoveFlag.FAST_MOVE);
+	public static final JobType SWORD_MASTER = new JobType(10, "Swordmaster", 2, UnitType.INFANTRY, MoveFlag.NONE);
+	public static final JobType ARCHMAGE = new JobType(11, "Archmage", 3, UnitType.MAGIC, MoveFlag.MAGIC_FLOAT);
+	public static final JobType PRINCESS = new JobType(20, "Princess", 2, UnitType.INFANTRY, MoveFlag.NONE);
+	public static final JobType MAID = new JobType(21, "Maid", 2, UnitType.INFANTRY, MoveFlag.NONE);
+	public static final JobType BERSERKER = new JobType(30, "Berserker", 2, UnitType.INFANTRY, MoveFlag.HEAVY_ARMOR);
+	public static final JobType DARK_KNIGHT = new JobType(31, "Dark Knight", 3, UnitType.CAVALRY,
 			MoveFlag.FAST_MOVE | MoveFlag.HEAVY_ARMOR);
-	public static final JobType NECROMANCER = new JobType(32, "Necromancer", 3, MoveType.MAGIC, MoveFlag.MAGIC_FLOAT);
-	public static final JobType SUMMONER = new JobType(33, "Summoner", 3, MoveType.MAGIC, MoveFlag.MAGIC_FLOAT);
-	public static final JobType MONK = new JobType(34, "Monk", 2, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType ASSASSIN = new JobType(35, "Assassin", 3, MoveType.INFANTRY, MoveFlag.FAST_MOVE);
-	public static final JobType RANGER = new JobType(36, "Ranger", 2, MoveType.INFANTRY, MoveFlag.FAST_MOVE);
-	public static final JobType VALKYRIE = new JobType(37, "Valkyrie", 3, MoveType.CAVALRY, MoveFlag.FAST_MOVE);
-	public static final JobType SAMURAI = new JobType(38, "Samurai", 3, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType NINJA = new JobType(39, "Ninja", 2, MoveType.INFANTRY, MoveFlag.FAST_MOVE);
-	public static final JobType BEASTMASTER = new JobType(40, "Beastmaster", 3, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType TEMPLAR = new JobType(41, "Templar", 3, MoveType.INFANTRY, MoveFlag.HEAVY_ARMOR);
-	public static final JobType WARLOCK = new JobType(42, "Warlock", 4, MoveType.MAGIC, MoveFlag.MAGIC_FLOAT);
-	public static final JobType HERO = new JobType(50, "Hero", 4, MoveType.INFANTRY, MoveFlag.NONE);
-	public static final JobType LEGENDARY_DRAGON = new JobType(60, "Legendary Dragon", 5, MoveType.FLY,
+	public static final JobType NECROMANCER = new JobType(32, "Necromancer", 3, UnitType.MAGIC | UnitType.UNDEAD,
+			MoveFlag.MAGIC_FLOAT);
+	public static final JobType SUMMONER = new JobType(33, "Summoner", 3, UnitType.MAGIC, MoveFlag.MAGIC_FLOAT);
+	public static final JobType MONK = new JobType(34, "Monk", 2, UnitType.HEALER, MoveFlag.NONE);
+	public static final JobType ASSASSIN = new JobType(35, "Assassin", 3, UnitType.INFANTRY, MoveFlag.FAST_MOVE);
+	public static final JobType RANGER = new JobType(36, "Ranger", 2, UnitType.CAVALRY, MoveFlag.FAST_MOVE);
+	public static final JobType VALKYRIE = new JobType(37, "Valkyrie", 3, UnitType.CAVALRY, MoveFlag.FAST_MOVE);
+	public static final JobType SAMURAI = new JobType(38, "Samurai", 3, UnitType.INFANTRY, MoveFlag.NONE);
+	public static final JobType NINJA = new JobType(39, "Ninja", 2, UnitType.INFANTRY, MoveFlag.FAST_MOVE);
+	public static final JobType BEASTMASTER = new JobType(40, "Beastmaster", 3, UnitType.HOOVES, MoveFlag.NONE);
+	public static final JobType TEMPLAR = new JobType(41, "Templar", 3, UnitType.ARMOR | UnitType.HEALER,
+			MoveFlag.HEAVY_ARMOR);
+	public static final JobType WARLOCK = new JobType(42, "Warlock", 4, UnitType.MAGIC, MoveFlag.MAGIC_FLOAT);
+	public static final JobType HERO = new JobType(50, "Hero", 4, UnitType.INFANTRY, MoveFlag.NONE);
+	public static final JobType LEGENDARY_DRAGON = new JobType(60, "Legendary Dragon", 5, UnitType.FLY,
 			MoveFlag.FLY_OVER | MoveFlag.HEAVY_ARMOR);
-	public static final JobType DEMON_KING = new JobType(99, "Demon King", 5, MoveType.MAGIC,
+	public static final JobType DEMON_KING = new JobType(99, "Demon King", 5, UnitType.MAGIC,
 			MoveFlag.FLY_OVER | MoveFlag.MAGIC_FLOAT);
 
 	private final int id;
