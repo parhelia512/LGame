@@ -413,7 +413,7 @@ public class BattleAI {
 				PointI center = findBestSkillCenter(best);
 				if (center != null) {
 					controlledUnit.setCurrentSkill(best);
-					controlledUnit.castSkill(center);
+					controlledUnit.castSkillTile(center);
 					return true;
 				}
 			} else {
@@ -459,7 +459,7 @@ public class BattleAI {
 		if (skill.canRange()) {
 			PointI center = findBestSkillCenter(skill);
 			if (center != null) {
-				controlledUnit.castSkill(center);
+				controlledUnit.castSkillTile(center);
 				return true;
 			}
 		} else {

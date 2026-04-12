@@ -234,26 +234,32 @@ public class BattleTest extends Stage {
 		// 构建一个纹理动画用于特技画面
 		Animation skillAni = Animation.getDefaultAnimation("rasaksingle.png", 192, 192, 50);
 
+		BattleSkill skillCircle = new BattleSkill(0, "circle");
+		
+		skillCircle.setSkillEffectAnim(skillAni);
+		skillCircle.setRangeRadius(3);
+		skillCircle.setSize(300, 300);
+		skillCircle.setRangeType(RangeType.CROSS);
 		// 启动全局特技(battleMap中特技默认应该注入BattleMapObject，但是我绑定了一个全局特技对象，方便用于点击即攻击，剧情特效之类)
-		newMap.getGlobalSkill().setRunning(true);
+		//newMap.getGlobalSkill().setRunning(true);
 		// 注入特技主动画(最多三个，分别是底层背景动画(天崩地裂血海什么的bgEffectAnim)，主动画（就是这个skillEffectAnim）,还有一个攻击动画(attackEffectAnim))
 		// 一般注入一个就够了，若是大招或者混合特效之类，可以加入三个混合效果
-		newMap.getGlobalSkill().setSkillEffectAnim(skillAni);
+		//newMap.getGlobalSkill().setSkillEffectAnim(skillAni);
 		// 循环一次
-		newMap.getGlobalSkill().setLoopCount(1);
+		//newMap.getGlobalSkill().setLoopCount(1);
 		// 攻击范围3
-		newMap.getGlobalSkill().setRangeRadius(3);
+		//newMap.getGlobalSkill().setRangeRadius(3);
 		// 设置特技效果大小
-		newMap.getGlobalSkill().setSize(300, 300);
+		//newMap.getGlobalSkill().setSize(300, 300);
 		// 攻击范围十字
-		newMap.getGlobalSkill().setRangeType(RangeType.CROSS);
+		//newMap.getGlobalSkill().setRangeType(RangeType.CROSS);
 		// 8方向攻击范围
 		// newMap.getGlobalSkill().setAllDirection(true);
 		// 为增加表现力，默认是有出招地图震荡模式的，当然也可关闭
 		// newMap.getGlobalSkill().setShakeEnable(false);
-		newMap.getGlobalSkill().castEffect(obj);
+		//newMap.getGlobalSkill().castEffect(obj);
 		// 触发特技事件监听，此处可以处理各种事务，loon默认是ON_HIT后调用effect接口，推荐在setEffect设定参数,但不强制要求，毕竟loon是框架不是直接的rmvx
-		newMap.getGlobalSkill().addTriggerEvent(new BattleSkill.SkillTriggerEvent() {
+		skillCircle.addTriggerEvent(new BattleSkill.SkillTriggerEvent() {
 
 			@Override
 			public boolean onEvent(SKillEventType eventType, BattleMapObject caster, BattleMapObject target) {
@@ -266,6 +272,8 @@ public class BattleTest extends Stage {
 				return null;
 			}
 		});
+		// 设定角色当前特技
+		obj.setCurrentSkill(skillCircle);
 		// 使用光照系统
 		// newMap.setUpdateBrightness(true);
 		// 角色飞行(地形无视)
@@ -276,8 +284,12 @@ public class BattleTest extends Stage {
 		});
 		// 获得点中瓦片坐标
 		up((x, y) -> {
-			// 在指定坐标触发特技
-			newMap.getGlobalSkill().castEffect(x, y);
+			// 刷新当前特技状态，否则不能重复触发
+			obj.getCurrentSkill().resetCast();
+			// 在指定像素坐标触发特技
+			obj.castSkillPixel(x, y);
+			
+			obj.setState(ObjectState.IDLE);
 			// 在指定地图对象上触发特技
 			// newMap.getGlobalSkill().castEffect(obj);
 			// 刷新状态

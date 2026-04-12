@@ -33,27 +33,34 @@ public abstract class RoleValue {
 	 */
 	public static class UnitType {
 		// 步兵
-		public static final int INFANTRY = 0;
+		public static final int INFANTRY = 1 << 0;
 		// 骑兵
-		public static final int CAVALRY = 1;
+		public static final int CAVALRY = 1 << 1;
 		// 飞行
-		public static final int FLY = 2;
+		public static final int FLY = 1 << 2;
 		// 重装
-		public static final int ARMOR = 3;
+		public static final int ARMOR = 1 << 3;
 		// 魔兽
-		public static final int HOOVES = 4;
+		public static final int HOOVES = 1 << 4;
 		// 魔法
-		public static final int MAGIC = 5;
+		public static final int MAGIC = 1 << 5;
+		// 弓箭
+		public static final int ARCHER = 1 << 6;
 		// 远程
-		public static final int RANGE = 6;
+		public static final int RANGE = 1 << 7;
 		// 长枪
-		public static final int SPEARMAN = 7;
+		public static final int SPEARMAN = 1 << 8;
 		// 治疗者
-		public static final int HEALER = 8;
+		public static final int HEALER = 1 << 9;
 		// 海军
-		public static final int NAVAL = 9;
+		public static final int NAVAL = 1 << 10;
 		// 亡灵
-		public static final int UNDEAD = 10;
+		public static final int UNDEAD = 1 << 11;
+
+		// 判断是否包含某类型
+		public static boolean hasType(int fullType, int checkType) {
+			return (fullType & checkType) != 0;
+		}
 	}
 
 	/**
@@ -100,6 +107,8 @@ public abstract class RoleValue {
 		public static boolean ENABLE_LIFE_STEAL = true;
 		// 有伤害反弹
 		public static boolean ENABLE_DAMAGE_REFLECT = true;
+		// 有兵种相克
+		public static boolean ENABLE_UNIT_TYPE_ADVANTAGE = true;
 	}
 
 	private final int _id;
@@ -179,7 +188,10 @@ public abstract class RoleValue {
 	protected boolean isNaturalRegen = false;
 	protected int damageReflect; // 伤害反弹
 	protected int lifeSteal; // 吸血
+
 	protected int damageTakenMultiplier = 100;
+	protected int advantageAddDamage = 125;
+	protected int advantageSubDamage = 75;
 
 	public RoleValue(int id, RoleEquip info, int maxHealth, int maxMana, int attack, int defence, int strength,
 			int intelligence, int fitness, int dexterity, int agility, int lv) {
@@ -244,6 +256,21 @@ public abstract class RoleValue {
 		lifeSteal = 0;
 		damageTakenMultiplier = 100;
 		clearNegativeStates();
+	}
+
+	public int getUnitTypeAdvantageMultiplier(RoleValue target) {
+		if (!SystemSwitch.ENABLE_UNIT_TYPE_ADVANTAGE || target == null) {
+			return 100;
+		}
+		// 我方对敌克制存在，增伤默认25%
+		if (hasAdvantageOver(target)) {
+			return advantageAddDamage;
+		}
+		// 敌方对我克制存在,减伤默认25%
+		if (target.hasAdvantageOver(this)) {
+			return advantageSubDamage;
+		}
+		return 100;
 	}
 
 	public RoleValue setActionPriority(int a) {
@@ -1166,6 +1193,9 @@ public abstract class RoleValue {
 		float damage = attack + 0.5f * strength - 0.5f * realDefence;
 		damage = variance(damage, 20, true);
 		damage *= (100 - target.damageReduce) / 100f;
+		// 若兵种相克存在
+		int advantageMul = getUnitTypeAdvantageMultiplier(target);
+		damage *= advantageMul / 100f;
 		return MathUtils.max(MathUtils.ifloor(damage), 1);
 	}
 
@@ -1764,40 +1794,68 @@ public abstract class RoleValue {
 		this.baseSkillRange = baseSkillRange;
 	}
 
+	public boolean isInfantry() {
+		return UnitType.hasType(unitType, UnitType.INFANTRY);
+	}
+
 	public boolean isCavalry() {
-		return unitType == UnitType.CAVALRY;
+		return UnitType.hasType(unitType, UnitType.CAVALRY);
 	}
 
 	public boolean isFlying() {
-		return unitType == UnitType.FLY;
+		return UnitType.hasType(unitType, UnitType.FLY);
 	}
 
 	public boolean isArmor() {
-		return unitType == UnitType.ARMOR;
-	}
-
-	public boolean isMagic() {
-		return unitType == UnitType.MAGIC;
-	}
-
-	public boolean isRange() {
-		return unitType == UnitType.RANGE;
-	}
-
-	public boolean isInfantry() {
-		return unitType == UnitType.INFANTRY;
+		return UnitType.hasType(unitType, UnitType.ARMOR);
 	}
 
 	public boolean isHooves() {
-		return unitType == UnitType.HOOVES;
+		return UnitType.hasType(unitType, UnitType.HOOVES);
+	}
+
+	public boolean isMagic() {
+		return UnitType.hasType(unitType, UnitType.MAGIC);
+	}
+
+	public boolean isArcher() {
+		return UnitType.hasType(unitType, UnitType.ARCHER);
+	}
+
+	public boolean isRange() {
+		return UnitType.hasType(unitType, UnitType.RANGE);
+	}
+
+	public boolean isSpearman() {
+		return UnitType.hasType(unitType, UnitType.SPEARMAN);
 	}
 
 	public boolean isHealer() {
-		return unitType == UnitType.HEALER;
+		return UnitType.hasType(unitType, UnitType.HEALER);
 	}
 
 	public boolean isNaval() {
-		return unitType == UnitType.NAVAL;
+		return UnitType.hasType(unitType, UnitType.NAVAL);
+	}
+
+	public boolean isUndead() {
+		return UnitType.hasType(unitType, UnitType.UNDEAD);
+	}
+
+	public int getAdvantageAddDamage() {
+		return advantageAddDamage;
+	}
+
+	public void setAdvantageAddDamage(int advantageAddDamage) {
+		this.advantageAddDamage = advantageAddDamage;
+	}
+
+	public int getAdvantageSubDamage() {
+		return advantageSubDamage;
+	}
+
+	public void setAdvantageSubDamage(int advantageSubDamage) {
+		this.advantageSubDamage = advantageSubDamage;
 	}
 
 	/**
@@ -1810,43 +1868,48 @@ public abstract class RoleValue {
 		if (target == null) {
 			return false;
 		}
-		int mType = this.getUnitType();
-		int tType = target.getUnitType();
-		// 重甲克制长枪兵
-		if (mType == UnitType.ARMOR && tType == UnitType.SPEARMAN) {
+		int atk = this.unitType;
+		int def = target.unitType;
+		// 长枪克骑兵
+		if (UnitType.hasType(atk, UnitType.SPEARMAN) && UnitType.hasType(def, UnitType.CAVALRY)) {
 			return true;
 		}
-		// 长枪兵克制骑兵
-		if (mType == UnitType.SPEARMAN && tType == UnitType.CAVALRY) {
+		// 骑兵克步兵/远程/魔法
+		if (UnitType.hasType(atk, UnitType.CAVALRY) && (UnitType.hasType(def, UnitType.INFANTRY)
+				|| UnitType.hasType(def, UnitType.RANGE) || UnitType.hasType(def, UnitType.MAGIC))) {
 			return true;
 		}
-		// 骑兵克制远程魔法步兵单位
-		if (mType == UnitType.CAVALRY
-				&& (tType == UnitType.RANGE || tType == UnitType.MAGIC || tType == UnitType.INFANTRY)) {
+		// 弓箭/远程克步兵/飞行
+		if ((UnitType.hasType(atk, UnitType.ARCHER) || UnitType.hasType(atk, UnitType.RANGE))
+				&& (UnitType.hasType(def, UnitType.INFANTRY) || UnitType.hasType(def, UnitType.FLY))) {
 			return true;
 		}
-		// 远程单位克制步兵与飞行
-		if (mType == UnitType.RANGE && (tType == UnitType.INFANTRY || tType == UnitType.FLY)) {
+		// 魔法克重甲/飞行
+		if (UnitType.hasType(atk, UnitType.MAGIC)
+				&& (UnitType.hasType(def, UnitType.ARMOR) || UnitType.hasType(def, UnitType.FLY))) {
 			return true;
 		}
-		// 魔法单位克制重装与飞行单位
-		if (mType == UnitType.MAGIC && (tType == UnitType.ARMOR || tType == UnitType.FLY)) {
+		// 重甲克长枪
+		if (UnitType.hasType(atk, UnitType.ARMOR) && UnitType.hasType(def, UnitType.SPEARMAN)) {
 			return true;
 		}
-		// 飞行单位克制海军与重甲单位
-		if (mType == UnitType.FLY && (tType == UnitType.NAVAL || tType == UnitType.ARMOR)) {
+		// 飞行克重甲/海军
+		if (UnitType.hasType(atk, UnitType.FLY)
+				&& (UnitType.hasType(def, UnitType.ARMOR) || UnitType.hasType(def, UnitType.NAVAL))) {
 			return true;
 		}
-		// 海军单位克制骑兵(应设置为水上有效)
-		if (mType == UnitType.NAVAL && tType == UnitType.CAVALRY) {
+		// 魔兽克步兵/骑兵
+		if (UnitType.hasType(atk, UnitType.HOOVES)
+				&& (UnitType.hasType(def, UnitType.INFANTRY) || UnitType.hasType(def, UnitType.CAVALRY))) {
 			return true;
 		}
-		// 魔兽单位克制步兵与骑兵
-		if (mType == UnitType.HOOVES && (tType == UnitType.INFANTRY || tType == UnitType.CAVALRY)) {
+		// 治疗克亡灵
+		if (UnitType.hasType(atk, UnitType.HEALER) && UnitType.hasType(def, UnitType.UNDEAD)) {
 			return true;
 		}
-		// 治疗者克制亡灵
-		if (mType == UnitType.HEALER && tType == UnitType.UNDEAD) {
+		// 海军克骑兵/步兵/重甲（水域，游戏中需要额外判定，结合地形参数）
+		if (UnitType.hasType(atk, UnitType.NAVAL) && (UnitType.hasType(def, UnitType.CAVALRY)
+				|| UnitType.hasType(def, UnitType.INFANTRY) || UnitType.hasType(def, UnitType.ARMOR))) {
 			return true;
 		}
 		return false;

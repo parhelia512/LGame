@@ -289,42 +289,134 @@ public class BattleTileType {
 
 	public int getActionPointCost(int unitType) {
 		int cost = baseActionCost;
-		switch (unitType) {
-		case UnitType.CAVALRY:
-			if (this == MOUNTAIN || this == SWAMP || this == MARSH || this == DENSE_FOREST) {
-				cost *= 2;
-			}
-			if (this == ROAD || this == PLAIN) {
-				cost = MathUtils.max(1, cost / 2);
-			}
-			break;
-		case UnitType.INFANTRY:
-			if (this == WALL || this == CASTLE || this == FORT) {
-				cost = MathUtils.max(1, cost / 2);
-			}
-			if (this == RIVER || this == SEA) {
-				cost *= 2;
-			}
-			break;
-		case UnitType.NAVAL:
-			if (this == RIVER || this == SEA || this == FORD || this == FERRY || this == PORT) {
-				cost = MathUtils.max(1, cost / 2);
-			}
-			if (!(this == SEA || this == RIVER || this == FORD || this == FERRY || this == PORT)) {
-				cost *= 2;
-			}
-			break;
-		case UnitType.RANGE:
-			if (this == HILL || this == MOUNTAIN) {
-				cost = MathUtils.max(1, cost);
-			} else if (this == FORT || this == CASTLE || this == CITY || this == WALL) {
-				cost *= 2;
-			}
-			break;
-		default:
-			break;
+
+		// 支持混合兵种，只要包含任意类型，就应用对应效果
+		boolean isInfantry = UnitType.hasType(unitType, UnitType.INFANTRY);
+		boolean isCavalry = UnitType.hasType(unitType, UnitType.CAVALRY);
+		boolean isFly = UnitType.hasType(unitType, UnitType.FLY);
+		boolean isArmor = UnitType.hasType(unitType, UnitType.ARMOR);
+		boolean isHooves = UnitType.hasType(unitType, UnitType.HOOVES);
+		boolean isMagic = UnitType.hasType(unitType, UnitType.MAGIC);
+		boolean isArcher = UnitType.hasType(unitType, UnitType.ARCHER);
+		boolean isRange = UnitType.hasType(unitType, UnitType.RANGE);
+		boolean isSpearman = UnitType.hasType(unitType, UnitType.SPEARMAN);
+		boolean isHealer = UnitType.hasType(unitType, UnitType.HEALER);
+		boolean isNaval = UnitType.hasType(unitType, UnitType.NAVAL);
+		boolean isUndead = UnitType.hasType(unitType, UnitType.UNDEAD);
+
+		// 飞行单位
+		if (isFly) {
+			cost = MathUtils.max(1, cost / 2);
+			return cost;
 		}
-		return cost;
+
+		// 骑兵
+		if (isCavalry) {
+			if (this == MOUNTAIN || this == SWAMP || this == MARSH || this == DENSE_FOREST || this == RIVER) {
+				cost *= 2;
+			}
+			if (this == ROAD || this == PLAIN || this == GRASSLAND) {
+				cost = MathUtils.max(1, cost / 2);
+			}
+		}
+
+		// 步兵
+		if (isInfantry) {
+			if (this == WALL || this == CASTLE || this == FORT || this == HILL || this == CITY) {
+				cost = MathUtils.max(1, cost / 2);
+			}
+			if (this == RIVER || this == SEA || this == SWAMP || this == MARSH) {
+				cost *= 2;
+			}
+		}
+
+		// 长枪兵
+		if (isSpearman) {
+			if (this == PLAIN || this == ROAD || this == FORT) {
+				cost = MathUtils.max(1, cost / 2);
+			}
+			if (this == MOUNTAIN || this == DENSE_FOREST || this == SWAMP) {
+				cost *= 2;
+			}
+		}
+
+		// 重甲
+		if (isArmor) {
+			if (this == ROAD || this == PLAIN || this == CASTLE || this == FORT) {
+				cost = MathUtils.max(1, cost);
+			} else {
+				cost *= 2; // 重甲在非平坦地形全部减速
+			}
+		}
+
+		// 魔兽
+		if (isHooves) {
+			if (this == PLAIN || this == HILL || this == FOREST || this == DENSE_FOREST || this == LAVA_FIELD
+					|| this == SWAMP) {
+				cost = MathUtils.max(1, cost / 2);
+			}
+			if (this == RIVER || this == SEA || this == MARSH) {
+				cost *= 2;
+			}
+		}
+
+		// 魔法单位
+		if (isMagic) {
+			if (this == CITY || this == RUINS || this == CASTLE || this == SWAMP) {
+				cost = MathUtils.max(1, cost / 2);
+			}
+			if (this == MOUNTAIN || this == SEA || this == RIVER) {
+				cost *= 2;
+			}
+		}
+
+		// 弓箭
+		if (isArcher) {
+			if (this == HILL || this == MOUNTAIN || this == FOREST || this == WALL) {
+				cost = MathUtils.max(1, cost / 2);
+			}
+			if (this == SWAMP || this == MARSH || this == RIVER) {
+				cost *= 2;
+			}
+		}
+
+		// 远程
+		if (isRange) {
+			if (this == HILL || this == WALL || this == FORT || this == TOWER) {
+				cost = MathUtils.max(1, cost / 2);
+			}
+			if (this == CASTLE || this == CITY || this == SWAMP || this == MARSH) {
+				cost *= 2;
+			}
+		}
+
+		// 治疗者
+		if (isHealer) {
+			if (this == CASTLE || this == CITY) {
+				cost = MathUtils.max(1, cost / 2);
+			}
+		}
+
+		// 海军
+		if (isNaval) {
+			if (this == RIVER || this == SEA || this == FORD || this == FERRY || this == PORT || this == COAST) {
+				cost = MathUtils.max(1, cost / 2);
+			} else {
+				cost *= 2;
+			}
+		}
+
+		// 亡灵
+		if (isUndead) {
+			if (this == MINE || this == SWAMP || this == MARSH || this == LAVA_FIELD) {
+				cost = MathUtils.max(1, cost / 2);
+			}
+			if (this == CASTLE) {
+				cost *= 2;
+			}
+		}
+
+		return MathUtils.max(cost, 1);
 	}
 
 	public float getTalentBonus(String talentId) {

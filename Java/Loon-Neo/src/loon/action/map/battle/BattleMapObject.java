@@ -32,8 +32,11 @@ import loon.action.map.battle.BattleMovementManager.MovementMode;
 import loon.action.map.battle.BattleMovementManager.MovementState;
 import loon.action.map.battle.BattleSkill.BattleType;
 import loon.action.map.battle.BattleType.ObjectState;
+import loon.action.map.items.Item;
+import loon.action.map.items.ItemInfo;
 import loon.action.map.items.Role;
 import loon.action.map.items.RoleEquip;
+import loon.action.map.items.RoleValue;
 import loon.action.sprite.ISprite;
 import loon.events.GameEvent;
 import loon.events.GameEventType;
@@ -79,6 +82,15 @@ public class BattleMapObject extends Role implements LRelease {
 		// 死亡事件
 		void onDead(BattleMapObject obj, float deltaTime);
 
+		// 道具事件
+		void onItemUseStart(BattleMapObject obj, float deltaTime);
+
+		void onItemUseEnd(BattleMapObject obj, float deltaTime);
+
+		void onHit(BattleMapObject obj, int damage, boolean isCrit);
+
+		void onKnockBack(BattleMapObject obj, int fromX, int fromY);
+
 		// 行为合规性判断器只有合规行为才能真正触发
 		boolean checkAllowAttack(BattleType eventType, BattleSkill skill, BattleMapObject caster,
 				BattleMapObject target);
@@ -86,6 +98,9 @@ public class BattleMapObject extends Role implements LRelease {
 		boolean checkAllowSkill(BattleType eventType, BattleSkill skill, BattleMapObject caster,
 				BattleMapObject target);
 
+		boolean checkAllowUseItem(Item<ItemInfo> item, BattleMapObject user, BattleMapObject target);
+
+		void useItem(Item<ItemInfo> item, BattleMapObject user, BattleMapObject target);
 	}
 
 	// 移动数据
@@ -143,9 +158,20 @@ public class BattleMapObject extends Role implements LRelease {
 		}
 	}
 
+	public static class ItemData {
+		public final String itemName;
+		public final String effect;
+		public final int value;
+
+		public ItemData(String itemName, String effect, int value) {
+			this.itemName = itemName;
+			this.effect = effect;
+			this.value = value;
+		}
+	}
+
 	/** 最大惯性值 */
 	public static final float MAX_INERTIA = 0.1f;
-
 	/** 默认缓动函数 */
 	private static final Easing DEFAULT_EASING = Easing.TIME_LINEAR;
 
@@ -183,10 +209,15 @@ public class BattleMapObject extends Role implements LRelease {
 
 	private boolean inCombat = false;
 
+	// 动作进度
 	private float attackProgress;
 	private float skillProgress;
+	private float itemProgress;
 
+	// 技能与道具系统
 	private TArray<BattleSkill> skills = new TArray<BattleSkill>();
+	private Item<ItemInfo> currentItem;
+	private TArray<Item<Object>> items = new TArray<Item<Object>>();
 
 	// 坐标缓存对象
 	private final Vector2f startPixel = new Vector2f();
@@ -222,10 +253,13 @@ public class BattleMapObject extends Role implements LRelease {
 	private boolean drawPath = true;
 
 	private BattleSkill currentSkill;
-
 	private BattleMapObject lastAttacker;
-
 	private boolean taunt;
+
+	// 键盘移动控制
+	private float keyDelay = 0.25f;
+
+	private float keyMoveTimer;
 
 	public BattleMapObject(IsoConfig cfg, BattleMap map, ISprite sprite, int id, String name, int gx, int gy, int w,
 			int h, MovementListener l) {
@@ -249,38 +283,135 @@ public class BattleMapObject extends Role implements LRelease {
 		this.isoConfig = (cfg == null) ? new IsoConfig() : cfg;
 		this.battleMap = map;
 		this.easing = (ease == null) ? DEFAULT_EASING : ease;
-
 		// 初始化坐标
 		this.gridX = MathUtils.max(0, gx);
 		this.gridY = MathUtils.max(0, gy);
 		this.targetX = gridX;
 		this.targetY = gridY;
-
 		// 尺寸校验
 		this.charInMapWidth = MathUtils.max(1, w);
 		this.charInMapHeight = MathUtils.max(1, h);
 		this.listener = l;
-
 		// 初始化移动管理器
 		this.moveManager = new BattleMovementManager(listener);
 		this.currentMapTile.set(gridX, gridY);
-
 		// 初始化像素坐标
 		this.startPixel.set(getTileToScreen(gridX, gridY));
 		this.targetPixel.set(startPixel);
-
 		// 基础速度
 		this.baseSpeed = MathUtils.max(MAX_INERTIA, 5f);
 		this.renderPriority = calculateRenderPriority();
-
 		// 重置移动路径状态与初始移动点为100
 		resetPathState(100);
-
 		// 精灵初始化
 		if (sprite != null) {
 			sprite.setSize(charInMapWidth, charInMapHeight);
 			sprite.setLocation(startPixel.x, startPixel.y);
 			setRoleObject(sprite);
+		}
+	}
+
+	private void handleAttackState(float deltaTime, TArray<BattleMapObject> allObjects) {
+		attackProgress += deltaTime * baseSpeed;
+		// 只有技能真正触发后，才允许结束攻击状态
+		if (currentSkill != null && currentSkill.isCastTriggered()) {
+			performAttack(allObjects);
+			attackProgress = 0f;
+			if (objectStateListener != null) {
+				objectStateListener.onAttackEnd(this, deltaTime);
+			}
+			setState(ObjectState.IDLE);
+			currentSkill.resetCast();
+		}
+		if (objectStateListener != null) {
+			objectStateListener.onAttackStart(this, deltaTime);
+		}
+	}
+
+	private void handleSkillState(float deltaTime, TArray<BattleMapObject> allObjects) {
+		skillProgress += deltaTime * baseSpeed;
+		if (currentSkill != null && currentSkill.isCastTriggered()) {
+			performSkill(allObjects);
+			skillProgress = 0f;
+			if (objectStateListener != null) {
+				objectStateListener.onSkillEnd(this, deltaTime);
+			}
+			setState(ObjectState.IDLE);
+			currentSkill.resetCast();
+		}
+		if (objectStateListener != null) {
+			objectStateListener.onSkillStart(this, deltaTime);
+		}
+	}
+
+	/**
+	 * 使用道具状态
+	 * 
+	 * @param deltaTime
+	 */
+	private void handleItemState(float deltaTime) {
+		itemProgress += deltaTime * baseSpeed;
+		if (currentItem != null && itemProgress > 1.0f && currentItem.isUseTriggered()) {
+			performItemUse();
+			itemProgress = 0f;
+			if (objectStateListener != null) {
+				objectStateListener.onItemUseEnd(this, deltaTime);
+			}
+			setState(ObjectState.IDLE);
+			currentItem.resetUse();
+		}
+		if (objectStateListener != null) {
+			objectStateListener.onItemUseStart(this, deltaTime);
+		}
+	}
+
+	public void useItem(Item<ItemInfo> item, BattleMapObject target) {
+		if (state != ObjectState.IDLE || currentItem != null) {
+			return;
+		}
+		if (item == null) {
+			return;
+		}
+		currentItem = item;
+		setState(ObjectState.USING_ITEM);
+
+		if (objectStateListener != null) {
+			objectStateListener.onItemUseStart(this, 0);
+		}
+	}
+
+	private void performItemUse() {
+		if (currentItem == null) {
+			return;
+		}
+		if (objectStateListener != null) {
+			objectStateListener.useItem(currentItem, this, lastAttacker);
+		}
+		currentItem = null;
+	}
+
+	public void updateKeyboardMove(float deltaTime, boolean up, boolean down, boolean left, boolean right) {
+		keyMoveTimer -= deltaTime;
+		if (keyMoveTimer > 0 || state != ObjectState.IDLE) {
+			return;
+		}
+		int dx = 0, dy = 0;
+		if (up) {
+			dy = -1;
+		} else if (down) {
+			dy = 1;
+		} else if (left) {
+			dx = -1;
+		} else if (right) {
+			dx = 1;
+		}
+		if (dx != 0 || dy != 0) {
+			int tx = gridX + dx;
+			int ty = gridY + dy;
+			if (canMoveTo(new PointI(tx, ty))) {
+				moveToGrid(tx, ty);
+				keyMoveTimer = keyDelay;
+			}
 		}
 	}
 
@@ -299,9 +430,8 @@ public class BattleMapObject extends Role implements LRelease {
 
 	public BattleMapObject setEasing(Easing e) {
 		easing = e;
-		if (listener != null) {
+		if (listener != null)
 			listener.onEasingChanged(this, e);
-		}
 		return this;
 	}
 
@@ -318,21 +448,15 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public Vector2f getCharCenterInScreenPixel() {
-		return new Vector2f(getX() + (charInMapWidth / 2), getY() + (charInMapHeight / 2)).addSelf(moveOffsetPixel);
+		return new Vector2f(getX() + (charInMapWidth / 2f), getY() + (charInMapHeight / 2f)).addSelf(moveOffsetPixel);
 	}
 
 	public float getCharScaleX() {
-		if (_roleObject == null) {
-			return 1f;
-		}
-		return _roleObject.getScaleX();
+		return _roleObject == null ? 1f : _roleObject.getScaleX();
 	}
 
 	public float getCharScaleY() {
-		if (_roleObject == null) {
-			return 1f;
-		}
-		return _roleObject.getScaleY();
+		return _roleObject == null ? 1f : _roleObject.getScaleY();
 	}
 
 	private float calculateRenderPriority() {
@@ -342,10 +466,10 @@ public class BattleMapObject extends Role implements LRelease {
 
 	public Vector2f getInterpolatedPosition() {
 		if (state == ObjectState.MOVING) {
-			float easedProgress = Easing.outCubicEase(moveProgress);
-			float interpX = gridX + (targetX - gridX) * easedProgress;
-			float interpY = gridY + (targetY - gridY) * easedProgress;
-			return getTileToScreen(MathUtils.ifloor(interpX), MathUtils.ifloor(interpY));
+			float eased = Easing.outCubicEase(moveProgress);
+			float ix = gridX + (targetX - gridX) * eased;
+			float iy = gridY + (targetY - gridY) * eased;
+			return getTileToScreen(MathUtils.ifloor(ix), MathUtils.ifloor(iy));
 		}
 		return getTileToScreenPosition();
 	}
@@ -355,9 +479,8 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public BattleMapObject setOffsetPixel(XY pos) {
-		if (pos != null) {
+		if (pos != null)
 			moveOffsetPixel.set(pos);
-		}
 		return this;
 	}
 
@@ -374,10 +497,10 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public void setStartTile(int gx, int gy, int cw, int ch) {
-		this.gridX = MathUtils.max(0, gx);
-		this.gridY = MathUtils.max(0, gy);
-		this.startPixel.set(getTileToScreen(gridX, gridY));
-		this.currentMapTile.set(gridX, gridY);
+		gridX = MathUtils.max(0, gx);
+		gridY = MathUtils.max(0, gy);
+		startPixel.set(getTileToScreen(gridX, gridY));
+		currentMapTile.set(gridX, gridY);
 		setLocation(startPixel.x, startPixel.y);
 	}
 
@@ -386,9 +509,9 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public void setTargetTile(int gx, int gy, int cw, int ch) {
-		this.targetX = MathUtils.max(0, gx);
-		this.targetY = MathUtils.max(0, gy);
-		this.targetPixel.set(getTileToScreen(targetX, targetY));
+		targetX = MathUtils.max(0, gx);
+		targetY = MathUtils.max(0, gy);
+		targetPixel.set(getTileToScreen(targetX, targetY));
 	}
 
 	public Vector2f getScreenToTile() {
@@ -433,28 +556,37 @@ public class BattleMapObject extends Role implements LRelease {
 
 	public BattleMapObject updateRenderPriorityLayer() {
 		renderPriority = calculateRenderPriority();
-		int orderZ = MathUtils.ifloor(renderPriority);
-		setLayer(orderZ);
+		setLayer(MathUtils.ifloor(renderPriority));
 		return this;
 	}
 
 	public BattleMapObject updateRenderPriorityZ() {
 		renderPriority = calculateRenderPriority();
-		int orderZ = MathUtils.ifloor(renderPriority);
-		if (_roleObject != null) {
-			if (_roleObject instanceof ZIndex) {
-				orderZ = orderZ - MathUtils.abs(((ZIndex) this._roleObject).getLayer());
-			}
+		int z = MathUtils.ifloor(renderPriority);
+		if (_roleObject instanceof ZIndex) {
+			z -= MathUtils.abs(((ZIndex) _roleObject).getLayer());
 		}
-		setLayer(-orderZ);
+		setLayer(-z);
 		return this;
 	}
 
-	/**
-	 * 重置并设置新路径
-	 * 
-	 * @param newPath
-	 */
+	@Override
+	public boolean hasAdvantageOver(RoleValue target) {
+		if (UnitType.hasType(getUnitType(), UnitType.NAVAL)) {
+			if (battleMap != null) {
+				BattleTile tile = battleMap.getMapTile(gridX, gridY);
+				if (tile != null) {
+					BattleTileType tileType = tile.getTileType();
+					return super.hasAdvantageOver(target) && (tileType == BattleTileType.SEA
+							|| tileType == BattleTileType.COAST || tileType == BattleTileType.RIVER);
+				} else {
+					return false;
+				}
+			}
+		}
+		return super.hasAdvantageOver(target);
+	}
+
 	public void setResetPath(TArray<PointI> newPath) {
 		resetPathState();
 		setPath(newPath);
@@ -470,42 +602,34 @@ public class BattleMapObject extends Role implements LRelease {
 		if (newPath == null || newPath.isEmpty() || state == ObjectState.DEAD) {
 			return;
 		}
-
 		path.clear();
 		path.addAll(newPath);
-
 		// 设置最终目标点
-		PointI lastPos = path.last();
-		if (lastPos != null) {
-			setTargetTile(lastPos.x, lastPos.y);
+		PointI last = path.last();
+		if (last != null) {
+			setTargetTile(last.x, last.y);
 		}
-
 		// 过滤无效路径
-		TArray<PointI> validPath = filterValidPath(path);
+		TArray<PointI> valid = filterValidPath(path);
 		path.clear();
-		path.addAll(validPath);
-
+		path.addAll(valid);
 		if (path.isEmpty()) {
 			endMovement();
 			return;
 		}
-
 		// 初始化移动状态
 		currentStep = 0;
 		paused = false;
 		moveProgress = 0f;
 		targetPixel.set(getTileToScreen(path.get(0).x, path.get(0).y));
-
 		// 矫正角色初始方向
 		if (path.size() > 1) {
-			PointI start = path.get(0);
-			PointI next = path.get(1);
-			Direction newDir = Direction.fromDelta(next.x - start.x, next.y - start.y);
+			PointI s = path.get(0), n = path.get(1);
+			Direction d = Direction.fromDelta(n.x - s.x, n.y - s.y);
 			if (listener != null) {
-				listener.onDirectionChanged(this, newDir);
+				listener.onDirectionChanged(this, d);
 			}
 		}
-
 		// 回调通知
 		if (listener != null) {
 			listener.onPathUpdated(this, path);
@@ -514,48 +638,38 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public void handleMoveState(float deltaTime) {
-		// 死亡/暂停/无路径，直接返回，不予执行
 		if (state == ObjectState.DEAD || paused || path.isEmpty()) {
 			handleIdleState(deltaTime);
 			return;
 		}
 		// 更新移动管理器
 		moveManager.update(deltaTime, this);
-
-		// 传送技能直接执行
-		for (MovementState state : moveManager.getActiveStates()) {
-			if (state.isTeleport()) {
+		for (MovementState st : moveManager.getActiveStates()) {
+			if (st.isTeleport()) {
 				performTeleport(this);
 				return;
 			}
 		}
-
 		// 更新速度
 		updateSpeed();
 		// 平滑惯性移动
 		currentSpeed += (targetSpeed - currentSpeed) * MAX_INERTIA;
 		moveProgress += currentSpeed * deltaTime;
-
 		float eased = MathUtils.min(easing.apply(moveProgress), 1f);
 		movePixel.set(startPixel.x + (targetPixel.x - startPixel.x) * eased,
 				startPixel.y + (targetPixel.y - startPixel.y) * eased);
-
 		// 更新像素位置
 		setPixelPosition(movePixel);
-
 		// 更新瓦片位置
 		updateCurrentMapTile(movePixel.x, movePixel.y);
-
 		// 单步移动完成
 		if (moveProgress >= 1f) {
 			completeStep();
 		}
-
 		if (isMoving) {
 			// 更新渲染优先级
 			renderPriority = calculateRenderPriority();
 		}
-
 		if (objectStateListener != null) {
 			objectStateListener.onMoving(this, deltaTime);
 		}
@@ -567,66 +681,46 @@ public class BattleMapObject extends Role implements LRelease {
 		}
 	}
 
-	private void handleAttackState(float deltaTime, TArray<BattleMapObject> allObjects) {
-		attackProgress += deltaTime * baseSpeed;
-		if (attackProgress >= 1.0f) {
-			// 执行攻击逻辑
-			performAttack(allObjects);
-			// 重置攻击状态
-			attackProgress = 0f;
-		}
-		if (objectStateListener != null) {
-			objectStateListener.onAttackEnd(this, deltaTime);
-		}
-	}
-
 	public boolean isInSkillRange(BattleMapObject target) {
 		int dx = MathUtils.abs(gridX - target.gridX);
 		int dy = MathUtils.abs(gridY - target.gridY);
-		int maxRange = currentSkill != null ? currentSkill.rangeRadius : 1;
-		return MathUtils.max(dx, dy) <= maxRange;
+		int r = currentSkill != null ? currentSkill.rangeRadius : 1;
+		return MathUtils.max(dx, dy) <= r;
 	}
 
 	private BattleMapObject findSkillTarget(TArray<BattleMapObject> allObjects) {
-		for (BattleMapObject obj : allObjects) {
-			if (obj != this && obj.state != ObjectState.DEAD && isInSkillRange(obj)) {
-				currentDirection = Direction.fromDelta(obj.gridX - gridX, obj.gridY - gridY);
-				if (listener != null) {
+		for (BattleMapObject o : allObjects) {
+			if (o != this && o.state != ObjectState.DEAD && isInSkillRange(o)) {
+				currentDirection = Direction.fromDelta(o.gridX - gridX, o.gridY - gridY);
+				if (listener != null)
 					listener.onDirectionChanged(this, currentDirection);
-				}
-				return obj;
+				return o;
 			}
 		}
 		return null;
 	}
 
 	public void castAttack(PointI grid) {
-		if (grid == null) {
-			return;
+		if (grid != null) {
+			castAttack(grid.x, grid.y);
 		}
-		castAttack(grid.x, grid.y);
 	}
 
-	public void castAttack(int gridX, int gridY) {
-		if (battleMap == null) {
+	public void castAttack(int gx, int gy) {
+		if (battleMap == null || currentSkill == null) {
 			return;
 		}
-		if (currentSkill != null) {
-			if (actionPoints > 0 && actionPoints < currentSkill.actionPointCost) {
-				if (battleMap != null) {
-					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK, this, null,
-							new AttackData(false, "Insufficient Attack", 0, false)));
-				}
-				setState(ObjectState.IDLE);
-				return;
-			}
-			if (objectStateListener != null
-					&& !objectStateListener.checkAllowAttack(currentSkill.battleType, currentSkill, this, null)) {
-				setState(ObjectState.IDLE);
-				return;
-			}
-			currentSkill.castTileEffect(gridX, gridY);
+		if (actionPoints > 0 && actionPoints < currentSkill.actionPointCost) {
+			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK, this, null,
+					new AttackData(false, "Insufficient AP", 0, false)));
+			return;
 		}
+		if (objectStateListener != null
+				&& !objectStateListener.checkAllowAttack(currentSkill.battleType, currentSkill, this, null)) {
+			return;
+		}
+		setState(ObjectState.ATTACKING);
+		currentSkill.castTileEffect(gx, gy);
 	}
 
 	private void performAttack(TArray<BattleMapObject> allObjects) {
@@ -634,57 +728,35 @@ public class BattleMapObject extends Role implements LRelease {
 			return;
 		}
 		// 查找指定范围内的目标
-		BattleMapObject target = findSkillTarget(allObjects);
-		if (target == null || target.state == ObjectState.DEAD) {
+		BattleMapObject t = findSkillTarget(allObjects);
+		if (t == null || t.state == ObjectState.DEAD) {
 			setState(ObjectState.IDLE);
 			return;
 		}
-		// 消耗行动不足判定（如果技能需要）
 		if (actionPoints > 0 && actionPoints < currentSkill.actionPointCost) {
-			if (battleMap != null) {
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK, this, target,
-						new AttackData(false, "Insufficient Attack", 0, false)));
-			}
-			setState(ObjectState.IDLE);
 			return;
 		}
-
-		// 如果不允许攻击则跳过
 		if (objectStateListener != null
-				&& !objectStateListener.checkAllowAttack(currentSkill.battleType, currentSkill, this, target)) {
-			setState(ObjectState.IDLE);
+				&& !objectStateListener.checkAllowAttack(currentSkill.battleType, currentSkill, this, t)) {
 			return;
 		}
-
-		// 触发实际技能效果
-		currentSkill.castEffect(this, target);
-
+		currentSkill.castEffect(this, t);
 		if (battleMap != null) {
-			// 发布命中事件
-			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
+			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, t,
 					new AttackData(true, "hit", 0, MathUtils.random() <= currentSkill.critRate)));
-			// 发布HP变化事件
-			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, target, this,
-					new ResourceData("hp", this, target.health)));
+			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, t, this,
+					new ResourceData("hp", this, t.health)));
 		}
-
-		// 检查是否击杀
-		if (target.health <= 0) {
-			setState(ObjectState.DEAD);
+		if (t.health <= 0) {
+			t.setState(ObjectState.DEAD);
 			if (battleMap != null) {
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, target, this));
+				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, t, this));
 			}
 		} else {
-			lastAttacker = target;
+			lastAttacker = t;
 		}
-
 	}
 
-	/**
-	 * 指定对象开始战斗
-	 * 
-	 * @param enemy
-	 */
 	public void startCombat(BattleMapObject enemy) {
 		if (!inCombat && enemy != this && enemy.state != ObjectState.DEAD) {
 			inCombat = true;
@@ -694,11 +766,6 @@ public class BattleMapObject extends Role implements LRelease {
 		}
 	}
 
-	/**
-	 * 指定对象结束战斗
-	 * 
-	 * @param enemy
-	 */
 	public void endCombat(BattleMapObject enemy) {
 		if (inCombat) {
 			inCombat = false;
@@ -712,143 +779,83 @@ public class BattleMapObject extends Role implements LRelease {
 		endCombat(this);
 	}
 
-	public void castSkill(PointI grid) {
-		if (grid == null) {
-			return;
+	public void castSkillPixel(Vector2f pos) {
+		if (pos != null) {
+			castSkillPixel(pos.x, pos.y);
 		}
-		castSkill(grid.x, grid.y);
 	}
 
-	public void castSkill(int gridX, int gridY) {
-		if (battleMap == null) {
+	public void castSkillPixel(float x, float y) {
+		if (battleMap != null) {
+			Vector2f pos = battleMap.findTileXY(x, y);
+			if (pos != null && battleMap.inMap(pos.x(), pos.y())) {
+				castSkillTile(pos.x(), pos.y());
+			}
+		}
+	}
+
+	public void castSkillTile(PointI grid) {
+		if (grid != null) {
+			castSkillTile(grid.x, grid.y);
+		}
+	}
+
+	public void castSkillTile(int gx, int gy) {
+		if (battleMap == null || currentSkill == null) {
 			return;
 		}
-		if (currentSkill != null) {
-			if (!currentSkill.isReady()) {
-				if (battleMap != null) {
-					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
-							new SkillData(currentSkill.name, "Skill on cooldown", 0)));
-				}
-				setState(ObjectState.IDLE);
-				return;
-			}
-			if (mana < currentSkill.mpCost) {
-				if (battleMap != null) {
-					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
-							new SkillData(currentSkill.name, "Insufficient Magic", 0)));
-				}
-				setState(ObjectState.IDLE);
-				return;
-			}
-			if (objectStateListener != null
-					&& !objectStateListener.checkAllowSkill(currentSkill.battleType, currentSkill, this, null)) {
-				setState(ObjectState.IDLE);
-				return;
-			}
-			currentSkill.castTileEffect(gridX, gridY);
+		if (!currentSkill.isReady()) {
+			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
+					new SkillData(currentSkill.name, "cooldown", 0)));
+			return;
 		}
+		if (mana < currentSkill.mpCost) {
+			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
+					new SkillData(currentSkill.name, "no mana", 0)));
+			return;
+		}
+		if (objectStateListener != null
+				&& !objectStateListener.checkAllowSkill(currentSkill.battleType, currentSkill, this, null)) {
+			return;
+		}
+		setState(ObjectState.SKILL);
+		currentSkill.castTileEffect(gx, gy);
 	}
 
 	public void castSkill(BattleMapObject target) {
 		if (currentSkill == null) {
 			return;
 		}
-		// 检查技能是否冷却完成
-		if (!currentSkill.isReady()) {
-			if (battleMap != null) {
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
-						new SkillData(currentSkill.name, "Skill on cooldown", 0)));
-			}
-			setState(ObjectState.IDLE);
+		if (!currentSkill.isReady() || mana < currentSkill.mpCost) {
 			return;
 		}
-		// 判断MP是否允许释放技能
-		if (mana < currentSkill.mpCost) {
-			if (battleMap != null) {
-				battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
-						new SkillData(currentSkill.name, "Insufficient Magic", 0)));
-			}
-			setState(ObjectState.IDLE);
-			return;
-		}
-
-		// 如果不允许技能则跳过
 		if (objectStateListener != null
 				&& !objectStateListener.checkAllowSkill(currentSkill.battleType, currentSkill, this, target)) {
-			setState(ObjectState.IDLE);
 			return;
 		}
-
-		// 根据技能类型执行不同逻辑
-		switch (currentSkill.battleType) {
-		case HEAL:
-		case BUFF:
-		case DEBUFF:
-			if (currentSkill.battleType == BattleType.HEAL || currentSkill.battleType == BattleType.BUFF
-					|| currentSkill.battleType == BattleType.DEBUFF) {
-				if (target != null && target.state != ObjectState.DEAD) {
-					currentSkill.castEffect(this, target);
-				} else {
-					currentSkill.castEffect(this, this);
-				}
-				if (battleMap != null) {
-					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.SKILL, this, null,
-							new SkillData(currentSkill.name, "state", 0)));
-					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, this, null,
-							new ResourceData("state", this, health)));
-				}
-			}
-			break;
-		case RANGE:
-		case MELEE:
-			// 远程近战技能攻击
-			if (target != null && target.state != ObjectState.DEAD) {
-				if (currentSkill.battleType == BattleType.RANGE || currentSkill.battleType == BattleType.MELEE) {
-					// 实际调用技能效果
-					currentSkill.castEffect(this, target);
-					if (battleMap != null) {
-						battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, target,
-								new AttackData(true, "hit", 0, MathUtils.random() <= currentSkill.critRate)));
-						battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, target, null,
-								new ResourceData("state", this, target.health)));
-					}
-					if (target.health <= 0) {
-						setState(ObjectState.DEAD);
-						if (battleMap != null) {
-							battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, target, this));
-						}
-					} else {
-						lastAttacker = target;
-					}
-				}
-			}
-			break;
-		default:
-			break;
-		}
+		setState(ObjectState.SKILL);
 	}
 
 	private void performSkill(TArray<BattleMapObject> allObjects) {
 		if (currentSkill == null) {
 			return;
 		}
-		// 查找技能对象
-		BattleMapObject target = findSkillTarget(allObjects);
-		if (target != null) {
-			castSkill(target);
+		BattleMapObject t = findSkillTarget(allObjects);
+		if (t == null) {
+			return;
 		}
-	}
-
-	private void handleSkillState(float deltaTime, TArray<BattleMapObject> allObjects) {
-		skillProgress += deltaTime * baseSpeed;
-		if (skillProgress >= 1.0f) {
-			// 执行技能逻辑
-			performSkill(allObjects);
-			// 重置技能状态
-			skillProgress = 0f;
-		}
-		if (objectStateListener != null) {
-			objectStateListener.onSkillEnd(this, deltaTime);
+		if (currentSkill.battleType == BattleType.HEAL || currentSkill.battleType == BattleType.BUFF) {
+			currentSkill.castEffect(this, t);
+		} else {
+			currentSkill.castEffect(this, t);
+			if (battleMap != null) {
+				battleMap.getEventBus().publish(
+						new GameEvent<Object>(GameEventType.ATTACK_HIT, this, t, new AttackData(true, "", 0, false)));
+				if (t.health <= 0) {
+					t.setState(ObjectState.DEAD);
+					battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.DEATH, t, this));
+				}
+			}
 		}
 	}
 
@@ -900,6 +907,9 @@ public class BattleMapObject extends Role implements LRelease {
 		case PREPARE_SKILL:
 			handlePrepareSkill(deltaTime);
 			break;
+		case USING_ITEM:
+			handleItemState(deltaTime);
+			break;
 		default:
 			setState(ObjectState.IDLE);
 			break;
@@ -914,49 +924,41 @@ public class BattleMapObject extends Role implements LRelease {
 		updateCurrentMapTile(x, y, charInMapWidth, charInMapHeight);
 	}
 
-	public void updateCurrentMapTile(float x, float y, int charW, int charH) {
-		Vector2f p = getScreenToTile(x, y, charW, charH);
-		this.gridX = p.x();
-		this.gridY = p.y();
-		this.currentMapTile.set(gridX, gridY);
+	public void updateCurrentMapTile(float x, float y, int cw, int ch) {
+		Vector2f p = getScreenToTile(x, y, cw, ch);
+		gridX = (int) p.x;
+		gridY = (int) p.y;
+		currentMapTile.set(gridX, gridY);
 	}
 
 	/**
 	 * 速度计算（移动模式+技能+地形倍率）
 	 */
 	private void updateSpeed() {
-		float multiplier = 1f;
-
-		// 特殊状态速度倍率
-		for (MovementState skill : moveManager.getActiveStates()) {
-			multiplier = MathUtils.max(multiplier, skill.getSpeedMultiplier());
+		float mul = 1f;
+		for (MovementState s : moveManager.getActiveStates()) {
+			mul = MathUtils.max(mul, s.getSpeedMultiplier());
 		}
-
-		// 移动模式倍率
 		switch (currentMode) {
 		case RUN:
-			multiplier *= 2f;
+			mul *= 2;
 			break;
 		case SNEAK:
-			multiplier *= 0.5f;
+			mul *= 0.5f;
 			break;
 		case CHARGE:
-			multiplier *= 2.5f;
+			mul *= 2.5f;
 			break;
 		default:
-			multiplier = 1f;
 			break;
 		}
-
-		// 地形速度倍率
 		if (battleMap != null) {
-			BattleTile tile = battleMap.getMapTile(gridX, gridY);
-			if (tile != null) {
-				multiplier *= tile.getTileType().getMoveSpeedMultiplier();
+			BattleTile t = battleMap.getMapTile(gridX, gridY);
+			if (t != null) {
+				mul *= t.getTileType().getMoveSpeedMultiplier();
 			}
 		}
-
-		targetSpeed = baseSpeed * multiplier;
+		targetSpeed = baseSpeed * mul;
 	}
 
 	/**
@@ -980,14 +982,13 @@ public class BattleMapObject extends Role implements LRelease {
 	 * 获取最大可移动步数
 	 */
 	public int getMaxReachableSteps() {
-		int steps = 0;
-		int tempPoints = actionPoints;
-		for (PointI tile : path) {
-			int cost = getTileCost(tile);
-			if (tempPoints < cost) {
+		int ap = actionPoints, steps = 0;
+		for (PointI p : path) {
+			int c = getTileCost(p);
+			if (ap < c) {
 				break;
 			}
-			tempPoints -= cost;
+			ap -= c;
 			steps++;
 		}
 		return steps;
@@ -1002,9 +1003,7 @@ public class BattleMapObject extends Role implements LRelease {
 		if (newPath == null || newPath.isEmpty() || state == ObjectState.DEAD) {
 			return;
 		}
-		TArray<PointI> valid = filterValidPath(newPath);
-		path.addAll(valid);
-
+		path.addAll(filterValidPath(newPath));
 		if (listener != null) {
 			listener.onPathUpdated(this, path);
 		}
@@ -1020,19 +1019,19 @@ public class BattleMapObject extends Role implements LRelease {
 		if (path.isEmpty()) {
 			return getPixelPosition();
 		}
-		int idx = MathUtils.clamp(currentStep + steps, 0, path.size() - 1);
-		return getTileToScreen(path.get(idx).x, path.get(idx).y);
+		int i = MathUtils.clamp(currentStep + steps, 0, path.size() - 1);
+		return getTileToScreen(path.get(i).x, path.get(i).y);
 	}
 
 	/**
 	 * 预览全路径（屏幕坐标）
 	 */
 	public TArray<Vector2f> previewScreenFullPath() {
-		TArray<Vector2f> result = new TArray<Vector2f>();
+		TArray<Vector2f> r = new TArray<Vector2f>();
 		for (PointI p : filterValidPath(path)) {
-			result.add(new Vector2f(getTileToScreen(p.x, p.y)));
+			r.add(getTileToScreen(p.x, p.y));
 		}
-		return result;
+		return r;
 	}
 
 	/**
@@ -1041,11 +1040,11 @@ public class BattleMapObject extends Role implements LRelease {
 	 * @return
 	 */
 	public TArray<PointI> previewTileFullPath() {
-		TArray<PointI> result = new TArray<PointI>();
+		TArray<PointI> r = new TArray<PointI>();
 		for (PointI p : filterValidPath(path)) {
-			result.add(new PointI(getTileToScreen(p.x, p.y)));
+			r.add(new PointI(p.x, p.y));
 		}
-		return result;
+		return r;
 	}
 
 	/**
@@ -1063,17 +1062,17 @@ public class BattleMapObject extends Role implements LRelease {
 		}
 	}
 
-	public void setBlockedTiles(TArray<PointI> blocked) {
+	public void setBlockedTiles(TArray<PointI> b) {
 		blockedTiles.clear();
-		if (blocked != null) {
-			blockedTiles.addAll(blocked);
+		if (b != null) {
+			blockedTiles.addAll(b);
 		}
 	}
 
-	public void setAllowedTiles(TArray<PointI> allowed) {
+	public void setAllowedTiles(TArray<PointI> a) {
 		allowedTiles.clear();
-		if (allowed != null) {
-			allowedTiles.addAll(allowed);
+		if (a != null) {
+			allowedTiles.addAll(a);
 		}
 	}
 
@@ -1090,10 +1089,8 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public void setCharacters(TArray<BattleMapObject> s) {
-		if (s != otherCharacters) {
-			otherCharacters.clear();
-			otherCharacters.addAll(s);
-		}
+		otherCharacters.clear();
+		otherCharacters.addAll(s);
 	}
 
 	public void removeCharacter(BattleMapObject o) {
@@ -1122,24 +1119,23 @@ public class BattleMapObject extends Role implements LRelease {
 		}
 	}
 
-	public void moveToGrid(int targetX, int targetY) {
-		moveToGrid(targetX, targetY, drawPath, EffectType.MOVE);
+	public void moveToGrid(int tx, int ty) {
+		moveToGrid(tx, ty, drawPath, EffectType.MOVE);
 	}
 
-	public void moveToGrid(int targetX, int targetY, boolean lightMovePath, EffectType effectType) {
-		if (battleMap != null) {
-			BattlePathFinder finder = battleMap.getPathFinder();
-			finder.setFlying(isFlying());
-			TArray<PointI> result = finder.findPath(gridX, gridY, targetX, targetY);
-			if (result.size > 0) {
-				if (battleMap.getObjectCount() > 0) {
-					setCharacters(battleMap._mapObjects);
-				}
-				if (lightMovePath) {
-					battleMap.highlighterRangePathToEffect(result, effectType);
-				}
-				setPath(result);
+	public void moveToGrid(int tx, int ty, boolean light, EffectType et) {
+		if (battleMap == null) {
+			return;
+		}
+		BattlePathFinder f = battleMap.getPathFinder();
+		f.setFlying(isFlying());
+		TArray<PointI> p = f.findPath(gridX, gridY, tx, ty);
+		if (!p.isEmpty()) {
+			setCharacters(battleMap._mapObjects);
+			if (light) {
+				battleMap.highlighterRangePathToEffect(p, et);
 			}
+			setPath(p);
 		}
 	}
 
@@ -1148,15 +1144,16 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public void setCurrentMapTile(PointI tile) {
-		if (tile != null) {
-			this.currentMapTile.set(tile);
-			this.gridX = tile.x;
-			this.gridY = tile.y;
+		if (tile == null) {
+			return;
 		}
+		currentMapTile.set(tile);
+		gridX = tile.x;
+		gridY = tile.y;
 	}
 
 	public boolean canUltimateSkill() {
-		return (currentSkill != null && currentSkill.canUltimateSkill());
+		return currentSkill != null && currentSkill.canUltimateSkill();
 	}
 
 	public Vector2f getPixelPosition() {
@@ -1175,27 +1172,25 @@ public class BattleMapObject extends Role implements LRelease {
 
 	public BattleMapObject pause() {
 		paused = true;
-		if (listener != null) {
+		if (listener != null)
 			listener.onPathInterrupted(this);
-		}
 		return this;
 	}
 
 	public BattleMapObject resume() {
 		paused = false;
-		if (listener != null) {
+		if (listener != null)
 			listener.onPathResumed(this);
-		}
 		return this;
 	}
 
 	public void setMoving(boolean moving) {
-		this.isMoving = moving;
+		isMoving = moving;
 	}
 
-	private void triggerAnimation(AnimationState state) {
-		if (listener != null && state != null) {
-			listener.onAnimationStateChanged(this, state.name());
+	private void triggerAnimation(AnimationState s) {
+		if (listener != null) {
+			listener.onAnimationStateChanged(this, s.name());
 		}
 	}
 
@@ -1207,8 +1202,8 @@ public class BattleMapObject extends Role implements LRelease {
 	private void deductMovementCost(PointI tile) {
 		int cost = 0;
 		if (battleMap != null) {
-			BattleTile battleTile = battleMap.getMapTile(tile.x, tile.y);
-			cost = battleTile == null ? 0 : (int) battleTile.getPathCost();
+			BattleTile t = battleMap.getMapTile(tile.x, tile.y);
+			cost = t == null ? 0 : (int) t.getPathCost();
 		}
 		actionPoints = MathUtils.max(0, actionPoints - cost);
 		if (listener != null) {
@@ -1226,16 +1221,16 @@ public class BattleMapObject extends Role implements LRelease {
 	 * @param tile
 	 */
 	private void applyTerrainEffects(PointI tile) {
-		if (battleMap == null || tile == null) {
+		if (battleMap == null || tile == null || listener == null) {
 			return;
 		}
-		BattleTile battleTile = battleMap.getMapTile(tile.x, tile.y);
-		if (battleTile == null || listener == null) {
+		BattleTile t = battleMap.getMapTile(tile.x, tile.y);
+		if (t == null) {
 			return;
 		}
-		BattleTileType tileType = battleTile.getTileType();
-		listener.onTerrainEffectApplied(this, tileType.getName(), tileType);
-		targetSpeed = baseSpeed * tileType.getMoveSpeedMultiplier();
+		BattleTileType type = t.getTileType();
+		listener.onTerrainEffectApplied(this, type.getName(), type);
+		targetSpeed = baseSpeed * type.getMoveSpeedMultiplier();
 	}
 
 	/**
@@ -1245,14 +1240,14 @@ public class BattleMapObject extends Role implements LRelease {
 		if (otherCharacters.isEmpty()) {
 			return CollisionResponse.CONTINUE;
 		}
-		PointI selfTile = getCurrentMapTile();
-		for (BattleMapObject other : otherCharacters) {
-			if (this == other || other == null) {
+		PointI self = getCurrentMapTile();
+		for (BattleMapObject o : otherCharacters) {
+			if (o == null || o == this) {
 				continue;
 			}
-			if (selfTile.equals(other.getCurrentMapTile())) {
+			if (self.equals(o.getCurrentMapTile())) {
 				if (listener != null) {
-					listener.onCollision(this, other, CollisionResponse.STOP);
+					listener.onCollision(this, o, CollisionResponse.STOP);
 				}
 				return CollisionResponse.STOP;
 			}
@@ -1262,15 +1257,17 @@ public class BattleMapObject extends Role implements LRelease {
 
 	/**
 	 * 碰撞处理
+	 * 
+	 * @param r
+	 * @return
 	 */
-	private boolean handleCollision(CollisionResponse response) {
-		if (response == CollisionResponse.CONTINUE) {
+	private boolean handleCollision(CollisionResponse r) {
+		if (r == CollisionResponse.CONTINUE) {
 			return false;
 		}
 		paused = true;
 		triggerAnimation(AnimationState.IDLE);
-		// 后退处理
-		if (response == CollisionResponse.BACKWARD && currentStep > 0) {
+		if (r == CollisionResponse.BACKWARD && currentStep > 0) {
 			currentStep = MathUtils.max(0, currentStep - 1);
 			targetPixel.set(getTileToScreen(path.get(currentStep).x, path.get(currentStep).y));
 			setPixelPosition(targetPixel);
@@ -1279,7 +1276,7 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	/**
-	 * 路径完成
+	 * 路径移动完成
 	 */
 	private void finishPath() {
 		endMovement();
@@ -1295,16 +1292,15 @@ public class BattleMapObject extends Role implements LRelease {
 		if (currentStep <= 0 || currentStep >= path.size()) {
 			return;
 		}
-		PointI prev = path.get(currentStep - 1);
-		PointI curr = path.get(currentStep);
+		PointI prev = path.get(currentStep - 1), curr = path.get(currentStep);
 		if (prev == null || curr == null) {
 			return;
 		}
-		Direction newDir = Direction.fromDelta(curr.x - prev.x, curr.y - prev.y);
-		if (newDir != null && newDir != currentDirection) {
-			currentDirection = newDir;
+		Direction d = Direction.fromDelta(curr.x - prev.x, curr.y - prev.y);
+		if (d != null && d != currentDirection) {
+			currentDirection = d;
 			if (listener != null) {
-				listener.onDirectionChanged(this, currentDirection);
+				listener.onDirectionChanged(this, d);
 			}
 		}
 	}
@@ -1314,41 +1310,39 @@ public class BattleMapObject extends Role implements LRelease {
 	 * 
 	 * @param newMode
 	 */
-	public void setMovementMode(MovementMode newMode) {
-		if (newMode == null || state == ObjectState.DEAD) {
+	public void setMovementMode(MovementMode m) {
+		if (m == null || state == ObjectState.DEAD) {
 			return;
 		}
-		MovementMode old = this.currentMode;
-		this.currentMode = newMode;
+		MovementMode old = currentMode;
+		currentMode = m;
 		if (listener != null) {
-			listener.onMovementModeChanged(this, old, newMode);
+			listener.onMovementModeChanged(this, old, m);
 		}
 	}
 
 	public ObjectBundle getSyncPacket() {
-		ObjectBundle packet = new ObjectBundle();
-		packet.put("speed", currentSpeed);
-		packet.put("step", currentStep);
-		packet.put("paused", paused);
-		packet.put("mode", currentMode);
-		packet.put("points", actionPoints);
-		packet.put("x", startPixel.x);
-		packet.put("y", startPixel.y);
-		return packet;
+		ObjectBundle p = new ObjectBundle();
+		p.put("speed", currentSpeed);
+		p.put("step", currentStep);
+		p.put("paused", paused);
+		p.put("mode", currentMode);
+		p.put("points", actionPoints);
+		p.put("x", startPixel.x);
+		p.put("y", startPixel.y);
+		return p;
 	}
 
-	public void applySyncPacket(ObjectBundle packet) {
-		if (packet == null) {
+	public void applySyncPacket(ObjectBundle p) {
+		if (p == null) {
 			return;
 		}
-		this.currentSpeed = MathUtils.max(MAX_INERTIA, packet.getFloat("speed", baseSpeed));
-		this.currentStep = MathUtils.max(0, packet.getInt("step", 0));
-		this.paused = packet.getBool("paused", false);
-		this.currentMode = (MovementMode) packet.get("mode", MovementMode.WALK);
-		this.actionPoints = MathUtils.max(0, packet.getInt("points", 0));
-		float x = packet.getFloat("x", getX());
-		float y = packet.getFloat("y", getY());
-		setPixelPosition(new Vector2f(x, y));
+		currentSpeed = MathUtils.max(MAX_INERTIA, p.getFloat("speed", baseSpeed));
+		currentStep = MathUtils.max(0, p.getInt("step", 0));
+		paused = p.getBool("paused", false);
+		currentMode = (MovementMode) p.get("mode", MovementMode.WALK);
+		actionPoints = MathUtils.max(0, p.getInt("points", 0));
+		setPixelPosition(new Vector2f(p.getFloat("x"), p.getFloat("y")));
 	}
 
 	/**
@@ -1359,34 +1353,24 @@ public class BattleMapObject extends Role implements LRelease {
 			finishPath();
 			return;
 		}
-
 		PointI tile = path.get(currentStep);
 		setPixelPosition(targetPixel);
 		setCurrentMapTile(tile);
-
-		// 事件回调
 		if (listener != null) {
 			listener.onStepReached(this, tile.x, tile.y);
 			listener.onTileEntered(this, tile.x, tile.y);
 		}
-
-		// 消耗移动力 + 地形效果 + 碰撞检测
 		deductMovementCost(tile);
 		applyTerrainEffects(tile);
 		if (handleCollision(checkCollision())) {
 			return;
 		}
-
-		// 更新方向
 		updateDirection();
-
-		// 进入下一步
 		currentStep++;
 		moveProgress = 0f;
-
-		if (currentStep >= path.size()) {
+		if (currentStep >= path.size())
 			finishPath();
-		} else {
+		else {
 			startPixel.set(targetPixel);
 			targetPixel.set(getTileToScreen(path.get(currentStep).x, path.get(currentStep).y));
 		}
@@ -1394,77 +1378,62 @@ public class BattleMapObject extends Role implements LRelease {
 
 	/**
 	 * 判断是否可移动到目标瓦片
+	 * 
+	 * @param tile
+	 * @return
 	 */
 	public boolean canMoveTo(PointI tile) {
 		if (tile == null || state == ObjectState.DEAD) {
 			return false;
 		}
-		// 技能强制可移动
-		for (MovementState state : moveManager.getActiveStates()) {
-			if (state.canOverrideBlocked(tile)) {
+		for (MovementState s : moveManager.getActiveStates()) {
+			if (s.canOverrideBlocked(tile)) {
 				return true;
 			}
 		}
-		// 地图边界检查
 		if (battleMap != null) {
-			BattleTile battleTile = battleMap.getMapTile(tile.x, tile.y);
-			if (battleTile == null) {
-				return false;
-			}
-			if (!battleTile.isPassable() && !isFlying()) {
+			BattleTile t = battleMap.getMapTile(tile.x, tile.y);
+			if (t == null || !t.isPassable() && !isFlying()) {
 				return false;
 			}
 		}
-		// 自定义阻挡检查
 		return !blockedTiles.contains(tile) || allowedTiles.contains(tile);
 	}
 
-	/**
-	 * 过滤路径，判定是否合规
-	 * 
-	 * @param paths
-	 * @return
-	 */
 	private TArray<PointI> filterValidPath(TArray<PointI> paths) {
-		TArray<PointI> valid = new TArray<PointI>();
+		TArray<PointI> r = new TArray<PointI>();
 		if (paths == null || paths.isEmpty()) {
-			return valid;
+			return r;
 		}
-		int tempPoints = actionPoints;
-		for (PointI tile : paths) {
-			if (!canMoveTo(tile)) {
+		int ap = actionPoints;
+		for (PointI p : paths) {
+			if (!canMoveTo(p)) {
 				break;
 			}
-			int cost = getTileCost(tile);
-			if (tempPoints < cost) {
+			int c = getTileCost(p);
+			if (ap < c) {
 				break;
 			}
-			tempPoints -= cost;
-			valid.add(tile);
+			ap -= c;
+			r.add(p);
 		}
-		return valid;
+		return r;
 	}
 
-	/**
-	 * 获取瓦片消耗
-	 * 
-	 * @param tile
-	 * @return
-	 */
 	private int getTileCost(PointI tile) {
 		if (battleMap == null || tile == null) {
 			return 0;
 		}
-		BattleTile battleTile = battleMap.getMapTile(tile.x, tile.y);
-		return battleTile == null ? 0 : MathUtils.max(0, (int) battleTile.getPathCost());
+		BattleTile t = battleMap.getMapTile(tile.x, tile.y);
+		return t == null ? 0 : MathUtils.max(0, (int) t.getPathCost());
 	}
 
 	public int getMaxMovementPoints() {
 		return movePoints;
 	}
 
-	public void setMaxMovementPoints(int points) {
-		this.movePoints = MathUtils.max(0, points);
+	public void setMaxMovementPoints(int p) {
+		movePoints = MathUtils.max(0, p);
 	}
 
 	@Override
@@ -1478,17 +1447,17 @@ public class BattleMapObject extends Role implements LRelease {
 		resetPathState(movePoints);
 	}
 
-	public void resetPathState(int points) {
+	public void resetPathState(int p) {
 		currentStep = 0;
 		moveProgress = 0f;
 		paused = false;
-		movePoints = MathUtils.max(0, points);
+		movePoints = MathUtils.max(0, p);
 		actionPoints = movePoints;
 		path.clear();
 	}
 
-	public void setRemainingMovementPoints(int points) {
-		this.actionPoints = MathUtils.clamp(points, 0, movePoints);
+	public void setRemainingMovementPoints(int p) {
+		actionPoints = MathUtils.clamp(p, 0, movePoints);
 	}
 
 	public int getRemainingMovementPoints() {
@@ -1514,24 +1483,25 @@ public class BattleMapObject extends Role implements LRelease {
 		if (objectStateListener != null) {
 			objectStateListener.onStateChanged(this, state, newState);
 		}
-		this.state = newState;
-		this.isMoving = (state == ObjectState.MOVING);
-		this.isDead = (state == ObjectState.DEAD);
+		state = newState;
+		isMoving = state == ObjectState.MOVING;
+		isDead = state == ObjectState.DEAD;
 		if (isDead) {
 			endCombat();
-		}
-		// 死亡状态强制停止移动
-		if (state == ObjectState.DEAD) {
 			clearPath();
 		}
 	}
 
-	public void paint(GLEx g, float deltaTime, float posX, float posY) {
+	public void paint(GLEx g, float deltaTime, float px, float py) {
 		if (isVisible()) {
 			update(deltaTime);
+			if (currentItem != null) {
+				currentItem.update(deltaTime);
+				currentItem.drawItemEffect(g, deltaTime, px, py);
+			}
 			if (currentSkill != null) {
 				currentSkill.updateSkill(deltaTime);
-				currentSkill.drawSkillEffect(g, deltaTime, posX, posY);
+				currentSkill.drawSkillEffect(g, deltaTime, px, py);
 			}
 		}
 	}
@@ -1540,34 +1510,21 @@ public class BattleMapObject extends Role implements LRelease {
 		return isMoving;
 	}
 
-	/**
-	 * 待机状态
-	 * 
-	 * @param deltaTime
-	 */
 	protected void handleIdleState(float deltaTime) {
 		moveInertia = MathUtils.max(0, moveInertia - deltaTime * 2);
 		if (!path.isEmpty() && state != ObjectState.DEAD) {
 			startMoving();
-		} else if (path.isEmpty()) {
+		} else {
 			endMovement();
 		}
 	}
 
-	/**
-	 * 防御状态
-	 * 
-	 * @param deltaTime
-	 */
 	protected void handleDefenceState(float deltaTime) {
 		if (objectStateListener != null) {
 			objectStateListener.onDefenced(this, deltaTime);
 		}
 	}
 
-	/**
-	 * 开始移动(死亡状态默认不可触发)
-	 */
 	protected void startMoving() {
 		if (state == ObjectState.DEAD) {
 			return;
@@ -1577,9 +1534,6 @@ public class BattleMapObject extends Role implements LRelease {
 		moveProgress = 0f;
 	}
 
-	/**
-	 * 结束移动
-	 */
 	protected void endMovement() {
 		paused = true;
 		setState(ObjectState.IDLE);
@@ -1593,29 +1547,26 @@ public class BattleMapObject extends Role implements LRelease {
 		triggerAnimation(AnimationState.ARRIVED);
 	}
 
-	/**
-	 * 位置通行性检查
-	 */
 	public boolean isPositionPassable(int x, int y) {
 		if (battleMap == null) {
 			return false;
 		}
-		BattleTile tile = battleMap.getMapTile(x, y);
-		return (tile != null && (tile.isPassable() || isFlying()));
+		BattleTile t = battleMap.getMapTile(x, y);
+		return t != null && (t.isPassable() || isFlying());
 	}
 
 	public BattleMap getBattleMap() {
 		return battleMap;
 	}
 
-	public void setBattleMap(BattleMap battleMap) {
-		this.battleMap = battleMap;
+	public void setBattleMap(BattleMap m) {
+		battleMap = m;
 	}
 
-	public void setCurrentSkill(BattleSkill skill) {
-		this.currentSkill = skill;
-		if (currentSkill != null) {
-			currentSkill.setBattleMap(battleMap);
+	public void setCurrentSkill(BattleSkill s) {
+		currentSkill = s;
+		if (s != null) {
+			s.setBattleMap(battleMap);
 		}
 	}
 
@@ -1627,8 +1578,8 @@ public class BattleMapObject extends Role implements LRelease {
 		return baseSpeed;
 	}
 
-	public void setBaseSpeed(float baseSpeed) {
-		this.baseSpeed = MathUtils.max(MAX_INERTIA, baseSpeed);
+	public void setBaseSpeed(float s) {
+		baseSpeed = MathUtils.max(MAX_INERTIA, s);
 		if (listener != null) {
 			listener.onSpeedChanged(this, baseSpeed);
 		}
@@ -1638,24 +1589,16 @@ public class BattleMapObject extends Role implements LRelease {
 		return targetSpeed;
 	}
 
-	public void setTargetSpeed(float targetSpeed) {
-		this.targetSpeed = targetSpeed;
+	public void setTargetSpeed(float s) {
+		targetSpeed = s;
 	}
 
 	public float getSkillProgress() {
 		return skillProgress;
 	}
 
-	public void setSkillProgress(float skillProgress) {
-		this.skillProgress = skillProgress;
-	}
-
-	public MovementListener getListener() {
-		return listener;
-	}
-
-	public void setListener(MovementListener listener) {
-		this.listener = listener;
+	public void setSkillProgress(float p) {
+		skillProgress = p;
 	}
 
 	public int getTargetX() {
@@ -1699,7 +1642,7 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public void setDrawPath(boolean d) {
-		this.drawPath = d;
+		drawPath = d;
 	}
 
 	public ObjectStateListener getObjectStateListener() {
@@ -1707,64 +1650,61 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public void setObjectStateListener(ObjectStateListener l) {
-		this.objectStateListener = l;
+		objectStateListener = l;
 	}
 
 	public BattleMapObject getLastAttacker() {
 		return lastAttacker;
 	}
 
-	public void setLastAttacker(BattleMapObject lastAttacker) {
-		this.lastAttacker = lastAttacker;
+	public void setLastAttacker(BattleMapObject o) {
+		lastAttacker = o;
 	}
 
 	public TArray<BattleSkill> getAllSkills() {
-		return new TArray<BattleSkill>(skills);
+		return new TArray<>(skills);
 	}
 
 	public TArray<BattleSkill> getUltimateSkills() {
-		TArray<BattleSkill> skillList = new TArray<BattleSkill>();
-		for (int i = skills.size - 1; i > -1; i--) {
-			BattleSkill s = skills.get(i);
-			if (s != null && s.canUltimateSkill() && (mana >= s.mpCost)) {
-				skillList.add(s);
+		TArray<BattleSkill> r = new TArray<>();
+		for (BattleSkill s : skills) {
+			if (s != null && s.canUltimateSkill() && mana >= s.mpCost) {
+				r.add(s);
 			}
 		}
-		return skillList;
+		return r;
 	}
 
 	public TArray<BattleSkill> getBuffSkills() {
-		TArray<BattleSkill> skillList = new TArray<BattleSkill>();
-		for (int i = skills.size - 1; i > -1; i--) {
-			BattleSkill s = skills.get(i);
-			if (s != null && s.canBuffSkill() && (mana >= s.mpCost)) {
-				skillList.add(s);
+		TArray<BattleSkill> r = new TArray<>();
+		for (BattleSkill s : skills) {
+			if (s != null && s.canBuffSkill() && mana >= s.mpCost) {
+				r.add(s);
 			}
 		}
-		return skillList;
+		return r;
 	}
 
 	public TArray<BattleSkill> getBaseAttackSkills() {
-		TArray<BattleSkill> skillList = new TArray<BattleSkill>();
-		for (int i = skills.size - 1; i > -1; i--) {
-			BattleSkill s = skills.get(i);
-			if (s != null && s.canBaseAttackSkill() && (actionPoints >= s.actionPointCost)) {
-				skillList.add(s);
+		TArray<BattleSkill> r = new TArray<>();
+		for (BattleSkill s : skills) {
+			if (s != null && s.canBaseAttackSkill() && actionPoints >= s.actionPointCost) {
+				r.add(s);
 			}
 		}
-		return skillList;
+		return r;
 	}
 
-	public void addSkills(BattleSkill skill) {
-		skills.addAll(skill);
+	public void addSkills(BattleSkill s) {
+		skills.add(s);
 	}
 
-	public void addSkill(BattleSkill skill) {
-		skills.add(skill);
+	public void addSkill(BattleSkill s) {
+		skills.add(s);
 	}
 
-	public void removeSkill(BattleSkill skill) {
-		skills.remove(skill);
+	public void removeSkill(BattleSkill s) {
+		skills.remove(s);
 	}
 
 	public void clearSkill() {
@@ -1775,8 +1715,77 @@ public class BattleMapObject extends Role implements LRelease {
 		return taunt;
 	}
 
-	public void setTaunt(boolean taunt) {
-		this.taunt = taunt;
+	public void setTaunt(boolean t) {
+		taunt = t;
+	}
+
+	public float getKeyDelay() {
+		return keyDelay;
+	}
+
+	public void setKeyDelay(float k) {
+		keyDelay = k;
+	}
+
+	public boolean canControl() {
+		return state == ObjectState.IDLE && state != ObjectState.DEAD && !paused;
+	}
+
+	public boolean isEnemy(BattleMapObject other) {
+		return other != null && other.team != team;
+	}
+
+	public boolean isAlly(BattleMapObject other) {
+		return other != null && other.team == team;
+	}
+
+	public BattleMapObject findNearestEnemy() {
+		BattleMapObject best = null;
+		float minDist = Float.MAX_VALUE;
+		for (BattleMapObject obj : otherCharacters) {
+			if (obj == null || obj == this || obj.isDead() || !isEnemy(obj)) {
+				continue;
+			}
+			float dist = Vector2f.dst2(gridX, gridY, obj.gridX, obj.gridY);
+			if (dist < minDist) {
+				minDist = dist;
+				best = obj;
+			}
+		}
+		return best;
+	}
+
+	public void applyDamage(int damage, boolean isCrit, BattleMapObject caster) {
+		if (isDead || isInvincible) {
+			return;
+		}
+		health = MathUtils.max(0, health - damage);
+		lastAttacker = caster;
+		if (objectStateListener != null) {
+			objectStateListener.onHit(this, damage, isCrit);
+		}
+		if (battleMap != null) {
+			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.ATTACK_HIT, this, caster,
+					new AttackData(true, "hit", damage, isCrit)));
+			battleMap.getEventBus().publish(new GameEvent<Object>(GameEventType.STATE_CHANGED, this, caster,
+					new ResourceData("hp", this, health)));
+		}
+		if (health <= 0) {
+			die();
+		}
+	}
+
+	public void knockBack(int fromX, int fromY, int distance) {
+		int dx = gridX - fromX;
+		int dy = gridY - fromY;
+		int tx = gridX + (dx == 0 ? 0 : dx / Math.abs(dx)) * distance;
+		int ty = gridY + (dy == 0 ? 0 : dy / Math.abs(dy)) * distance;
+		if (canMoveTo(new PointI(tx, ty))) {
+			moveToGrid(tx, ty);
+		}
+		if (objectStateListener != null) {
+			objectStateListener.onKnockBack(this, fromX, fromY);
+		}
 	}
 
 	@Override
@@ -1788,12 +1797,22 @@ public class BattleMapObject extends Role implements LRelease {
 			currentSkill.close();
 			currentSkill = null;
 		}
-		for (BattleSkill skill : skills) {
-			if (skill != null) {
-				skill.close();
+		for (BattleSkill s : skills) {
+			if (s != null) {
+				s.close();
 			}
 		}
 		skills.clear();
+		if (currentItem != null) {
+			currentItem.close();
+			currentItem = null;
+		}
+		for (Item<Object> i : items) {
+			if (i != null) {
+				i.close();
+			}
+		}
+		items.clear();
 	}
 
 }
