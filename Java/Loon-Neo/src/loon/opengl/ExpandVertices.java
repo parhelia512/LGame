@@ -141,6 +141,53 @@ public final class ExpandVertices implements LRelease {
 		setBatch(startIndex, data, 0, data.length);
 	}
 
+	public final void setBatch2D(int vertexStartIndex, float[] data, int pointCount) {
+		int requiredLength = vertexStartIndex + pointCount * 3;
+		if (expand(requiredLength)) {
+			maxSize = getSize();
+		}
+		int idx = vertexStartIndex;
+		for (int i = 0; i < pointCount * 2; i += 2) {
+			vertices[idx++] = data[i];
+			vertices[idx++] = data[i + 1];
+			vertices[idx++] = 0f;
+		}
+	}
+
+	public final void setBatchQuad2D(int vertexStartIndex, float[] data, int quadCount) {
+		int required = vertexStartIndex + quadCount * 4 * 3;
+		if (expand(required)) {
+			maxSize = getSize();
+		}
+		int idx = vertexStartIndex;
+		int dataIdx = 0;
+		for (int q = 0; q < quadCount; q++) {
+			for (int v = 0; v < 4; v++) {
+				vertices[idx++] = data[dataIdx++];
+				vertices[idx++] = data[dataIdx++];
+				vertices[idx++] = 0f;
+			}
+		}
+	}
+
+	public final void setBatchGrid(int vertexStartIndex, int rows, int cols, float startX, float startY, float cellW,
+			float cellH) {
+		int total = rows * cols;
+		int required = vertexStartIndex + total * 3;
+		if (expand(required)) {
+			maxSize = getSize();
+		}
+		int idx = vertexStartIndex;
+		for (int r = 0; r < rows; r++) {
+			float y = startY + r * cellH;
+			for (int c = 0; c < cols; c++) {
+				vertices[idx++] = startX + c * cellW;
+				vertices[idx++] = y;
+				vertices[idx++] = 0f;
+			}
+		}
+	}
+
 	public final float[] cpy() {
 		return CollectionUtils.copyOf(this.vertices);
 	}

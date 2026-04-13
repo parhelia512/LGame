@@ -26,12 +26,18 @@ import loon.utils.TArray;
 
 public class BattleTurnManager {
 
-	private SortedList<BattleTurnable> _turnQueue = new SortedList<BattleTurnable>();
-	private TArray<BattleTurnListener> _listeners = new TArray<BattleTurnListener>();
+	private final SortedList<BattleTurnable> _turnQueue = new SortedList<BattleTurnable>();
+
+	private final TArray<BattleTurnListener> _listeners = new TArray<BattleTurnListener>();
+
 	private int _roundCount = 0;
+
 	boolean _playerAlive = false;
+
 	boolean _allyAlive = false;
+
 	boolean _enemyAlive = false;
+
 	boolean _neutralAlive = false;
 
 	public void registerTurnable(BattleTurnable obj) {
@@ -72,7 +78,7 @@ public class BattleTurnManager {
 			for (BattleTurnListener l : _listeners) {
 				l.onTurnStart(unit);
 			}
-			unit.takeAction();
+			unit.takeAction(0);
 			for (BattleTurnListener l : _listeners) {
 				l.onActionTaken(unit, "Action");
 			}
@@ -121,7 +127,8 @@ public class BattleTurnManager {
 	}
 
 	public void setTurnQueue(SortedList<BattleTurnable> turnQueue) {
-		this._turnQueue = turnQueue;
+		this._turnQueue.clear();
+		this._turnQueue.addAll(turnQueue);
 	}
 
 	public TArray<BattleTurnListener> getListeners() {
@@ -129,7 +136,8 @@ public class BattleTurnManager {
 	}
 
 	public void setListeners(TArray<BattleTurnListener> listeners) {
-		this._listeners = listeners;
+		this._listeners.clear();
+		this._listeners.addAll(listeners);
 	}
 
 	public boolean isPlayerAlive() {

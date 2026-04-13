@@ -981,7 +981,7 @@ public abstract class RoleValue {
 		this.dexterity = info.getBaseDexterity() + info.getEquipDexterity();
 	}
 
-	private void clearAllActionState() {
+	public void clearAllActionState() {
 		isAttack = false;
 		isDefense = false;
 		isSkill = false;

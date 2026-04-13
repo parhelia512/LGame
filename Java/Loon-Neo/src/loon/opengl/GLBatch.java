@@ -21,6 +21,7 @@
 package loon.opengl;
 
 import loon.LRelease;
+import loon.LSysException;
 import loon.LSystem;
 import loon.canvas.LColor;
 import loon.geom.Affine2f;
@@ -28,6 +29,27 @@ import loon.opengl.VertexAttributes.Usage;
 import loon.utils.TArray;
 
 public final class GLBatch implements LRelease {
+
+	private static final class AttributeCache {
+
+		final int vertexSize;
+		final int normalOffset;
+		final int colorOffset;
+		final int texCoordOffset;
+
+		AttributeCache(Mesh mesh) {
+			this.vertexSize = mesh.getVertexAttributes().vertexSize / 4;
+			this.normalOffset = mesh.getVertexAttribute(Usage.Normal) != null
+					? mesh.getVertexAttribute(Usage.Normal).offset / 4
+					: 0;
+			this.colorOffset = mesh.getVertexAttribute(Usage.ColorPacked) != null
+					? mesh.getVertexAttribute(Usage.ColorPacked).offset / 4
+					: 0;
+			this.texCoordOffset = mesh.getVertexAttribute(Usage.TextureCoordinates) != null
+					? mesh.getVertexAttribute(Usage.TextureCoordinates).offset / 4
+					: 0;
+		}
+	}
 
 	private int primitiveType;
 	private int vertexIdx;
@@ -39,13 +61,15 @@ public final class GLBatch implements LRelease {
 	private ShaderProgram customShader;
 	private boolean ownsShader, closed;
 	private int numTexCoords;
-	private int vertexSize;
-	private int normalOffset;
-	private int colorOffset;
-	private int texCoordOffset;
+
 	private final Affine2f projModelView = new Affine2f();
 	private ExpandVertices expandVertices;
 	private String[] shaderUniformNames;
+
+	private boolean hasNormals, hasColors;
+
+	private AttributeCache attributeCache;
+	private int[] cachedUniformLocations;
 
 	public GLBatch(boolean hasNormals, boolean hasColors, int numTexCoords) {
 		this(8192, hasNormals, hasColors, numTexCoords, null);
@@ -56,8 +80,6 @@ public final class GLBatch implements LRelease {
 		this(maxVertices, hasNormals, hasColors, numTexCoords, null);
 		ownsShader = true;
 	}
-
-	private boolean hasNormals, hasColors;
 
 	public GLBatch(int maxVertices, boolean hasNormals, boolean hasColors, int numTexCoords, ShaderProgram shader) {
 		this.maxVertices = maxVertices;
@@ -103,26 +125,20 @@ public final class GLBatch implements LRelease {
 	}
 
 	public void begin(int maxSize, Affine2f projModelView, int primitiveType) {
-		if (customShader == null) {
+		if (mesh == null) {
 			final VertexAttribute[] attribs = buildVertexAttributes(hasNormals, hasColors, numTexCoords);
 			mesh = new Mesh(false, maxSize, 0, attribs);
 			expandVertices = ExpandVertices.getVerticeCache(maxSize * (mesh.getVertexAttributes().vertexSize / 4));
-			vertexSize = mesh.getVertexAttributes().vertexSize / 4;
-			normalOffset = mesh.getVertexAttribute(Usage.Normal) != null
-					? mesh.getVertexAttribute(Usage.Normal).offset / 4
-					: 0;
-			colorOffset = mesh.getVertexAttribute(Usage.ColorPacked) != null
-					? mesh.getVertexAttribute(Usage.ColorPacked).offset / 4
-					: 0;
-			texCoordOffset = mesh.getVertexAttribute(Usage.TextureCoordinates) != null
-					? mesh.getVertexAttribute(Usage.TextureCoordinates).offset / 4
-					: 0;
-
+			attributeCache = new AttributeCache(mesh);
 			shaderUniformNames = new String[numTexCoords];
+			cachedUniformLocations = new int[numTexCoords];
 			for (int i = 0; i < numTexCoords; i++) {
 				shaderUniformNames[i] = "u_sampler" + i;
+				cachedUniformLocations[i] = -1;
 			}
-			customShader = createDefaultShader(hasNormals, hasColors, numTexCoords);
+			if (customShader == null) {
+				customShader = createDefaultShader(hasNormals, hasColors, numTexCoords);
+			}
 		}
 		this.numSetTexCoords = 0;
 		this.vertexIdx = 0;
@@ -142,18 +158,12 @@ public final class GLBatch implements LRelease {
 		}
 		final VertexAttribute[] attribs = buildVertexAttributes(hasNormals, hasColors, numTexCoords);
 		mesh = new Mesh(false, verticesSize, 0, attribs);
-		vertexSize = mesh.getVertexAttributes().vertexSize / 4;
-		normalOffset = mesh.getVertexAttribute(Usage.Normal) != null ? mesh.getVertexAttribute(Usage.Normal).offset / 4
-				: 0;
-		colorOffset = mesh.getVertexAttribute(Usage.ColorPacked) != null
-				? mesh.getVertexAttribute(Usage.ColorPacked).offset / 4
-				: 0;
-		texCoordOffset = mesh.getVertexAttribute(Usage.TextureCoordinates) != null
-				? mesh.getVertexAttribute(Usage.TextureCoordinates).offset / 4
-				: 0;
+		attributeCache = new AttributeCache(mesh);
 		shaderUniformNames = new String[numTexCoords];
+		cachedUniformLocations = new int[numTexCoords];
 		for (int i = 0; i < numTexCoords; i++) {
 			shaderUniformNames[i] = "u_sampler" + i;
+			cachedUniformLocations[i] = -1;
 		}
 		customShader = createDefaultShader(hasNormals, hasColors, numTexCoords);
 		this.numSetTexCoords = 0;
@@ -162,26 +172,26 @@ public final class GLBatch implements LRelease {
 	}
 
 	public void color(float color) {
-		expandVertices.setVertice(vertexIdx + colorOffset, color);
+		expandVertices.setVertice(vertexIdx + attributeCache.colorOffset, color);
 	}
 
 	public void color(LColor color) {
-		expandVertices.setVertice(vertexIdx + colorOffset, color.toFloatBits());
+		expandVertices.setVertice(vertexIdx + attributeCache.colorOffset, color.toFloatBits());
 	}
 
 	public void color(float r, float g, float b, float a) {
-		expandVertices.setVertice(vertexIdx + colorOffset, LColor.toFloatBits(r, g, b, a));
+		expandVertices.setVertice(vertexIdx + attributeCache.colorOffset, LColor.toFloatBits(r, g, b, a));
 	}
 
 	public void texCoord(float u, float v) {
-		final int idx = vertexIdx + texCoordOffset;
+		final int idx = vertexIdx + attributeCache.texCoordOffset;
 		expandVertices.setVertice(idx + numSetTexCoords, u);
 		expandVertices.setVertice(idx + numSetTexCoords + 1, v);
 		numSetTexCoords += 2;
 	}
 
 	public void normal(float x, float y, float z) {
-		final int idx = vertexIdx + normalOffset;
+		final int idx = vertexIdx + attributeCache.normalOffset;
 		expandVertices.setVertice(idx, x);
 		expandVertices.setVertice(idx + 1, y);
 		expandVertices.setVertice(idx + 2, z);
@@ -198,8 +208,124 @@ public final class GLBatch implements LRelease {
 		expandVertices.setVertice(idx + 2, z);
 
 		numSetTexCoords = 0;
-		vertexIdx += vertexSize;
+		vertexIdx += attributeCache.vertexSize;
 		numVertices++;
+	}
+
+	public void vertices2D(float[] buffer) {
+		int count = buffer.length / 2;
+		float[] data = new float[count * 3];
+		for (int i = 0, j = 0; i < count; i++) {
+			data[j++] = buffer[i * 2];
+			data[j++] = buffer[i * 2 + 1];
+			data[j++] = 0f;
+		}
+		expandVertices.setBatch(vertexIdx, data);
+		vertexIdx += count * attributeCache.vertexSize;
+		numVertices += count;
+		numSetTexCoords = 0;
+	}
+
+	public void vertices3D(float[] xyzArray) {
+		int count = xyzArray.length / 3;
+		expandVertices.setBatch(vertexIdx, xyzArray);
+		vertexIdx += count * attributeCache.vertexSize;
+		numVertices += count;
+		numSetTexCoords = 0;
+	}
+
+	public void vertices3D(float[] data, int offset, int length) {
+		expandVertices.setBatch(vertexIdx, data, offset, length);
+		vertexIdx += (length / 3) * attributeCache.vertexSize;
+		numVertices += length / 3;
+		numSetTexCoords = 0;
+	}
+
+	public void colors(float[] colors, int offset, int length) {
+		expandVertices.setBatch(vertexIdx + attributeCache.colorOffset, colors, offset, length);
+	}
+
+	public void drawTexturedQuadBatch(float[] buffer, float[] uvArray) {
+		int quadCount = buffer.length / 8;
+		if (uvArray.length != quadCount * 8) {
+			throw new LSysException("UV exception");
+		}
+		float[] data = new float[quadCount * 12];
+		for (int q = 0, j = 0; q < quadCount; q++) {
+			for (int v = 0; v < 4; v++) {
+				data[j++] = buffer[q * 8 + v * 2];
+				data[j++] = buffer[q * 8 + v * 2 + 1];
+				data[j++] = 0f;
+			}
+		}
+		expandVertices.setBatch(vertexIdx, data);
+		expandVertices.setBatch(vertexIdx + attributeCache.texCoordOffset, uvArray);
+		vertexIdx += quadCount * 4 * attributeCache.vertexSize;
+		numVertices += quadCount * 4;
+		numSetTexCoords = 0;
+	}
+
+	public void drawColoredTexturedQuadBatch(float[] buffer, float[] uvArray, float[] colorArray) {
+		int quadCount = buffer.length / 8;
+		if (uvArray.length != quadCount * 8 || colorArray.length != quadCount * 4) {
+			throw new LSysException("UV exception");
+		}
+		float[] data = new float[quadCount * 12];
+		for (int q = 0, j = 0; q < quadCount; q++) {
+			for (int v = 0; v < 4; v++) {
+				data[j++] = buffer[q * 8 + v * 2];
+				data[j++] = buffer[q * 8 + v * 2 + 1];
+				data[j++] = 0f;
+			}
+		}
+		expandVertices.setBatch(vertexIdx, data);
+		expandVertices.setBatch(vertexIdx + attributeCache.texCoordOffset, uvArray);
+		expandVertices.setBatch(vertexIdx + attributeCache.colorOffset, colorArray);
+		vertexIdx += quadCount * 4 * attributeCache.vertexSize;
+		numVertices += quadCount * 4;
+		numSetTexCoords = 0;
+	}
+
+	public void drawQuadBatch(float[] buffer) {
+		int quadCount = buffer.length / 8;
+		float[] data = new float[quadCount * 12];
+		for (int q = 0, j = 0; q < quadCount; q++) {
+			for (int v = 0; v < 4; v++) {
+				data[j++] = buffer[q * 8 + v * 2];
+				data[j++] = buffer[q * 8 + v * 2 + 1];
+				data[j++] = 0f;
+			}
+		}
+		expandVertices.setBatch(vertexIdx, data);
+		vertexIdx += quadCount * 4 * attributeCache.vertexSize;
+		numVertices += quadCount * 4;
+		numSetTexCoords = 0;
+	}
+
+	public void drawGridBatch(int rows, int cols, float startX, float startY, float cellWidth, float cellHeight) {
+		int vertexCount = rows * cols;
+		float[] data = new float[vertexCount * 3];
+		int idx = 0;
+		for (int r = 0; r < rows; r++) {
+			for (int c = 0; c < cols; c++) {
+				data[idx++] = startX + c * cellWidth;
+				data[idx++] = startY + r * cellHeight;
+				data[idx++] = 0f;
+			}
+		}
+		expandVertices.setBatch(vertexIdx, data);
+		vertexIdx += vertexCount * attributeCache.vertexSize;
+		numVertices += vertexCount;
+		numSetTexCoords = 0;
+	}
+
+	public void colors(float[] colorArray) {
+		expandVertices.setBatch(vertexIdx + attributeCache.colorOffset, colorArray);
+	}
+
+	public void texCoords(float[] uvArray) {
+		expandVertices.setBatch(vertexIdx + attributeCache.texCoordOffset, uvArray);
+		numSetTexCoords += uvArray.length;
 	}
 
 	public void flush() {
@@ -210,7 +336,10 @@ public final class GLBatch implements LRelease {
 			customShader.begin();
 			customShader.setUniformMatrix("u_projModelView", projModelView.toViewMatrix4());
 			for (int i = 0; i < numTexCoords; i++) {
-				customShader.setUniformi(shaderUniformNames[i], i);
+				if (cachedUniformLocations[i] == -1) {
+					cachedUniformLocations[i] = customShader.getUniformLocation(shaderUniformNames[i]);
+				}
+				customShader.setUniformi(cachedUniformLocations[i], i);
 			}
 			mesh.setVertices(expandVertices.getVertices(), 0, vertexIdx);
 			mesh.render(customShader, primitiveType);
@@ -268,7 +397,6 @@ public final class GLBatch implements LRelease {
 			cmd.putMainCmd(mainCmd);
 			return cmd.getShader();
 		}
-
 	}
 
 	public static String createFragmentShader(boolean hasNormals, boolean hasColors, int numTexCoords) {
@@ -327,5 +455,4 @@ public final class GLBatch implements LRelease {
 	public boolean isClosed() {
 		return closed;
 	}
-
 }

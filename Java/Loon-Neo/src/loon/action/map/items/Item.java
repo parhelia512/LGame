@@ -425,10 +425,6 @@ public class Item<T> implements IItem, LRelease {
 		return _currentCooldown > 0f;
 	}
 
-	public void drawItemEffect(GLEx g, float deltaTime) {
-		drawItemEffect(g, deltaTime, _drawLocation.x, _drawLocation.y);
-	}
-
 	/**
 	 * 绘制道具（战斗/场景中）
 	 * 
@@ -441,7 +437,8 @@ public class Item<T> implements IItem, LRelease {
 		if (_image == null || _itemArea == null) {
 			return;
 		}
-		g.draw(_image, x, y, _itemArea.getWidth(), _itemArea.getHeight());
+		g.draw(_image, x + _drawLocation.x + _itemArea.x, y + _drawLocation.y + _itemArea.y, _itemArea.getWidth(),
+				_itemArea.getHeight());
 	}
 
 	public Item<T> setTexture(LTexture texture) {

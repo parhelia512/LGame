@@ -22,7 +22,6 @@ package loon.action.sprite.effect;
 
 import loon.LSystem;
 import loon.LTexture;
-
 import loon.canvas.LColor;
 import loon.opengl.GLEx;
 import loon.utils.MathUtils;
@@ -32,16 +31,15 @@ public class FadeOvalHollowEffect extends BaseAbstractEffect {
 	private final static float SIZE = 8f;
 
 	private float _previous;
-
 	private float _diameter;
-
 	private int _endRadius;
-
 	private int _typeCode;
-
 	private float _step;
-
 	private float _spaceSize;
+
+	// 镂空圆心坐标
+	private float _centerX;
+	private float _centerY;
 
 	public FadeOvalHollowEffect(int code) {
 		this(code, LColor.black);
@@ -52,6 +50,10 @@ public class FadeOvalHollowEffect extends BaseAbstractEffect {
 	}
 
 	public FadeOvalHollowEffect(int code, LColor c, int x, int y, int width, int height) {
+		this(code, c, x, y, width, height, width / 2, height / 2);
+	}
+
+	public FadeOvalHollowEffect(int code, LColor c, int x, int y, int width, int height, float centerX, float centerY) {
 		this.setLocation(x, y);
 		this.setSize(width, height);
 		this._typeCode = code;
@@ -59,7 +61,16 @@ public class FadeOvalHollowEffect extends BaseAbstractEffect {
 		this._spaceSize = SIZE;
 		this.setColor(c == null ? LColor.black : c);
 		this.setRepaint(true);
+		this._centerX = centerX;
+		this._centerY = centerY;
 		this.updateRadius();
+	}
+
+	public FadeOvalHollowEffect setCenter(float x, float y) {
+		this._centerX = x;
+		this._centerY = y;
+		this.updateRadius();
+		return this;
 	}
 
 	@Override
@@ -71,13 +82,13 @@ public class FadeOvalHollowEffect extends BaseAbstractEffect {
 	}
 
 	public FadeOvalHollowEffect updateRadius() {
-		if (_typeCode == TYPE_FADE_IN) {
-			this._endRadius = MathUtils
-					.ceil(MathUtils.sqrt(MathUtils.pow(getWidth() / 2, 2) + MathUtils.pow(getHeight() / 2, 2)));
-		} else {
-			this._endRadius = MathUtils
-					.ceil(MathUtils.sqrt(MathUtils.pow(getWidth(), 2) + MathUtils.pow(getHeight(), 2)));
-		}
+		float dist1 = MathUtils.sqrt(_centerX * _centerX + _centerY * _centerY);
+		float dist2 = MathUtils.sqrt((getWidth() - _centerX) * (getWidth() - _centerX) + _centerY * _centerY);
+		float dist3 = MathUtils.sqrt(_centerX * _centerX + (getHeight() - _centerY) * (getHeight() - _centerY));
+		float dist4 = MathUtils.sqrt((getWidth() - _centerX) * (getWidth() - _centerX)
+				+ (getHeight() - _centerY) * (getHeight() - _centerY));
+		this._endRadius = MathUtils
+				.ifloor(MathUtils.ceil(MathUtils.max(MathUtils.max(dist1, dist2), MathUtils.max(dist3, dist4))) * 2.1f);
 		if (MathUtils.isOdd(_endRadius)) {
 			_endRadius += 1;
 		}
@@ -124,8 +135,8 @@ public class FadeOvalHollowEffect extends BaseAbstractEffect {
 		g.setLineWidth(_spaceSize);
 		if (_typeCode == TYPE_FADE_IN) {
 			for (int i = _endRadius * 2; i >= _diameter; i -= _spaceSize) {
-				final float x = drawX(offsetX + (getWidth() / 2f - i / 2f));
-				final float y = drawY(offsetY + (getHeight() / 2f - i / 2f));
+				final float x = drawX(offsetX + (_centerX - i / 2f));
+				final float y = drawY(offsetY + (_centerY - i / 2f));
 				g.drawOval(x, y, i - _spaceSize, i - _spaceSize);
 				g.drawOval(x, y, i + _spaceSize, i + _spaceSize);
 			}
@@ -134,13 +145,13 @@ public class FadeOvalHollowEffect extends BaseAbstractEffect {
 			}
 		} else {
 			for (int i = MathUtils.floor(_previous * 2); i >= _diameter; i -= _spaceSize) {
-				final float x = drawX(offsetX + (getWidth() / 2f - i / 2f));
-				final float y = drawY(offsetY + (getHeight() / 2f - i / 2f));
+				final float x = drawX(offsetX + (_centerX - i / 2f));
+				final float y = drawY(offsetY + (_centerY - i / 2f));
 				g.drawOval(x, y, i - _spaceSize, i - _spaceSize);
 				g.drawOval(x, y, i + _spaceSize, i + _spaceSize);
 			}
 			if (_diameter <= _endRadius / 2) {
-				g.fillRect(drawX(offsetX), drawX(offsetY), getWidth(), getHeight());
+				g.fillRect(drawX(offsetX), drawY(offsetY), getWidth(), getHeight());
 				_completed = true;
 			}
 		}

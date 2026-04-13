@@ -21,12 +21,13 @@
 package loon.action.map.battle;
 
 import loon.LRelease;
+import loon.action.map.items.Team;
 import loon.events.Updateable;
 import loon.geom.BooleanValue;
 import loon.utils.processes.WaitProcess;
 import loon.utils.timer.Duration;
 
-public abstract class BattleTurnEvent implements BattleTimerListener, BattleEvent, LRelease {
+public abstract class BattleTurnEvent extends BattleTurnable implements BattleTimerListener, BattleEvent, LRelease {
 
 	private final BattleState _state;
 
@@ -53,9 +54,11 @@ public abstract class BattleTurnEvent implements BattleTimerListener, BattleEven
 	}
 
 	public BattleTurnEvent(BattleState state, boolean updateFlag, long outTime) {
-		this._state = state;
+		super(((state == null) ? Team.Other : state.getTeamType()), outTime);
+		this._state = (state == null) ? BattleState.TurnOtherState : state;
 		this._updateFlag = updateFlag;
 		this._turnTimeOut = outTime;
+
 	}
 
 	@Override
@@ -72,6 +75,10 @@ public abstract class BattleTurnEvent implements BattleTimerListener, BattleEven
 
 	@Override
 	public abstract void onReset();
+
+	public int getStateTeam() {
+		return _state.getTeamType();
+	}
 
 	public BattleTurnEvent set(boolean s, boolean p, boolean e) {
 		_start.set(s);
@@ -157,6 +164,7 @@ public abstract class BattleTurnEvent implements BattleTimerListener, BattleEven
 	public boolean start(long elapsedTime) {
 		if (!_start.get()) {
 			onStart(elapsedTime, _start);
+			startTurn();
 			_turnTimer += elapsedTime;
 			checkTimeOut(elapsedTime, _process);
 		}
@@ -169,6 +177,7 @@ public abstract class BattleTurnEvent implements BattleTimerListener, BattleEven
 	public boolean process(long elapsedTime) {
 		if (!_process.get()) {
 			onProcess(elapsedTime, _process);
+			takeAction(elapsedTime);
 			_turnTimer += elapsedTime;
 			checkTimeOut(elapsedTime, _process);
 		}
@@ -181,6 +190,7 @@ public abstract class BattleTurnEvent implements BattleTimerListener, BattleEven
 	public boolean end(long elapsedTime) {
 		if (!_end.get()) {
 			onEnd(elapsedTime, _end);
+			endTurn();
 			_turnTimer += elapsedTime;
 			checkTimeOut(elapsedTime, _process);
 		}
@@ -276,6 +286,20 @@ public abstract class BattleTurnEvent implements BattleTimerListener, BattleEven
 	public BattleTurnEvent setTurnTimeOut(long t) {
 		this._turnTimeOut = t;
 		return this;
+	}
+
+	@Override
+	public void takeAction(long elapsedTime) {
+
+	}
+
+	@Override
+	protected void onTurnStart() {
+	}
+
+	@Override
+	protected void onTurnEnd() {
+
 	}
 
 	public BattleTurnEvent clear() {

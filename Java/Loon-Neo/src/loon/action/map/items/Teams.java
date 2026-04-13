@@ -87,6 +87,15 @@ public class Teams implements LRelease {
 		_teams.add(new Team(Team.Other));
 	}
 
+	public void createPEANO() {
+		_teams.clear();
+		_teams.add(new Team(Team.Player));
+		_teams.add(new Team(Team.Enemy));
+		_teams.add(new Team(Team.Ally));
+		_teams.add(new Team(Team.Npc));
+		_teams.add(new Team(Team.Other));
+	}
+
 	public TArray<Role> all() {
 		if (!_dirty) {
 			for (Team team : _teams) {
@@ -264,6 +273,10 @@ public class Teams implements LRelease {
 		return where(new TeamQuery(Team.Enemy));
 	}
 
+	public TArray<Team> getAllys() {
+		return where(new TeamQuery(Team.Ally));
+	}
+
 	public TArray<Team> getNpcs() {
 		return where(new TeamQuery(Team.Npc));
 	}
@@ -306,6 +319,60 @@ public class Teams implements LRelease {
 			return teamPlayers;
 		}
 		return null;
+	}
+
+	public Teams addBattleRole(Role role) {
+		if (role == null) {
+			return this;
+		}
+		int teamType = role.getTeam();
+		Team team = get(teamType);
+		if (team != null) {
+			team.add(role);
+		}
+		return this;
+	}
+
+	public Teams removeBattleRole(Role role) {
+		return remove(role);
+	}
+
+	public TArray<Role> getTeamRoles(int teamType) {
+		TArray<Role> roles = new TArray<Role>();
+		Team team = get(teamType);
+		if (team != null) {
+			roles.addAll(team.list());
+		}
+		return roles;
+	}
+
+	public boolean isTeamAlive(int teamType) {
+		Team team = get(teamType);
+		return team != null && !team.isAllDead();
+	}
+
+	public Teams clearAllRoles() {
+		for (Team team : _teams) {
+			if (team != null) {
+				team.clear();
+			}
+		}
+		_dirty = true;
+		return this;
+	}
+
+	public Teams cleanAllDeadRoles() {
+		for (Team team : _teams) {
+			if (team != null) {
+				team.cleanOver();
+			}
+		}
+		_dirty = true;
+		return this;
+	}
+
+	public TArray<Role> getAllBattleRoles() {
+		return all();
 	}
 
 	public String getName() {

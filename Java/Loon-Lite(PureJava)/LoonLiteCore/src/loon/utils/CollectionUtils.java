@@ -57,10 +57,10 @@ final public class CollectionUtils {
 	}
 
 	/**
-	 * 获得指定2维数组的HashCode
-	 * 
-	 * @param arrays
-	 * @return
+	 * 获得指定二维数组的哈希值
+	 *
+	 * @param arrays 二维整型数组
+	 * @return 哈希值
 	 */
 	public static int hashCode(int[][] arrays) {
 		if (arrays == null) {
@@ -1793,6 +1793,18 @@ final public class CollectionUtils {
 	 * @param val
 	 */
 	public static void fill(float[] arrays, int val) {
+		for (int i = 0, len = arrays.length; i < len; i++) {
+			arrays[i] = val;
+		}
+	}
+
+	/**
+	 * 填充指定整型数组
+	 * 
+	 * @param arrays
+	 * @param val
+	 */
+	public static void fill(float[] arrays, float val) {
 		for (int i = 0, len = arrays.length; i < len; i++) {
 			arrays[i] = val;
 		}

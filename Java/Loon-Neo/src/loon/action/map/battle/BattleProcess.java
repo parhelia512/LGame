@@ -25,8 +25,10 @@ import java.util.Iterator;
 
 import loon.LSystem;
 import loon.action.map.items.Role;
+import loon.action.map.items.Team;
 import loon.action.map.items.Teams;
 import loon.events.EventActionN;
+import loon.events.EventActionT;
 import loon.events.Updateable;
 import loon.geom.BooleanValue;
 import loon.geom.PointI;
@@ -101,6 +103,25 @@ public class BattleProcess extends CoroutineProcess {
 
 		public TurnEnemyEvent(boolean skipAndResetFlag, float outTimeS) {
 			super(BattleState.TurnEnemyState, skipAndResetFlag, outTimeS);
+		}
+	}
+
+	public static abstract class TurnAllyEvent extends BattleTurnProcessEvent {
+
+		public TurnAllyEvent() {
+			this(true);
+		}
+
+		public TurnAllyEvent(boolean skipAndResetFlag) {
+			super(BattleState.TurnAllyState, skipAndResetFlag);
+		}
+
+		public TurnAllyEvent(boolean skipAndResetFlag, long outTime) {
+			super(BattleState.TurnAllyState, skipAndResetFlag, outTime);
+		}
+
+		public TurnAllyEvent(boolean skipAndResetFlag, float outTimeS) {
+			super(BattleState.TurnAllyState, skipAndResetFlag, outTimeS);
 		}
 	}
 
@@ -202,13 +223,19 @@ public class BattleProcess extends CoroutineProcess {
 
 	private final static EventComparator _sortEvents = new EventComparator();
 
-	private RollbackVar<ObjectBundle> _battleTurnHistory = new RollbackVar<ObjectBundle>();
+	private final RollbackVar<ObjectBundle> _battleTurnHistory = new RollbackVar<ObjectBundle>();
 
-	private IntMap<EventActionN> _turnTrigger = new IntMap<EventActionN>();
+	private final IntMap<EventActionN> _turnTrigger = new IntMap<EventActionN>();
 
-	private ObjectBundle _battleVars = new ObjectBundle();
+	private final ObjectBundle _battleVars = new ObjectBundle();
 
-	private Teams _mainTeams;
+	private EventActionT<Integer> _onTurnStartListener;
+
+	private EventActionT<Integer> _onTurnEndListener;
+
+	private EventActionT<Integer> _onTurnChangeListener;
+
+	private final Teams _mainTeams;
 
 	private final TArray<PointI> _lockedLocation = new TArray<PointI>();
 
@@ -240,6 +267,8 @@ public class BattleProcess extends CoroutineProcess {
 
 	private int _roundAmount;
 
+	private int _maxRoundLimit;
+
 	private boolean _battleEventLocked;
 
 	private boolean _pause;
@@ -269,6 +298,7 @@ public class BattleProcess extends CoroutineProcess {
 		this._minBattleWaitSeconds = 0.1f;
 		this._maxBattleWaitSeconds = 5f;
 		this._battleWaitSeconds = 1f;
+		this._maxRoundLimit = 999;
 		this.setUpdateTurn(true);
 		this.setLoop(true);
 		this.setDelay(delay);
@@ -567,11 +597,17 @@ public class BattleProcess extends CoroutineProcess {
 				if (!turnEvent.start(elapsedTime) || _waiting) {
 					return false;
 				}
+				if (_onTurnStartListener != null) {
+					_onTurnStartListener.update(_roundAmount);
+				}
 				if (!turnEvent.process(elapsedTime) || _waiting) {
 					return false;
 				}
 				if (!turnEvent.end(elapsedTime) || _waiting) {
 					return false;
+				}
+				if (_onTurnEndListener != null) {
+					_onTurnEndListener.update(_roundAmount);
 				}
 				if (!turnEvent.completed() || _waiting) {
 					return false;
@@ -599,11 +635,17 @@ public class BattleProcess extends CoroutineProcess {
 					if (!turnEvent.start(elapsedTime) || _waiting) {
 						return false;
 					}
+					if (_onTurnStartListener != null) {
+						_onTurnStartListener.update(_roundAmount);
+					}
 					if (!turnEvent.process(elapsedTime) || _waiting) {
 						return false;
 					}
 					if (!turnEvent.end(elapsedTime) || _waiting) {
 						return false;
+					}
+					if (_onTurnEndListener != null) {
+						_onTurnEndListener.update(_roundAmount);
 					}
 					if (!turnEvent.completed() || _waiting) {
 						return false;
@@ -750,6 +792,10 @@ public class BattleProcess extends CoroutineProcess {
 		if (_updateTurn) {
 			this._roundAmount++;
 		}
+		if (_onTurnChangeListener != null) {
+			_onTurnChangeListener.update(_roundAmount);
+		}
+		checkRoundLimit();
 		if (_turnTrigger.size > 0) {
 			// 每到指定回合触发事件
 			EventActionN e = _turnTrigger.get(_roundAmount);
@@ -877,6 +923,32 @@ public class BattleProcess extends CoroutineProcess {
 			}
 		}
 		return false;
+	}
+
+	public TArray<Role> allRoles() {
+		return _mainTeams.all();
+	}
+
+	public void resetAllUnitActionState() {
+		for (Role r : allRoles()) {
+			if (r == null || r.isDead()) {
+				continue;
+			}
+			r.clearAllActionState();
+		}
+	}
+
+	public BattleProcess nextTurn() {
+		_roundAmount++;
+		resetAllUnitActionState();
+		if (_onTurnChangeListener != null) {
+			_onTurnChangeListener.update(_roundAmount);
+		}
+		EventActionN e = _turnTrigger.get(_roundAmount);
+		if (e != null) {
+			e.update();
+		}
+		return this;
 	}
 
 	public TArray<PointI> getLockedLocation() {
@@ -1155,9 +1227,32 @@ public class BattleProcess extends CoroutineProcess {
 		return _battleSpeed;
 	}
 
+	private void checkRoundLimit() {
+		if (_roundAmount >= _maxRoundLimit) {
+			setResult(BattleResults.Other);
+			triggerBattleEnd();
+		}
+	}
+
+	private void triggerBattleEnd() {
+		if (_onTurnEndListener != null) {
+			_onTurnEndListener.update(_roundAmount);
+		}
+		setLoop(false);
+	}
+
 	public BattleProcess setBattleSpeed(float s) {
 		this._battleSpeed = s;
 		return this;
+	}
+
+	public BattleProcess setMaxRoundLimit(int maxRound) {
+		this._maxRoundLimit = Math.max(1, maxRound);
+		return this;
+	}
+
+	public int getMaxRoundLimit() {
+		return _maxRoundLimit;
 	}
 
 	public BattleProcess lockProcess(EventActionN e) {
@@ -1242,6 +1337,106 @@ public class BattleProcess extends CoroutineProcess {
 
 	public boolean isBattleEnd() {
 		return !isCoroutineRunning();
+	}
+
+	public EventActionT<Integer> getOnTurnChangeListener() {
+		return _onTurnChangeListener;
+	}
+
+	public void setOnTurnChangeListener(EventActionT<Integer> t) {
+		this._onTurnChangeListener = t;
+	}
+
+	public EventActionT<Integer> getOnTurnStartListener() {
+		return _onTurnStartListener;
+	}
+
+	public void setOnTurnStartListener(EventActionT<Integer> s) {
+		this._onTurnStartListener = s;
+	}
+
+	public EventActionT<Integer> getOnBattleEndListener() {
+		return _onTurnEndListener;
+	}
+
+	public void setOnBattleEndListener(EventActionT<Integer> e) {
+		this._onTurnEndListener = e;
+	}
+
+	public BattleProcess addRole(Role role) {
+		if (role == null) {
+			return this;
+		}
+		_mainTeams.add(role.getTeam(), role);
+		return this;
+	}
+
+	public BattleProcess removeRole(Role role) {
+		_mainTeams.remove(role);
+		return this;
+	}
+
+	public Role getRole(int id) {
+		return _mainTeams.getRole(id);
+	}
+
+	public boolean hasRole(Role role) {
+		return _mainTeams.contains(role);
+	}
+
+	public boolean isEnemy(Role a, Role b) {
+		if (a == null || b == null) {
+			return false;
+		}
+		return a.getTeam() != b.getTeam() && a.getTeam() != Team.Ally && b.getTeam() != Team.Ally;
+	}
+
+	public boolean isFriendly(Role a, Role b) {
+		if (a == null || b == null) {
+			return false;
+		}
+		return a.getTeam() == b.getTeam() || (a.getTeam() == Team.Player && b.getTeam() == Team.Ally)
+				|| (a.getTeam() == Team.Ally && b.getTeam() == Team.Player);
+	}
+
+	public int aliveCount() {
+		int c = 0;
+		for (Role r : allRoles()) {
+			if (r != null && !r.isDead()) {
+				c++;
+			}
+		}
+		return c;
+	}
+
+	public int deadCount() {
+		return allRoles().size() - aliveCount();
+	}
+
+	public TArray<Role> getActionOrder() {
+		TArray<Role> list = new TArray<Role>(allRoles());
+		list.sort(new Comparator<Role>() {
+
+			@Override
+			public int compare(Role a, Role b) {
+				if (a == null || b == null) {
+					return 0;
+				}
+				return MathUtils.compare(b.getActionPriority(), a.getActionPriority());
+			}
+		});
+		return list;
+	}
+
+	public boolean isPlayerWin() {
+		Team p = _mainTeams.getPlayer();
+		Team e = _mainTeams.getEnemy();
+		return p != null && !p.isAllDead() && e != null && e.isAllDead();
+	}
+
+	public boolean isPlayerLose() {
+		Team p = _mainTeams.getPlayer();
+		return p != null && p.isAllDead();
 	}
 
 	@Override

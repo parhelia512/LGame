@@ -120,7 +120,9 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	private Vector2f _followOffset = new Vector2f();
 
-	private Vector2f _offset = new Vector2f();
+	private Vector2f _pixelOffset = new Vector2f();
+
+	private Vector2f _backgroundOffset = new Vector2f();
 
 	private GameEventBus<Object> _eventBus;
 
@@ -225,9 +227,9 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 			this._pixelInHeight = screenHeight;
 		}
 		if (field2d == null) {
-			this._offset = new Vector2f(0, 0);
+			this._pixelOffset = new Vector2f(0, 0);
 		} else {
-			this._offset = field2d.getOffset();
+			this._pixelOffset = field2d.getOffset();
 			config.tileWidth = field2d.getTileWidth();
 			config.tileHeight = field2d.getTileHeight();
 		}
@@ -486,6 +488,8 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		}
 	}
 
+	private boolean _hideAllTile;
+
 	@Override
 	public void createUI(GLEx g) {
 		createUI(g, 0f, 0f);
@@ -497,7 +501,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 			return;
 		}
 		if (this._roll) {
-			this._offset = toRollPosition(this._offset);
+			this._pixelOffset = toRollPosition(this._pixelOffset);
 		}
 		final float tileW = _isoConfig.tileWidth;
 		final float tileH = _isoConfig.tileHeight;
@@ -507,13 +511,15 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		final float tileHeight = _isoConfig.tileHeight * _isoConfig.scaleY;
 		final float screenW = _pixelInWidth;
 		final float screenH = _pixelInHeight;
-		final float drawMapX = this._objectLocation.x + offsetX + _offset.getX();
-		final float drawMapY = this._objectLocation.y + offsetY + _offset.getY();
+		final float drawMapX = this._objectLocation.x + offsetX + _pixelOffset.getX();
+		final float drawMapY = this._objectLocation.y + offsetY + _pixelOffset.getY();
 		followActionObject();
 		final int posOffsetX = MathUtils.ifloor(drawMapX);
 		final int posOffsetY = MathUtils.ifloor(drawMapY);
+		// 背景图在斜视地图中，其实一般是用于显示绘制好的大地图用的，也就是类似隔壁某模拟战某世录那种用法。
+		// 在这些游戏中虽然会设定瓦片功能，但具体瓦片只是用于设置指定坐标效果，通常会隐藏瓦片，或者只显示某几个特殊瓦片。
 		if (_background != null) {
-			g.draw(_background, offsetX, offsetY, _baseColor);
+			g.draw(_background, offsetX + _backgroundOffset.x, offsetY + _backgroundOffset.y, _baseColor);
 		}
 		final float worldLTX = -drawMapX;
 		final float worldLTY = -drawMapY;
@@ -546,13 +552,15 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 				if (!CollisionHelper.checkAABBvsAABB(0, 0, screenW, screenH, drawX, drawY, tileWidth, tileHeight)) {
 					continue;
 				}
-				if (_playAnimation) {
-					tile.update(_deltaTime);
-					if (_updateBrightness) {
-						tile.updateBrightness();
+				if (!_hideAllTile) {
+					if (_playAnimation) {
+						tile.update(_deltaTime);
+						if (_updateBrightness) {
+							tile.updateBrightness();
+						}
 					}
+					tile.paint(g, drawX, drawY, tileWidth, tileHeight, _tileColor);
 				}
-				tile.paint(g, drawX, drawY, tileWidth, tileHeight, _tileColor);
 				_highlighter.renderTileHighlight(g, x, y, drawX, drawY, tileWidth, tileHeight);
 				if (_drawGrid) {
 					drawIsoTileBorder(g, drawX + tileWidth / 2 - 2, drawY + tileHeight / 2 - 2, tileWidth + 1,
@@ -725,21 +733,21 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	public void handleCameraMovement(float deltaTime, Direction d) {
 		if (d == Direction.LEFT) {
-			_offset.x -= cameraMoveSpeed * deltaTime;
+			_pixelOffset.x -= cameraMoveSpeed * deltaTime;
 		}
 		if (d == Direction.RIGHT) {
-			_offset.x += cameraMoveSpeed * deltaTime;
+			_pixelOffset.x += cameraMoveSpeed * deltaTime;
 		}
 		if (d == Direction.UP) {
-			_offset.y -= cameraMoveSpeed * deltaTime;
+			_pixelOffset.y -= cameraMoveSpeed * deltaTime;
 		}
 		if (d == Direction.DOWN) {
-			_offset.y += cameraMoveSpeed * deltaTime;
+			_pixelOffset.y += cameraMoveSpeed * deltaTime;
 		}
 		float maxOffsetX = (_field2d.getWidth() * _isoConfig.tileWidth) - _pixelInWidth;
 		float maxOffsetY = (_field2d.getHeight() * _isoConfig.tileHeight / 2) - _pixelInHeight;
-		_offset.x = MathUtils.max(0, MathUtils.min(_offset.x, maxOffsetX));
-		_offset.y = MathUtils.max(0, MathUtils.min(_offset.y, maxOffsetY));
+		_pixelOffset.x = MathUtils.max(0, MathUtils.min(_pixelOffset.x, maxOffsetX));
+		_pixelOffset.y = MathUtils.max(0, MathUtils.min(_pixelOffset.y, maxOffsetY));
 	}
 
 	public void clickTile(float touchX, float touchY) {
@@ -808,12 +816,12 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 			Vector2f targetScreenPos = _cameraTarget.getInterpolatedPosition();
 			float targetOffsetX = targetScreenPos.x - _pixelInWidth / 2;
 			float targetOffsetY = targetScreenPos.y - _pixelInHeight / 2;
-			_offset.x += (targetOffsetX - _offset.x) * CAMERA_SMOOTH_FACTOR;
-			_offset.y += (targetOffsetY - _offset.y) * CAMERA_SMOOTH_FACTOR;
+			_pixelOffset.x += (targetOffsetX - _pixelOffset.x) * CAMERA_SMOOTH_FACTOR;
+			_pixelOffset.y += (targetOffsetY - _pixelOffset.y) * CAMERA_SMOOTH_FACTOR;
 			float maxOffsetX = (_field2d.getWidth() * _isoConfig.tileWidth * _isoConfig.scaleX) - _pixelInWidth;
 			float maxOffsetY = (_field2d.getHeight() * _isoConfig.tileHeight * _isoConfig.scaleY) - _pixelInHeight;
-			_offset.x = MathUtils.max(0, MathUtils.min(_offset.x, maxOffsetX));
-			_offset.y = MathUtils.max(0, MathUtils.min(_offset.y, maxOffsetY));
+			_pixelOffset.x = MathUtils.max(0, MathUtils.min(_pixelOffset.x, maxOffsetX));
+			_pixelOffset.y = MathUtils.max(0, MathUtils.min(_pixelOffset.y, maxOffsetY));
 		}
 	}
 
@@ -943,8 +951,8 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	public boolean isContentPositionInBounds(float x, float y) {
-		float offX = MathUtils.min(this._offset.x + _isoConfig.offsetX);
-		float offY = MathUtils.min(this._offset.y + _isoConfig.offsetY);
+		float offX = MathUtils.min(this._pixelOffset.x + _isoConfig.offsetX);
+		float offY = MathUtils.min(this._pixelOffset.y + _isoConfig.offsetY);
 		if (x < offX) {
 			return false;
 		}
@@ -964,7 +972,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		if (distance == 0) {
 			return this;
 		}
-		this._offset.y = (this._offset.y + _isoConfig.offsetY + distance);
+		this._pixelOffset.y = (this._pixelOffset.y + _isoConfig.offsetY + distance);
 		return this;
 	}
 
@@ -972,7 +980,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		if (distance == 0) {
 			return this;
 		}
-		this._offset.y = (this._offset.y + _isoConfig.offsetY - distance);
+		this._pixelOffset.y = (this._pixelOffset.y + _isoConfig.offsetY - distance);
 		return this;
 	}
 
@@ -980,7 +988,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		if (distance == 0) {
 			return this;
 		}
-		this._offset.x = this._offset.x + _isoConfig.offsetX - distance;
+		this._pixelOffset.x = this._pixelOffset.x + _isoConfig.offsetX - distance;
 		return this;
 	}
 
@@ -988,7 +996,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		if (distance == 0) {
 			return this;
 		}
-		this._offset.x = this._offset.x + _isoConfig.offsetX + distance;
+		this._pixelOffset.x = this._pixelOffset.x + _isoConfig.offsetX + distance;
 		return this;
 	}
 
@@ -1005,8 +1013,8 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	public BattleMap scrollClear() {
-		if (!this._offset.equals(0f, 0f)) {
-			this._offset.set(0, 0);
+		if (!this._pixelOffset.equals(0f, 0f)) {
+			this._pixelOffset.set(0, 0);
 		}
 		return this;
 	}
@@ -1122,8 +1130,8 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	public int getTileIDFromPixels(float sx, float sy) {
-		float x = (sx + _offset.getX() + _isoConfig.offsetX);
-		float y = (sy + _offset.getY() + _isoConfig.offsetY);
+		float x = (sx + _pixelOffset.getX() + _isoConfig.offsetX);
+		float y = (sy + _pixelOffset.getY() + _isoConfig.offsetY);
 		Vector2f tileCoordinates = pixelsToTiles(x, y);
 		return getTileID(MathUtils.round(tileCoordinates.getX()), MathUtils.round(tileCoordinates.getY()));
 	}
@@ -1250,8 +1258,8 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	 * @return
 	 */
 	public Vector2f tilesToPixels(float x, float y) {
-		float xprime = x * _field2d.getTileWidth() - _offset.getX() + _isoConfig.offsetX;
-		float yprime = y * _field2d.getTileHeight() - _offset.getY() + _isoConfig.offsetY;
+		float xprime = x * _field2d.getTileWidth() - _pixelOffset.getX() + _isoConfig.offsetX;
+		float yprime = y * _field2d.getTileHeight() - _pixelOffset.getY() + _isoConfig.offsetY;
 		return new Vector2f(xprime, yprime);
 	}
 
@@ -1266,7 +1274,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	 * @return
 	 */
 	public BattleMap centerOffset() {
-		this._offset.set(centerX(), centerY());
+		this._pixelOffset.set(centerX(), centerY());
 		return this;
 	}
 
@@ -1277,7 +1285,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	 * @param y
 	 */
 	public BattleMap setOffset(float x, float y) {
-		this._offset.set(x, y);
+		this._pixelOffset.set(x, y);
 		return this;
 	}
 
@@ -1288,7 +1296,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	 */
 	@Override
 	public BattleMap setOffset(Vector2f offset) {
-		this._offset.set(offset);
+		this._pixelOffset.set(offset);
 		return this;
 	}
 
@@ -1299,7 +1307,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	 */
 	@Override
 	public Vector2f getOffset() {
-		return _offset;
+		return _pixelOffset;
 	}
 
 	/**
@@ -1387,7 +1395,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	@Override
 	public RectBox getCollisionBox() {
-		return getRect(x() + _offset.x + _isoConfig.offsetX, y() + _offset.y + _isoConfig.offsetY,
+		return getRect(x() + _pixelOffset.x + _isoConfig.offsetX, y() + _pixelOffset.y + _isoConfig.offsetY,
 				_field2d.getTileWidth() * _field2d.getWidth(), _field2d.getTileHeight() * _field2d.getHeight());
 	}
 
@@ -1434,7 +1442,7 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 			float offsetY = limitOffsetY(_follow.getY());
 			if (offsetX != 0 || offsetY != 0) {
 				setOffset(offsetX, offsetY);
-				_field2d.setOffset(_offset);
+				_field2d.setOffset(_pixelOffset);
 			}
 		}
 		return this;
@@ -1573,11 +1581,11 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	public int offsetXNScalePixel(float x) {
-		return MathUtils.iceil(x - _offset.x - _objectLocation.x - _isoConfig.offsetX);
+		return MathUtils.iceil(x - _pixelOffset.x - _objectLocation.x - _isoConfig.offsetX);
 	}
 
 	public int offsetYNScalePixel(float y) {
-		return MathUtils.iceil(y - _offset.y - _objectLocation.y - _isoConfig.offsetY);
+		return MathUtils.iceil(y - _pixelOffset.y - _objectLocation.y - _isoConfig.offsetY);
 	}
 
 	public Vector2f offsetPixels(XY pos) {
@@ -1600,11 +1608,11 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	public int offsetXPixel(float x) {
-		return MathUtils.iceil((x - _offset.x - _objectLocation.x - _isoConfig.offsetX) / _isoConfig.scaleX);
+		return MathUtils.iceil((x - _pixelOffset.x - _objectLocation.x - _isoConfig.offsetX) / _isoConfig.scaleX);
 	}
 
 	public int offsetYPixel(float y) {
-		return MathUtils.iceil((y - _offset.y - _objectLocation.y - _isoConfig.offsetY) / _isoConfig.scaleY);
+		return MathUtils.iceil((y - _pixelOffset.y - _objectLocation.y - _isoConfig.offsetY) / _isoConfig.scaleY);
 	}
 
 	public Vector2f getScreenPixel(XY pos) {
@@ -1619,11 +1627,11 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	public float getScreenPixelX(float x) {
-		return (x + _objectLocation.x + _offset.x + _isoConfig.offsetX) / _isoConfig.scaleX;
+		return (x + _objectLocation.x + _pixelOffset.x + _isoConfig.offsetX) / _isoConfig.scaleX;
 	}
 
 	public float getScreenPixelY(float y) {
-		return (y + _objectLocation.y + _offset.y + _isoConfig.offsetY) / _isoConfig.scaleY;
+		return (y + _objectLocation.y + _pixelOffset.y + _isoConfig.offsetY) / _isoConfig.scaleY;
 	}
 
 	public Vector2f getScreenNScalePixel(XY pos) {
@@ -1638,11 +1646,11 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	public float getScreenNScalePixelX(float x) {
-		return (x + _objectLocation.x + _offset.x + _isoConfig.offsetX);
+		return (x + _objectLocation.x + _pixelOffset.x + _isoConfig.offsetX);
 	}
 
 	public float getScreenNScalePixelY(float y) {
-		return (y + _objectLocation.y + _offset.y + _isoConfig.offsetY);
+		return (y + _objectLocation.y + _pixelOffset.y + _isoConfig.offsetY);
 	}
 
 	public boolean inMap(int x, int y) {
@@ -1988,23 +1996,49 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 	}
 
 	public BattleMap setOffsetX(float sx) {
-		this._offset.setX(sx);
+		this._pixelOffset.setX(sx);
 		return this;
 	}
 
 	public BattleMap setOffsetY(float sy) {
-		this._offset.setY(sy);
+		this._pixelOffset.setY(sy);
+		return this;
+	}
+
+	public boolean isHideAllTile() {
+		return _hideAllTile;
+	}
+
+	public void setHideAllTile(boolean hideAllTile) {
+		this._hideAllTile = hideAllTile;
+	}
+
+	public float getBackgroundOffsetX() {
+		return _backgroundOffset.x;
+	}
+
+	public float getBackgroundOffsetY() {
+		return _backgroundOffset.y;
+	}
+
+	public BattleMap setBackgroundOffset(XY pos) {
+		_backgroundOffset.set(pos);
+		return this;
+	}
+
+	public BattleMap setBackgroundOffset(float x, float y) {
+		_backgroundOffset.set(x, y);
 		return this;
 	}
 
 	@Override
 	public float getOffsetX() {
-		return _offset.x;
+		return _pixelOffset.x;
 	}
 
 	@Override
 	public float getOffsetY() {
-		return _offset.y;
+		return _pixelOffset.y;
 	}
 
 	@Override

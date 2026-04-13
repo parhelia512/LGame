@@ -82,7 +82,7 @@ public class BattleSkill implements LRelease {
 	}
 
 	public static enum DamageType {
-		PHYSICAL, MAGIC, TRUE, HEAL
+		PHYSICAL, MAGIC, TRUE, HEAL, CONTROL, BREAK_DEFENSE
 	}
 
 	public static interface SkillCondition {
@@ -1270,6 +1270,26 @@ public class BattleSkill implements LRelease {
 	public BattleSkill setSkillLevel(int level) {
 		this.skillLevel = MathUtils.clamp(level, 1, maxSkillLevel);
 		return this;
+	}
+
+	public boolean isControlSkill() {
+		return damageType == DamageType.CONTROL;
+	}
+
+	public boolean isBreakDefenseSkill() {
+		return damageType == DamageType.BREAK_DEFENSE;
+	}
+
+	public boolean isPhysicalSkill() {
+		return damageType == DamageType.PHYSICAL;
+	}
+
+	public boolean isTrueDamageSkill() {
+		return damageType == DamageType.TRUE;
+	}
+
+	public boolean isHealSkill() {
+		return damageType == DamageType.HEAL;
 	}
 
 	public DamageType getDamageType() {

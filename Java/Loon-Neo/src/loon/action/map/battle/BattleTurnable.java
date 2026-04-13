@@ -22,19 +22,21 @@ package loon.action.map.battle;
 
 import loon.action.map.items.Team;
 import loon.utils.MathUtils;
-import loon.utils.ObjectMap;
 import loon.utils.TArray;
 
 public abstract class BattleTurnable implements Comparable<BattleTurnable> {
 
 	private boolean _hasActed = false;
-	private int _actionPoints = 1;
-	private int _speed = 10;
-	private int _team = Team.Unknown;
-	private ObjectMap<String, Integer> _cooldowns = new ObjectMap<String, Integer>();
-	private TArray<String> _buffs = new TArray<String>();
 
-	public BattleTurnable(int team, int speed) {
+	private int _actionPoints = 1;
+
+	private long _speed = 10;
+
+	private int _team = Team.Unknown;
+
+	private TArray<String> _messages = new TArray<String>();
+
+	public BattleTurnable(int team, long speed) {
 		this._team = team;
 		this._speed = speed;
 	}
@@ -42,16 +44,14 @@ public abstract class BattleTurnable implements Comparable<BattleTurnable> {
 	public void startTurn() {
 		_hasActed = false;
 		_actionPoints = getBaseActionPoints();
-		applyStartOfTurnEffects();
 		onTurnStart();
 	}
 
 	public void endTurn() {
-		applyEndOfTurnEffects();
 		onTurnEnd();
 	}
 
-	public abstract void takeAction();
+	public abstract void takeAction(long elapsedTime);
 
 	public boolean canAct() {
 		return !_hasActed && _actionPoints > 0;
@@ -66,22 +66,16 @@ public abstract class BattleTurnable implements Comparable<BattleTurnable> {
 		}
 	}
 
-	protected void applyStartOfTurnEffects() {
-	}
-
-	protected void applyEndOfTurnEffects() {
-		for (String skill : _cooldowns.keys()) {
-			int turns = _cooldowns.get(skill);
-			_cooldowns.put(skill, MathUtils.max(0, turns - 1));
-		}
-	}
-
 	protected abstract void onTurnStart();
 
 	protected abstract void onTurnEnd();
 
 	protected int getBaseActionPoints() {
-		return 1;
+		return _actionPoints;
+	}
+
+	protected void setBaseActionPoints(int a) {
+		_actionPoints = a;
 	}
 
 	public int getTeam() {
@@ -92,23 +86,19 @@ public abstract class BattleTurnable implements Comparable<BattleTurnable> {
 		this._team = newTeam;
 	}
 
-	public int getSpeed() {
+	public long getSpeed() {
 		return _speed;
 	}
 
-	public void setCooldown(String skill, int turns) {
-		_cooldowns.put(skill, turns);
+	public void addMessage(String buff) {
+		_messages.add(buff);
 	}
 
-	public boolean isSkillAvailable(String skill) {
-		Integer v = _cooldowns.get(skill);
-		return v == null || v == 0;
+	public TArray<String> getMessage() {
+		return new TArray<String>(_messages);
 	}
 
-	public void addBuff(String buff) {
-		_buffs.add(buff);
-	}
-
+	@Override
 	public int compareTo(BattleTurnable other) {
 		return MathUtils.compare(other._speed, this._speed);
 	}

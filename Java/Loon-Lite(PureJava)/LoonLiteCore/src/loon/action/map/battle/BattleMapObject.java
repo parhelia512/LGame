@@ -217,7 +217,7 @@ public class BattleMapObject extends Role implements LRelease {
 	// 技能与道具系统
 	private TArray<BattleSkill> skills = new TArray<BattleSkill>();
 	private Item<ItemInfo> currentItem;
-	private TArray<Item<Object>> items = new TArray<Item<Object>>();
+	private TArray<Item<ItemInfo>> items = new TArray<Item<ItemInfo>>();
 
 	// 坐标缓存对象
 	private final Vector2f startPixel = new Vector2f();
@@ -788,7 +788,7 @@ public class BattleMapObject extends Role implements LRelease {
 	public void castSkillPixel(float x, float y) {
 		if (battleMap != null) {
 			Vector2f pos = battleMap.findTileXY(x, y);
-			if (pos != null && battleMap.inMap(pos.x(), pos.y())) {
+			if (pos != null && battleMap.inTileGrid(pos.x(), pos.y())) {
 				castSkillTile(pos.x(), pos.y());
 			}
 		}
@@ -1102,7 +1102,7 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public TArray<PointI> getPath() {
-		return new TArray<>(path);
+		return new TArray<PointI>(path);
 	}
 
 	public int getRemainingSteps() {
@@ -1443,6 +1443,13 @@ public class BattleMapObject extends Role implements LRelease {
 		return this;
 	}
 
+	public BattleTile getCurrentTile() {
+		if (battleMap != null) {
+			return battleMap.getMapTile(gridX, gridY);
+		}
+		return null;
+	}
+
 	public void resetPathState() {
 		resetPathState(movePoints);
 	}
@@ -1662,13 +1669,23 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public TArray<BattleSkill> getAllSkills() {
-		return new TArray<>(skills);
+		return new TArray<BattleSkill>(skills);
+	}
+
+	public TArray<BattleSkill> getHealSkills() {
+		TArray<BattleSkill> r = new TArray<BattleSkill>();
+		for (BattleSkill s : skills) {
+			if (s != null && !s.canUltimateSkill() && s.isHealSkill() && mana >= s.mpCost) {
+				r.add(s);
+			}
+		}
+		return r;
 	}
 
 	public TArray<BattleSkill> getUltimateSkills() {
-		TArray<BattleSkill> r = new TArray<>();
+		TArray<BattleSkill> r = new TArray<BattleSkill>();
 		for (BattleSkill s : skills) {
-			if (s != null && s.canUltimateSkill() && mana >= s.mpCost) {
+			if (s != null && s.canUltimateSkill() && !s.isHealSkill() && mana >= s.mpCost) {
 				r.add(s);
 			}
 		}
@@ -1676,7 +1693,7 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public TArray<BattleSkill> getBuffSkills() {
-		TArray<BattleSkill> r = new TArray<>();
+		TArray<BattleSkill> r = new TArray<BattleSkill>();
 		for (BattleSkill s : skills) {
 			if (s != null && s.canBuffSkill() && mana >= s.mpCost) {
 				r.add(s);
@@ -1686,13 +1703,23 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public TArray<BattleSkill> getBaseAttackSkills() {
-		TArray<BattleSkill> r = new TArray<>();
+		TArray<BattleSkill> r = new TArray<BattleSkill>();
 		for (BattleSkill s : skills) {
-			if (s != null && s.canBaseAttackSkill() && actionPoints >= s.actionPointCost) {
+			if (s != null && s.canBaseAttackSkill() && s.isPhysicalSkill() && actionPoints >= s.actionPointCost) {
 				r.add(s);
 			}
 		}
 		return r;
+	}
+
+	public float getMaxSkillDamage() {
+		float maxDamage = 0f;
+		for (BattleSkill s : skills) {
+			if (s != null) {
+				maxDamage += s.getDamage();
+			}
+		}
+		return maxDamage;
 	}
 
 	public void addSkills(BattleSkill s) {
@@ -1807,7 +1834,7 @@ public class BattleMapObject extends Role implements LRelease {
 			currentItem.close();
 			currentItem = null;
 		}
-		for (Item<Object> i : items) {
+		for (Item<ItemInfo> i : items) {
 			if (i != null) {
 				i.close();
 			}
