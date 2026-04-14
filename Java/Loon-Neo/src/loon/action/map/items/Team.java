@@ -20,17 +20,34 @@
  */
 package loon.action.map.items;
 
+import java.util.Comparator;
+
 import loon.LRelease;
 import loon.LSysException;
 import loon.LSystem;
 import loon.canvas.LColor;
 import loon.events.QueryEvent;
+import loon.utils.MathUtils;
 import loon.utils.TArray;
 
 /**
  * 队伍信息存储用类,用于把不同角色对象归类为统一的小队,集中管理专属阵营的对象
  */
 public class Team implements LRelease {
+
+	protected static class SortComparator implements Comparator<Role> {
+
+		@Override
+		public int compare(Role a, Role b) {
+			if (a == null || b == null) {
+				return 0;
+			}
+			return MathUtils.compare(b.getActionPriority(), a.getActionPriority());
+		}
+
+	}
+
+	protected static SortComparator sortRoleAction = new SortComparator();
 
 	protected class IDQuery implements QueryEvent<Role> {
 
@@ -534,6 +551,11 @@ public class Team implements LRelease {
 
 	public boolean isOver() {
 		return isAllDead();
+	}
+
+	public TArray<Role> getActionOrder() {
+		_characters.sort(Team.sortRoleAction);
+		return _characters;
 	}
 
 	public LColor getTeamColor() {

@@ -120,6 +120,7 @@ public class JumpObject extends ActionObject {
 		return jump(_jumpSpeed);
 	}
 
+	@Override
 	public JumpObject jump(float force) {
 		if (isGround() || _forceJump) {
 			velocityY = -force;

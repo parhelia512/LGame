@@ -1,18 +1,18 @@
 /**
  * Copyright 2008 - 2012
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
  * License for the specific language governing permissions and limitations under
  * the License.
- * 
+ *
  * @project loon
  * @author cping
  * @email：javachenpeng@yahoo.com
@@ -27,9 +27,9 @@ import loon.action.FlashTo;
 import loon.action.RotateTo;
 import loon.action.map.Config;
 import loon.action.map.TileMap;
+import loon.action.sprite.ActionObject;
 import loon.action.sprite.Animation;
 import loon.action.sprite.JumpObject;
-import loon.action.sprite.ActionObject;
 import loon.canvas.LColor;
 import loon.component.LPad;
 import loon.events.ActionKey;
@@ -52,7 +52,6 @@ public class GameMapTest extends Stage {
 
 		@Override
 		public void onManagedUpdate(long e) {
-
 			// 获得当前精灵与地图碰撞后坐标
 			Vector2f pos = collisionTileMap(0f, 0.6f);
 			// 注入新坐标
@@ -113,7 +112,7 @@ public class GameMapTest extends Stage {
 
 	@Override
 	public void create() {
-		
+
 		// 最先绘制用户画面
 		// setFristOrder(DRAW_USER_PAINT());
 		// 其次绘制精灵
@@ -184,6 +183,10 @@ public class GameMapTest extends Stage {
 		hero = addJumpObject(192, 32, 32, 32, animation);
 		// 像素计算上角色高偏移2个像素
 		hero.setFixedHeightOffset(2);
+		// 允许角色爬墙(左或右加前进)
+		hero.setWallClimbEnabled(true);
+		// 允许角色脚底查克拉模式(倒挂在瓦片下方)
+		hero.setCeilingWalkEnabled(true);
 		// 让地图跟随指定对象产生移动（无论插入有多少张数组地图，此跟随默认对所有地图生效）
 		// 另外请注意，此处能产生跟随的对像是任意LObject，并不局限于游戏角色。
 		follow(hero);
@@ -236,22 +239,27 @@ public class GameMapTest extends Stage {
 		LPad pad = new LPad(10, 180);
 		LPad.ClickListener click = new LPad.ClickListener() {
 
+			@Override
 			public void up() {
 				pressActionKey(SysKey.UP);
 			}
 
+			@Override
 			public void right() {
 				pressActionKey(SysKey.RIGHT);
 			}
 
+			@Override
 			public void left() {
 				pressActionKey(SysKey.LEFT);
 			}
 
+			@Override
 			public void down() {
 				pressActionKey(SysKey.DOWN);
 			}
 
+			@Override
 			public void other() {
 				releaseActionKeys();
 			}

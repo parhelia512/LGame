@@ -298,6 +298,10 @@ public class BattleTile {
 		}
 	}
 
+	public void paint(GLEx g, float drawX, float drawY, LColor color) {
+		paint(g, drawX, drawY, cellWidth, cellHeight, color);
+	}
+
 	public void paint(GLEx g, float drawX, float drawY, float tileWidth, float tileHeight, LColor color) {
 		if (!isVisible) {
 			return;

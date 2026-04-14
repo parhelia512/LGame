@@ -1414,18 +1414,7 @@ public class BattleProcess extends CoroutineProcess {
 	}
 
 	public TArray<Role> getActionOrder() {
-		TArray<Role> list = new TArray<Role>(allRoles());
-		list.sort(new Comparator<Role>() {
-
-			@Override
-			public int compare(Role a, Role b) {
-				if (a == null || b == null) {
-					return 0;
-				}
-				return MathUtils.compare(b.getActionPriority(), a.getActionPriority());
-			}
-		});
-		return list;
+		return new TArray<Role>(_mainTeams.getActionOrder());
 	}
 
 	public boolean isPlayerWin() {

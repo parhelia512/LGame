@@ -431,6 +431,11 @@ public class Teams implements LRelease {
 		return _teams.where(query);
 	}
 
+	public TArray<Role> getActionOrder() {
+		all().sort(Team.sortRoleAction);
+		return all();
+	}
+
 	@Override
 	public void close() {
 		clear();
