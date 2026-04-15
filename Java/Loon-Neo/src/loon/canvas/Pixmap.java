@@ -2491,33 +2491,39 @@ public final class Pixmap extends PixmapComposite implements Canvas.ColorPixel, 
 	}
 
 	public Pixmap fillRoundRect(int x, int y, int width, int height, int radius) {
-		if (radius < 0) {
-			throw new LSysException("radius > 0");
-		}
-		if (radius == 0) {
-			fillRect(x, y, width, height);
-			return this;
-		}
-		int mr = MathUtils.min(width, height) / 2;
-		if (radius > mr) {
-			radius = mr;
-		}
-		int d = radius * 2;
-		int w = width - d;
-		int h = height - d;
-		if (w > 0 && h > 0) {
-			fillRect(x + radius, y, w, radius);
-			fillRect(x, y + radius, radius, h);
-			fillRect(x + width - radius, y + radius, radius, h);
-			fillRect(x + radius, y + height - radius, w, radius);
-			fillRect(x + radius, y + radius, w, h);
-		}
-		fillArc(x + width - d, y + height - d, d, d, 0, 90);
-		fillArc(x, y + height - d, d, d, 90, 180);
-		fillArc(x + width - d, y, d, d, 270, 360);
-		fillArc(x, y, d, d, 180, 270);
-		return this;
+	    if (radius < 0) {
+	        throw new LSysException("radius > 0");
+	    }
+	    if (radius == 0) {
+	        fillRect(x, y, width, height);
+	        return this;
+	    }
+	    int mr = MathUtils.min(width, height) / 2;
+	    if (radius > mr) {
+	        radius = mr;
+	    }
+	    int d = radius * 2;
+	    int w = width - d;
+	    int h = height - d;
+
+	    if (w > 0 && h > 0) {
+	        fillRect(x + radius, y, w, height); 
+	    }
+	    if (w > 0) {
+	        fillRect(x + radius, y, w, radius);                 
+	        fillRect(x + radius, y + height - radius, w, radius); 
+	    }
+	    if (h > 0) {
+	        fillRect(x, y + radius, radius, h);               
+	        fillRect(x + width - radius, y + radius, radius, h); 
+	    }
+	    fillArc(x, y, d, d, 180, 270);                       
+	    fillArc(x + width - d, y, d, d, 270, 360);        
+	    fillArc(x, y + height - d, d, d, 0, 180);             
+	    fillArc(x + width - d, y + height - d, d, d, 0, 90);
+	    return this;
 	}
+
 
 	/**
 	 * 填充一个围绕指定区域旋转的矩形选框

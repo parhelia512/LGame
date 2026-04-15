@@ -227,6 +227,10 @@ public class GestureData {
 		setUserPoints(points);
 	}
 
+	public TArray<PointF> getUserPoints(String name) {
+		return userPoints.get(name);
+	}
+
 	public void setUserPoints(ObjectMap<String, TArray<PointF>> points) {
 		this.userPoints = points;
 	}

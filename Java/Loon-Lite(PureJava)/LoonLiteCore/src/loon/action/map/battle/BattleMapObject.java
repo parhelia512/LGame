@@ -21,7 +21,6 @@
 package loon.action.map.battle;
 
 import loon.LRelease;
-import loon.ZIndex;
 import loon.action.map.Direction;
 import loon.action.map.TileIsoHighlighter.EffectType;
 import loon.action.map.battle.BattleMovementManager.AnimationState;
@@ -187,7 +186,7 @@ public class BattleMapObject extends Role implements LRelease {
 	protected ObjectState state = ObjectState.IDLE;
 
 	// 渲染与移动基础参数
-	protected float renderPriority = 0f;
+	protected int renderPriority = 0;
 	private boolean isMoving;
 	protected float moveInertia = 0f;
 	protected float moveSpeedMultiplier = 1f;
@@ -300,7 +299,7 @@ public class BattleMapObject extends Role implements LRelease {
 		this.targetPixel.set(startPixel);
 		// 基础速度
 		this.baseSpeed = MathUtils.max(MAX_INERTIA, 5f);
-		this.renderPriority = calculateRenderPriority();
+		this.updateRenderPriorityZ();
 		// 重置移动路径状态与初始移动点为100
 		resetPathState(100);
 		// 精灵初始化
@@ -395,6 +394,7 @@ public class BattleMapObject extends Role implements LRelease {
 		if (keyMoveTimer > 0 || state != ObjectState.IDLE) {
 			return;
 		}
+
 		int dx = 0, dy = 0;
 		if (up) {
 			dy = -1;
@@ -405,10 +405,14 @@ public class BattleMapObject extends Role implements LRelease {
 		} else if (right) {
 			dx = 1;
 		}
+
 		if (dx != 0 || dy != 0) {
 			int tx = gridX + dx;
 			int ty = gridY + dy;
+
 			if (canMoveTo(new PointI(tx, ty))) {
+				paused = false;
+				clearPath();
 				moveToGrid(tx, ty);
 				keyMoveTimer = keyDelay;
 			}
@@ -436,7 +440,7 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public int getRenderPriority() {
-		return MathUtils.ifloor(renderPriority);
+		return renderPriority;
 	}
 
 	public int getCharWidth() {
@@ -461,7 +465,9 @@ public class BattleMapObject extends Role implements LRelease {
 
 	private float calculateRenderPriority() {
 		Vector2f screenPos = getTileToScreenPosition();
-		return screenPos.y + (getLayer() * 100) + (getCharHeight() * isoConfig.heightScale);
+		float base = (gridX + gridY);
+		float footY = screenPos.y - (getCharHeight() * isoConfig.heightScale);
+		return base + footY;
 	}
 
 	public Vector2f getInterpolatedPosition() {
@@ -555,18 +561,14 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	public BattleMapObject updateRenderPriorityLayer() {
-		renderPriority = calculateRenderPriority();
-		setLayer(MathUtils.ifloor(renderPriority));
+		renderPriority = MathUtils.ifloor(calculateRenderPriority());
+		setLayer(renderPriority);
 		return this;
 	}
 
 	public BattleMapObject updateRenderPriorityZ() {
-		renderPriority = calculateRenderPriority();
-		int z = MathUtils.ifloor(renderPriority);
-		if (_roleObject instanceof ZIndex) {
-			z -= MathUtils.abs(((ZIndex) _roleObject).getLayer());
-		}
-		setLayer(-z);
+		renderPriority = MathUtils.ifloor(calculateRenderPriority());
+		setLayer(-renderPriority);
 		return this;
 	}
 
@@ -668,7 +670,7 @@ public class BattleMapObject extends Role implements LRelease {
 		}
 		if (isMoving) {
 			// 更新渲染优先级
-			renderPriority = calculateRenderPriority();
+			updateRenderPriorityZ();
 		}
 		if (objectStateListener != null) {
 			objectStateListener.onMoving(this, deltaTime);
@@ -1240,16 +1242,21 @@ public class BattleMapObject extends Role implements LRelease {
 		if (otherCharacters.isEmpty()) {
 			return CollisionResponse.CONTINUE;
 		}
-		PointI self = getCurrentMapTile();
+		PointI targetTile = null;
+		if (currentStep < path.size()) {
+			targetTile = path.get(currentStep);
+		} else {
+			targetTile = getCurrentMapTile();
+		}
 		for (BattleMapObject o : otherCharacters) {
 			if (o == null || o == this) {
 				continue;
 			}
-			if (self.equals(o.getCurrentMapTile())) {
+			if (targetTile.equals(o.getCurrentMapTile())) {
 				if (listener != null) {
 					listener.onCollision(this, o, CollisionResponse.STOP);
 				}
-				return CollisionResponse.STOP;
+				return CollisionResponse.BACKWARD;
 			}
 		}
 		return CollisionResponse.CONTINUE;
@@ -1368,9 +1375,10 @@ public class BattleMapObject extends Role implements LRelease {
 		updateDirection();
 		currentStep++;
 		moveProgress = 0f;
-		if (currentStep >= path.size())
+		paused = false;
+		if (currentStep >= path.size()) {
 			finishPath();
-		else {
+		} else {
 			startPixel.set(targetPixel);
 			targetPixel.set(getTileToScreen(path.get(currentStep).x, path.get(currentStep).y));
 		}
@@ -1397,7 +1405,18 @@ public class BattleMapObject extends Role implements LRelease {
 				return false;
 			}
 		}
-		return !blockedTiles.contains(tile) || allowedTiles.contains(tile);
+		if (blockedTiles.contains(tile) && !allowedTiles.contains(tile)) {
+			return false;
+		}
+		for (BattleMapObject o : otherCharacters) {
+			if (o == null || o == this) {
+				continue;
+			}
+			if (tile.equals(o.getCurrentMapTile())) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private TArray<PointI> filterValidPath(TArray<PointI> paths) {
@@ -1539,6 +1558,7 @@ public class BattleMapObject extends Role implements LRelease {
 		setState(ObjectState.MOVING);
 		isMoving = true;
 		moveProgress = 0f;
+		updateRenderPriorityZ();
 	}
 
 	protected void endMovement() {
@@ -1552,6 +1572,7 @@ public class BattleMapObject extends Role implements LRelease {
 			listener.onPathCompleted(this);
 		}
 		triggerAnimation(AnimationState.ARRIVED);
+		updateRenderPriorityZ();
 	}
 
 	public boolean isPositionPassable(int x, int y) {

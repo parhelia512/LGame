@@ -59,6 +59,115 @@ import loon.utils.TArray;
  */
 public class BattleTest extends Stage {
 
+	private BattleMapObject makeObject(final BattleMap newMap, String battleJosn, int gx, int gy, String name,
+			final boolean clearPath) {
+
+		// 加载json动画配置资源到纹理动画管理器，不绑定任何对象(若绑定具体战斗对象或事件，则在执行对应命令时会回调触发)
+		AnimationManager mang = new AnimationManager(battleJosn, null, null);
+
+		// 插入图层IDLE标识动画，同时添加动作标识LEFT和RIGHT(任何状态标识都是json中设置了才能执行，没有对应名称则无效，另外此处使用字符串或者枚举类型的效果一样，只是用枚举方便用我自定义的模板，若自定义字符串则只能自行定义具体触发的事件)
+		mang.addLayerDirs(ObjectState.IDLE);
+
+		mang.setState("IDLE", Direction.DOWN_LEFT);
+
+		// 构建并获得一个战斗地图对象，瓦片坐标位置，大小64x64，使用AnimationManager控制动画，监控所有移动相关动作
+		BattleMapObject hero = newMap.addMapObject(gx, gy, 64, 64, name, mang, new MovementListener() {
+
+			@Override
+			public void onTileEntered(BattleMapObject o, int mapX, int mapY) {
+
+			}
+
+			@Override
+			public void onTerrainEffectApplied(BattleMapObject o, String terrain, BattleTileType effect) {
+
+			}
+
+			@Override
+			public void onTerrainCostDeducted(BattleMapObject o, int cost, int remainingPoints) {
+
+			}
+
+			@Override
+			public void onStepReached(BattleMapObject o, int mapX, int mapY) {
+
+			}
+
+			@Override
+			public void onStateExpired(BattleMapObject o, MovementState state) {
+
+			}
+
+			@Override
+			public void onStateCooldown(BattleMapObject o, MovementState state) {
+
+			}
+
+			@Override
+			public void onSpeedChanged(BattleMapObject o, float newSpeed) {
+
+			}
+
+			@Override
+			public void onPathUpdated(BattleMapObject o, TArray<PointI> newPath) {
+
+			}
+
+			@Override
+			public void onPathResumed(BattleMapObject o) {
+
+			}
+
+			@Override
+			public void onPathInterrupted(BattleMapObject o) {
+
+			}
+
+			@Override
+			public void onPathCompleted(BattleMapObject o) {
+				if (clearPath) {
+					// 移动完毕后，清空瓦片高亮设置
+					newMap.clearHighlighterEffect();
+				}
+			}
+
+			@Override
+			public void onMovementPointChanged(BattleMapObject o, int remainingPoints) {
+
+			}
+
+			@Override
+			public void onMovementModeChanged(BattleMapObject o, MovementMode oldMode, MovementMode newMode) {
+
+			}
+
+			@Override
+			public void onEasingChanged(BattleMapObject o, Easing newEasing) {
+
+			}
+
+			@Override
+			public void onDirectionChanged(BattleMapObject o, Direction newDirection) {
+				// 改变当前动画角色方向，为移动检测的方向(PS:loon中的Direction为类，而不是枚举，所以允许自定义，但若自定了特殊方向名称对应的动画，此处需要自行匹配动画切换)
+				mang.setState("IDLE", Direction.toDisplayDirection(newDirection));
+			}
+
+			@Override
+			public void onCollision(BattleMapObject self, BattleMapObject other, CollisionResponse response) {
+
+				System.out.println("CCC");
+			}
+
+			@Override
+			public void onAnimationStateChanged(BattleMapObject o, String state) {
+
+			}
+		});
+
+		return hero;
+
+	}
+
 	@Override
 	public void create() {
 		setBackground(LColor.red);
@@ -130,134 +239,41 @@ public class BattleTest extends Stage {
 		// newMap.setOtherGrid(true);
 		// newMap.setDrawGrid(true);
 
-		// 加载json动画配置资源到纹理动画管理器，不绑定任何对象(若绑定具体战斗对象或事件，则在执行对应命令时会回调触发)
-		AnimationManager mang = new AnimationManager("battleRole0.json", null, null);
+		// 在游戏网格坐标坐标1,4构建一个角色
+		BattleMapObject hero = makeObject(newMap, "battleRole0.json", 1, 4, "role0", true);
 
-		// 插入图层IDLE标识动画，同时添加动作标识LEFT和RIGHT(任何状态标识都是json中设置了才能执行，没有对应名称则无效，另外此处使用字符串或者枚举类型的效果一样，只是用枚举方便用我自定义的模板，若自定义字符串则只能自行定义具体触发的事件)
-		mang.addLayerDirs(ObjectState.IDLE);
-
-		mang.setState("IDLE", Direction.DOWN_LEFT);
-
-		// 构建并获得一个战斗地图对象，瓦片坐标位置1,4，大小64x64，使用AnimationManager控制动画，监控所有移动相关动作
-		BattleMapObject obj = newMap.addMapObject(1, 4, 64, 64, "role0", mang, new MovementListener() {
-
-			@Override
-			public void onTileEntered(BattleMapObject o, int mapX, int mapY) {
-
-			}
-
-			@Override
-			public void onTerrainEffectApplied(BattleMapObject o, String terrain, BattleTileType effect) {
-
-			}
-
-			@Override
-			public void onTerrainCostDeducted(BattleMapObject o, int cost, int remainingPoints) {
-
-			}
-
-			@Override
-			public void onStepReached(BattleMapObject o, int mapX, int mapY) {
-
-			}
-
-			@Override
-			public void onStateExpired(BattleMapObject o, MovementState state) {
-
-			}
-
-			@Override
-			public void onStateCooldown(BattleMapObject o, MovementState state) {
-
-			}
-
-			@Override
-			public void onSpeedChanged(BattleMapObject o, float newSpeed) {
-
-			}
-
-			@Override
-			public void onPathUpdated(BattleMapObject o, TArray<PointI> newPath) {
-
-			}
-
-			@Override
-			public void onPathResumed(BattleMapObject o) {
-
-			}
-
-			@Override
-			public void onPathInterrupted(BattleMapObject o) {
-
-			}
-
-			@Override
-			public void onPathCompleted(BattleMapObject o) {
-				// 移动完毕后，清空瓦片高亮设置
-				newMap.clearHighlighterEffect();
-			}
-
-			@Override
-			public void onMovementPointChanged(BattleMapObject o, int remainingPoints) {
-
-			}
-
-			@Override
-			public void onMovementModeChanged(BattleMapObject o, MovementMode oldMode, MovementMode newMode) {
-
-			}
-
-			@Override
-			public void onEasingChanged(BattleMapObject o, Easing newEasing) {
-
-			}
-
-			@Override
-			public void onDirectionChanged(BattleMapObject o, Direction newDirection) {
-				// 改变当前动画角色方向，为移动检测的方向(PS:loon中的Direction为类，而不是枚举，所以允许自定义，但若自定了特殊方向名称对应的动画，此处需要自行匹配动画切换)
-				mang.setState("IDLE", Direction.toDisplayDirection(newDirection));
-			}
-
-			@Override
-			public void onCollision(BattleMapObject self, BattleMapObject other, CollisionResponse response) {
-
-			}
-
-			@Override
-			public void onAnimationStateChanged(BattleMapObject o, String state) {
-
-			}
-		});
+		// 在游戏网格坐标坐标16,14构建一个角色
+		BattleMapObject enemy = makeObject(newMap, "battleRole1.json", 16, 14, "role1", false);
 		// 将地图对象缩放2倍(瓦片的缩放和地图对象的缩放不通用，需分别设置)
-		// obj.setScale(2f);
+		// hero.setScale(2f);
 
 		// 构建一个纹理动画用于特技画面
 		Animation skillAni = Animation.getDefaultAnimation("rasaksingle.png", 192, 192, 50);
 
 		BattleSkill skillCircle = new BattleSkill(0, "circle");
-		
+
 		skillCircle.setSkillEffectAnim(skillAni);
 		skillCircle.setRangeRadius(3);
 		skillCircle.setSize(300, 300);
 		skillCircle.setRangeType(RangeType.CROSS);
 		// 启动全局特技(battleMap中特技默认应该注入BattleMapObject，但是我绑定了一个全局特技对象，方便用于点击即攻击，剧情特效之类)
-		//newMap.getGlobalSkill().setRunning(true);
+		// newMap.getGlobalSkill().setRunning(true);
 		// 注入特技主动画(最多三个，分别是底层背景动画(天崩地裂血海什么的bgEffectAnim)，主动画（就是这个skillEffectAnim）,还有一个攻击动画(attackEffectAnim))
 		// 一般注入一个就够了，若是大招或者混合特效之类，可以加入三个混合效果
-		//newMap.getGlobalSkill().setSkillEffectAnim(skillAni);
+		// newMap.getGlobalSkill().setSkillEffectAnim(skillAni);
 		// 循环一次
-		//newMap.getGlobalSkill().setLoopCount(1);
+		// newMap.getGlobalSkill().setLoopCount(1);
 		// 攻击范围3
-		//newMap.getGlobalSkill().setRangeRadius(3);
+		// newMap.getGlobalSkill().setRangeRadius(3);
 		// 设置特技效果大小
-		//newMap.getGlobalSkill().setSize(300, 300);
+		// newMap.getGlobalSkill().setSize(300, 300);
 		// 攻击范围十字
-		//newMap.getGlobalSkill().setRangeType(RangeType.CROSS);
+		// newMap.getGlobalSkill().setRangeType(RangeType.CROSS);
 		// 8方向攻击范围
 		// newMap.getGlobalSkill().setAllDirection(true);
 		// 为增加表现力，默认是有出招地图震荡模式的，当然也可关闭
 		// newMap.getGlobalSkill().setShakeEnable(false);
-		//newMap.getGlobalSkill().castEffect(obj);
+		// newMap.getGlobalSkill().castEffect(hero);
 		// 触发特技事件监听，此处可以处理各种事务，loon默认是ON_HIT后调用effect接口，推荐在setEffect设定参数,但不强制要求，毕竟loon是框架不是直接的rmvx
 		skillCircle.addTriggerEvent(new BattleSkill.SkillTriggerEvent() {
 
@@ -273,11 +289,11 @@ public class BattleTest extends Stage {
 			}
 		});
 		// 设定角色当前特技
-		obj.setCurrentSkill(skillCircle);
+		hero.setCurrentSkill(skillCircle);
 		// 使用光照系统
 		// newMap.setUpdateBrightness(true);
 		// 角色飞行(地形无视)
-		// obj.setMoveType(MoveType.FLY);
+		// hero.setMoveType(MoveType.FLY);
 		// 拖拽地图
 		drag((x, y) -> {
 			newMap.scroll(x, y);
@@ -285,35 +301,31 @@ public class BattleTest extends Stage {
 		// 获得点中瓦片坐标
 		up((x, y) -> {
 			// 刷新当前特技状态，否则不能重复触发
-			obj.getCurrentSkill().resetCast();
+			hero.getCurrentSkill().resetCast();
 			// 在指定像素坐标触发特技
-			obj.castSkillPixel(x, y);
-			
-			obj.setState(ObjectState.IDLE);
+			hero.castSkillPixel(x, y);
+
+			hero.setState(ObjectState.IDLE);
 			// 在指定地图对象上触发特技
-			// newMap.getGlobalSkill().castEffect(obj);
+			// newMap.getGlobalSkill().castEffect(hero);
 			// 刷新状态
-			obj.resetPathState();
+			hero.resetPathState();
 			// 转化鼠标坐标为瓦片坐标，再移动向指定瓦片坐标
-			obj.moveToGrid(newMap.findTileXY(x, y));
+			hero.moveToGrid(newMap.findTileXY(x, y));
 			// 以像素坐标,获得实际瓦片坐标
 			// Vector2f pos = newMap.findTileXY(x, y);
 			// 请求指定地图对象到指定像素坐标的寻径，并返回瓦片坐标的寻径结果
-			/*TArray<PointI> result = newMap.findObjectMovePathToTile(obj, x, y);
-			if (result != null && result.size > 0) {
-				// 将移动路径以默认的move色彩高亮显示在地图上
-				newMap.highlighterRangePathToEffect(result, EffectType.MOVE);
-
-				// 改变缓动动画效果
-				// obj.setEasing(Easing.BACK_IN_OUT);
-				// 刷新状态，重置移动点数(loon的战斗地图引擎内置有移动点限制设定，移动点耗尽强制不可移动,所以设置移动前必须刷新)
-				obj.resetPathState();
-				// 设置移动路径
-				obj.setPath(result);
-
-				// 上两步合一用此函数，为说明运行逻辑故此不调用
-				// obj.setResetPath(result);
-			}*/
+			/*
+			 * TArray<PointI> result = newMap.findObjectMovePathToTile(hero, x, y); if
+			 * (result != null && result.size > 0) { // 将移动路径以默认的move色彩高亮显示在地图上
+			 * newMap.highlighterRangePathToEffect(result, EffectType.MOVE);
+			 * 
+			 * // 改变缓动动画效果 // hero.setEasing(Easing.BACK_IN_OUT); //
+			 * 刷新状态，重置移动点数(loon的战斗地图引擎内置有移动点限制设定，移动点耗尽强制不可移动,所以设置移动前必须刷新)
+			 * hero.resetPathState(); // 设置移动路径 hero.setPath(result);
+			 * 
+			 * // 上两步合一用此函数，为说明运行逻辑故此不调用 // hero.setResetPath(result); }
+			 */
 			// 产生一个圆形，范围大小为3，颜色象征攻击状态的高亮区域
 			// newMap.highlighterRange(pos.x(), pos.y(), RangeType.CIRCLE, 3,
 			// EffectType.ATTACK);

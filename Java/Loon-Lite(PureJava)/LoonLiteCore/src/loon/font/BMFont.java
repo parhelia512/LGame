@@ -402,7 +402,7 @@ public final class BMFont extends FontTrans implements IFont {
 		}
 		final int old = g.color();
 		try {
-			g.setTint(c);
+			g.setColor(c);
 			int x = 0, y = 0;
 			CharDef lastCharDef = null;
 			for (int i = startIndex; i < endIndex; i++) {
@@ -442,7 +442,7 @@ public final class BMFont extends FontTrans implements IFont {
 		} catch (Exception e) {
 			e.printStackTrace();
 		} finally {
-			g.setTint(old);
+			g.setColor(old);
 		}
 	}
 

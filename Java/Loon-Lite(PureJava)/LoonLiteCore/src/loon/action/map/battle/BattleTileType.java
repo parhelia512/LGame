@@ -20,10 +20,12 @@
  */
 package loon.action.map.battle;
 
+import loon.LSystem;
 import loon.action.map.battle.BattleType.MoveState;
 import loon.action.map.items.RoleValue.UnitType;
 import loon.utils.IntMap;
 import loon.utils.MathUtils;
+import loon.utils.StringUtils;
 
 /**
  * 主要供战棋或回合制游戏使用的地形参数类(具体地形的瓦片属性只是模板，具体多少可自行修正或建立新瓦片类型)
@@ -172,6 +174,19 @@ public class BattleTileType {
 	// 市场
 	public static final BattleTileType MARKET = new BattleTileType(39, 39, MoveState.NORMAL, "MARKET", 1, 0, 0, true,
 			false, 1, 1.0f, 0.0f);
+
+	// 光明区域
+	public static final BattleTileType LIGHT_ZONE = new BattleTileType(40, 40, MoveState.NORMAL, "LIGHT_ZONE", 1.0f, 0,
+			0, true, true, 1, 1.0f, 1.0f);
+
+	// 黑暗区域
+	public static final BattleTileType DARK_ZONE = new BattleTileType(41, 41, MoveState.NORMAL, "DARK_ZONE", 1.0f, 0, 0,
+			true, true, 1, 1.0f, 1.0f);
+
+	// 魔力区域
+	public static final BattleTileType MAGIC_ZONE = new BattleTileType(42, 42, MoveState.NORMAL, "MAGIC_FIELD", 1.0f, 0,
+			0, true, true, 1, 1.5f, 0.5f);
+
 	// 唯一标识（地形类型）
 	private final int id;
 	// 用于和其它物体绑定
@@ -304,10 +319,9 @@ public class BattleTileType {
 		boolean isNaval = UnitType.hasType(unitType, UnitType.NAVAL);
 		boolean isUndead = UnitType.hasType(unitType, UnitType.UNDEAD);
 
-		// 飞行单位
+		// 飞行单位：在大多数地形消耗减半
 		if (isFly) {
 			cost = MathUtils.max(1, cost / 2);
-			return cost;
 		}
 
 		// 骑兵
@@ -358,6 +372,9 @@ public class BattleTileType {
 			if (this == RIVER || this == SEA || this == MARSH) {
 				cost *= 2;
 			}
+			if (this == DARK_ZONE) {
+				cost = MathUtils.max(1, cost / 2);
+			}
 		}
 
 		// 魔法单位
@@ -367,6 +384,9 @@ public class BattleTileType {
 			}
 			if (this == MOUNTAIN || this == SEA || this == RIVER) {
 				cost *= 2;
+			}
+			if (this == MAGIC_ZONE) {
+				cost = MathUtils.max(1, cost / 3);
 			}
 		}
 
@@ -395,6 +415,9 @@ public class BattleTileType {
 			if (this == CASTLE || this == CITY) {
 				cost = MathUtils.max(1, cost / 2);
 			}
+			if (this == LIGHT_ZONE) {
+				cost = MathUtils.max(1, cost / 2);
+			}
 		}
 
 		// 海军
@@ -414,6 +437,9 @@ public class BattleTileType {
 			if (this == CASTLE) {
 				cost *= 2;
 			}
+			if (this == DARK_ZONE) {
+				cost = MathUtils.max(1, cost / 2);
+			}
 		}
 
 		return MathUtils.max(cost, 1);
@@ -421,6 +447,33 @@ public class BattleTileType {
 
 	public float getTalentBonus(String talentId) {
 		return BettleTalentTileRegistry.getTalentBonus(talentId, this);
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj) {
+			return true;
+		}
+		if (obj == null || getClass() != obj.getClass()) {
+			return false;
+		}
+		BattleTileType other = (BattleTileType) obj;
+		return id == other.id && bindingId == other.bindingId && baseActionCost == other.baseActionCost
+				&& widthOffset == other.widthOffset && heightOffset == other.heightOffset && passable == other.passable
+				&& StringUtils.equals(name, other.name);
+	}
+
+	@Override
+	public int hashCode() {
+		int hashCode = 1;
+		hashCode = LSystem.unite(hashCode, id);
+		hashCode = LSystem.unite(hashCode, bindingId);
+		hashCode = LSystem.unite(hashCode, name);
+		hashCode = LSystem.unite(hashCode, bindingId);
+		hashCode = LSystem.unite(hashCode, baseActionCost);
+		hashCode = LSystem.unite(hashCode, widthOffset);
+		hashCode = LSystem.unite(hashCode, heightOffset);
+		return hashCode;
 	}
 
 	@Override

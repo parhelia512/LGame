@@ -56,7 +56,7 @@ public class Item<T> implements IItem, LRelease {
 	private int _maxStack = 99;
 
 	// 价格
-	private int _price = 0;
+	private float _price = 0;
 	// 稀有度
 	private ItemRarity _rarity = ItemRarity.COMMON;
 	// 是否消耗品
@@ -467,11 +467,11 @@ public class Item<T> implements IItem, LRelease {
 		return this;
 	}
 
-	public int getPrice() {
+	public float getPrice() {
 		return _price;
 	}
 
-	public Item<T> setPrice(int price) {
+	public Item<T> setPrice(float price) {
 		this._price = MathUtils.max(0, price);
 		notifyChanged();
 		return this;
@@ -611,6 +611,40 @@ public class Item<T> implements IItem, LRelease {
 
 	public void setDrawLocation(float x, float y) {
 		_drawLocation.set(x, y);
+	}
+
+	public Item<T> addGold(float i) {
+		_price += i;
+		notifyChanged();
+		return this;
+	}
+
+	public Item<T> subGold(float i) {
+		_price -= i;
+		notifyChanged();
+		return this;
+	}
+
+	public Item<T> mulGold(float i) {
+		_price *= i;
+		notifyChanged();
+		return this;
+	}
+
+	public Item<T> divGold(float i) {
+		_price /= i;
+		notifyChanged();
+		return this;
+	}
+
+	public Item<T> setGold(float i) {
+		_price = i;
+		notifyChanged();
+		return this;
+	}
+
+	public float getGold() {
+		return _price;
 	}
 
 	@Override

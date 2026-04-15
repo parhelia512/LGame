@@ -165,9 +165,9 @@ public class GestureData {
 
 	/**
 	 * 读取自定义手势配置文件
-	 *
+	 * 
 	 * 配置格式如下:
-	 *
+	 * 
 	 * <pre>
 	 * $keyname($后是采样名称，下面是数据，两个一组，换行符开始下一组，再次出现$就算一组新数据)
 	 * 135,123
@@ -175,12 +175,12 @@ public class GestureData {
 	 * 115,167
 	 * ……
 	 * </pre>
-	 *
+	 * 
 	 * @param path
 	 * @param resampledFirst
 	 */
 	public void readUserPoints(String path, boolean resampledFirst) {
-		TArray<GestureLoader> loaders = new TArray<>();
+		TArray<GestureLoader> loaders = new TArray<GestureLoader>();
 		ArrayByteReader reader = BaseIO.loadArrayByteReader(path);
 		String curTemplate = "";
 		TArray<PointF> curPoints = null;
@@ -199,7 +199,7 @@ public class GestureData {
 						loaders.add(new GestureLoader(curTemplate, curPoints, resampledFirst));
 					}
 					curTemplate = result.substring(1).trim();
-					curPoints = new TArray<>();
+					curPoints = new TArray<PointF>();
 				} else {
 					if (curPoints != null) {
 						if (result.indexOf(LSystem.SPACE) != -1) {
@@ -220,11 +220,15 @@ public class GestureData {
 		} catch (Throwable ex) {
 			throw new LSysException(ex.getMessage(), ex);
 		}
-		ObjectMap<String, TArray<PointF>> points = new ObjectMap<>();
+		ObjectMap<String, TArray<PointF>> points = new ObjectMap<String, TArray<PointF>>();
 		for (GestureLoader glr : loaders) {
 			points.put(glr.name, glr.points);
 		}
 		setUserPoints(points);
+	}
+
+	public TArray<PointF> getUserPoints(String name) {
+		return userPoints.get(name);
 	}
 
 	public void setUserPoints(ObjectMap<String, TArray<PointF>> points) {

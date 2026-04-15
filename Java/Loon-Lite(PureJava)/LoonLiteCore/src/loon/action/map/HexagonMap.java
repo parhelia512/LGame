@@ -317,7 +317,7 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 	};
 
 	public static Path findPath(HexagonMap map, Vector2f start, Vector2f end) {
-		return findPath(map, start.toInt(), end.toInt(), 0);
+		return findPath(map, start, end, 0);
 	}
 
 	public static Path findPath(HexagonMap map, int[] start, int[] end) {
@@ -325,21 +325,19 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 	}
 
 	public static Path findPath(HexagonMap map, Vector2f start, Vector2f end, int endRadius) {
-		return findPath(map, start.toInt(), end.toInt(), endRadius);
+		return start == null || end == null ? null : findPath(map, start.toInt(), end.toInt(), endRadius);
 	}
 
 	public static Path findPath(HexagonMap map, int[] start, int[] end, int endRadius) {
-		if (map == null) {
+		if (map == null || start == null || end == null || !map.contains(start) || !map.contains(end)) {
 			return null;
 		}
 		NodeList openNodes = new NodeList();
 		NodeList closedNodes = new NodeList();
 		openNodes.add(new Node(start));
 		Node found = null;
-		for (;;) {
-			if (openNodes.size == 0) {
-				return null;
-			}
+
+		while (!openNodes.isEmpty()) {
 			Node node = openNodes.removeIndex(0);
 			if (node == null) {
 				continue;
@@ -350,24 +348,24 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 				break;
 			}
 			closedNodes.add(node);
-			final int[][] positions = map.adjacent(node.position);
-			for (int i = 0; i < positions.length; i++) {
-				final int[] position = positions[i];
-				if (!map.isAllowMoved(position) || (closedNodes.find(position) != null)) {
+
+			int[][] neighbors = map.adjacent(node.position);
+			for (int[] pos : neighbors) {
+				if (!map.isAllowMoved(pos) || closedNodes.find(pos) != null) {
 					continue;
 				}
-				Node openNode = openNodes.find(position);
+				Node openNode = openNodes.find(pos);
 				if (openNode == null) {
-					Node newNode = new Node(position);
-					newNode.g = node.g + map.getLimitType(position);
-					newNode.h = (int) (map.distance(position, end) * map.baseScore(position, end));
+					Node newNode = new Node(pos);
+					newNode.g = node.g + map.getLimitType(pos);
+					newNode.h = (int) (map.distance(pos, end) * map.baseScore(pos, end));
 					newNode.f = newNode.g + newNode.h;
 					newNode.parent = node;
 					openNodes.insert(newNode);
 				} else {
-					int g = node.g + map.getLimitType(position);
-					if (openNode.g > g) {
-						openNode.g = g;
+					int newG = node.g + map.getLimitType(pos);
+					if (openNode.g > newG) {
+						openNode.g = newG;
 						openNode.f = openNode.g + openNode.h;
 						openNode.parent = node;
 						openNodes.sort(openNode);
@@ -375,6 +373,7 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 				}
 			}
 		}
+
 		if (found == null) {
 			return null;
 		}
@@ -628,17 +627,17 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 	}
 
 	public int distance(int[] start, int[] end) {
-		Integer c = end[0] - start[0];
-		Integer r = end[1] - start[1];
-		if (c.compareTo(0) == r.compareTo(0)) {
-			c = c < 0 ? -c : c;
-			r = r < 0 ? -r : r;
-			return c + r;
-		} else {
-			c = c < 0 ? -c : c;
-			r = r < 0 ? -r : r;
-			return r > c ? r : c;
+		if (start == null || end == null) {
+			return 0;
 		}
+		int x1 = start[0];
+		int y1 = start[1];
+		int x2 = end[0];
+		int y2 = end[1];
+		int dx = MathUtils.abs(x1 - x2);
+		int dy = MathUtils.abs(y1 - y2);
+		int dz = MathUtils.abs((x1 + y1) - (x2 + y2));
+		return MathUtils.max(MathUtils.max(dx, dy), dz);
 	}
 
 	public int orientate(Vector2f start, Vector2f end) {
@@ -646,10 +645,11 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 	}
 
 	public int orientate(int[] start, int[] end) {
-		Integer c = end[0] - start[0];
-		Integer r = end[1] - start[1];
-		c = c.compareTo(0);
-		r = r.compareTo(0);
+		if (start == null || end == null) {
+			return NONE;
+		}
+		int c = MathUtils.compare(end[0], start[0]);
+		int r = MathUtils.compare(end[1], start[1]);
 		return orientationsByHexagon[r + 1][c + 1];
 	}
 
@@ -662,6 +662,9 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 	}
 
 	public int[][] adjacent(int[] position) {
+		if (position == null) {
+			return new int[0][];
+		}
 		positions[0][0] = position[0] - 1;
 		positions[0][1] = position[1];
 		positions[1][0] = position[0];
@@ -685,17 +688,24 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 	}
 
 	public SortedList<int[]> lineRegion(Vector2f start, Vector2f end) {
-		return lineRegion(start.toInt(), end.toInt());
+		return (start == null || end == null) ? new SortedList<int[]>() : lineRegion(start.toInt(), end.toInt());
 	}
 
 	public SortedList<int[]> lineRegion(int[] start, int[] end) {
-		int dx = end[0] - start[0];
-		int dy = end[1] - start[1];
+		if (start == null || end == null) {
+			return new SortedList<int[]>();
+		}
+		final int dx = end[0] - start[0];
+		final int dy = end[1] - start[1];
 		if (dx == 0 || dy == 0 || dx == -dy) {
-			SortedList<int[]> positions = new SortedList<>();
-			int ax = dx < 0 ? -dx : dx;
-			int ay = dy < 0 ? -dy : dy;
-			int len = ax < ay ? ay : ax;
+			final SortedList<int[]> positions = new SortedList<int[]>();
+			int ax = MathUtils.abs(dx);
+			int ay = MathUtils.abs(dy);
+			int len = MathUtils.max(ax, ay);
+			if (len == 0) {
+				positions.add(new int[] { start[0], start[1] });
+				return positions;
+			}
 			int x = start[0];
 			int y = start[1];
 			int x1 = dx / len;
@@ -707,27 +717,24 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 			}
 			return positions;
 		}
-		return null;
+		return new SortedList<>();
 	}
 
 	public TArray<Vector2f> circleRegion(Vector2f center, int radius) {
-		return circleRegion(center.toInt(), radius);
+		return center == null ? new TArray<Vector2f>() : circleRegion(center.toInt(), radius);
 	}
 
 	public TArray<Vector2f> circleRegion(int[] center, int radius) {
-		TArray<Vector2f> positions = new TArray<>();
-		int i, j, k;
+		TArray<Vector2f> positions = new TArray<Vector2f>();
+		if (center == null || radius < 0) {
+			return positions;
+		}
+		int i, j;
 		for (j = -radius; j <= radius; j++) {
-			if (j < 0) {
-				i = -radius - j;
-				k = radius;
-			} else {
-				i = -radius;
-				k = radius - j;
-			}
-			for (; i <= k;) {
+			int start = (j < 0) ? -radius - j : -radius;
+			int end = (j < 0) ? radius : radius - j;
+			for (i = start; i <= end; i++) {
 				positions.add(Vector2f.at(center[0] + i, center[1] + j));
-				i++;
 			}
 		}
 		return positions;
@@ -1037,13 +1044,17 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 	}
 
 	public Vector2f toRollPosition(Vector2f pos) {
-		pos.x = pos.x % ((getViewRect().width));
-		pos.y = pos.y % ((getViewRect().height));
-		if (pos.x < 0f) {
-			pos.x += getViewRect().width;
+		if (pos == null) {
+			return new Vector2f();
 		}
-		if (pos.y < 0f) {
-			pos.y += getViewRect().height;
+		RectBox rect = getViewRect();
+		pos.x = pos.x % rect.width;
+		pos.y = pos.y % rect.height;
+		if (pos.x < 0) {
+			pos.x += rect.width;
+		}
+		if (pos.y < 0) {
+			pos.y += rect.height;
 		}
 		return pos;
 	}

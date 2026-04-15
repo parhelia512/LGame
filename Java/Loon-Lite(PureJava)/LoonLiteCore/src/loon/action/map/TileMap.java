@@ -1435,6 +1435,18 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 		return false;
 	}
 
+	public TileMap clearAllTiles() {
+		_arrays.clear();
+		_animations.clear();
+		_playAnimation = false;
+		_dirty = true;
+		return this;
+	}
+
+	public PointI[] getVisibleTileRange() {
+		return new PointI[] { new PointI(firstTileX, firstTileY), new PointI(lastTileX, lastTileY) };
+	}
+
 	@Override
 	public ActionTween selfAction() {
 		return PlayerUtils.set(this);

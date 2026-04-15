@@ -28,8 +28,6 @@ public class ItemInfo implements LRelease {
 
 	protected ItemType _itemType;
 
-	protected float _gold;
-
 	protected String _name;
 
 	protected String _description;
@@ -59,7 +57,6 @@ public class ItemInfo implements LRelease {
 		this._name = info._name;
 		this._itemType = info._itemType;
 		this._description = info._description;
-		this._gold = info._gold;
 		return this;
 	}
 
@@ -71,7 +68,6 @@ public class ItemInfo implements LRelease {
 		} else {
 			info._itemType = this._itemType.cpy();
 		}
-		info._gold = this._gold;
 		return info;
 	}
 
@@ -102,35 +98,6 @@ public class ItemInfo implements LRelease {
 	public ItemInfo setDescription(String d) {
 		this._description = d;
 		return this;
-	}
-
-	public ItemInfo addGold(float i) {
-		_gold += i;
-		return this;
-	}
-
-	public ItemInfo subGold(float i) {
-		_gold -= i;
-		return this;
-	}
-
-	public ItemInfo mulGold(float i) {
-		_gold *= i;
-		return this;
-	}
-
-	public ItemInfo divGold(float i) {
-		_gold /= i;
-		return this;
-	}
-
-	public ItemInfo setGold(float i) {
-		_gold = i;
-		return this;
-	}
-
-	public float getGold() {
-		return _gold;
 	}
 
 	public ItemType getItemType() {

@@ -20,11 +20,21 @@
  */
 package loon.action.map;
 
+import loon.LSystem;
 import loon.utils.MathUtils;
 import loon.utils.ObjectMap;
+import loon.utils.StringUtils;
 import loon.utils.TArray;
 
 public class Direction {
+
+	public final static TArray<Direction> values() {
+		return ALL_DIRECTIONS;
+	}
+
+	public final static TArray<Direction> baseValues() {
+		return TArray.with(UP, DOWN, LEFT, RIGHT, UP_LEFT, UP_RIGHT, DOWN_LEFT, DOWN_RIGHT);
+	}
 
 	public final static Direction getNewDirectionName(String name) {
 		return getNewDirectionName(name, name);
@@ -328,12 +338,27 @@ public class Direction {
 		return "unknown";
 	}
 
-	public final static TArray<Direction> values() {
-		return ALL_DIRECTIONS;
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj) {
+			return true;
+		}
+		if (obj == null || getClass() != obj.getClass()) {
+			return false;
+		}
+		Direction other = (Direction) obj;
+		return dx == other.dx && dy == other.dy && StringUtils.equals(name, other.name)
+				&& StringUtils.equals(fullName, other.fullName);
 	}
 
-	public final static TArray<Direction> baseValues() {
-		return TArray.with(UP, DOWN, LEFT, RIGHT, UP_LEFT, UP_RIGHT, DOWN_LEFT, DOWN_RIGHT);
+	@Override
+	public int hashCode() {
+		int hashCode = 1;
+		hashCode = LSystem.unite(hashCode, dx);
+		hashCode = LSystem.unite(hashCode, dy);
+		hashCode = LSystem.unite(hashCode, name);
+		hashCode = LSystem.unite(hashCode, fullName);
+		return hashCode;
 	}
 
 	@Override

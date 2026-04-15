@@ -1807,6 +1807,13 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		return _mapSprites;
 	}
 
+	public Sprites sortSprites() {
+		if (_mapSprites != null) {
+			_mapSprites.sortSprites();
+		}
+		return _mapSprites;
+	}
+
 	@Override
 	public ISprite setSprites(Sprites ss) {
 		if (this._screenSprites == ss) {

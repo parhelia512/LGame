@@ -1581,7 +1581,7 @@ public final class BDFont extends FontTrans implements IFont, LRelease {
 		final boolean angle = rotation != 0;
 		final boolean update = angle || anchor;
 		try {
-			gl.setTint(c);
+			gl.setColor(c);
 			if (update) {
 				gl.saveTx();
 				Affine2f xf = gl.tx();
@@ -1632,7 +1632,7 @@ public final class BDFont extends FontTrans implements IFont, LRelease {
 				}
 			}
 		} finally {
-			gl.setTint(old);
+			gl.setColor(old);
 			if (update) {
 				gl.restoreTx();
 			}
@@ -1661,7 +1661,7 @@ public final class BDFont extends FontTrans implements IFont, LRelease {
 		final boolean angle = rotation != 0;
 		final boolean update = angle || anchor;
 		try {
-			gl.setTint(c);
+			gl.setColor(c);
 			if (update) {
 				gl.saveTx();
 				Affine2f xf = gl.tx();
@@ -1691,7 +1691,7 @@ public final class BDFont extends FontTrans implements IFont, LRelease {
 				}
 			}
 		} finally {
-			gl.setTint(old);
+			gl.setColor(old);
 			if (update) {
 				gl.restoreTx();
 			}

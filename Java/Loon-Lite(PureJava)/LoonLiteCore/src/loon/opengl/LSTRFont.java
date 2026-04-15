@@ -186,7 +186,7 @@ public final class LSTRFont extends FontTrans implements IFont, LRelease {
 		final boolean update = angle || anchor;
 		final int blend = gl.getBlendMode();
 		try {
-			gl.setTint(c);
+			gl.setColor(c);
 			if (update) {
 				gl.saveTx();
 				Affine2f xf = gl.tx();
@@ -214,7 +214,7 @@ public final class LSTRFont extends FontTrans implements IFont, LRelease {
 			canvas.drawText(newMessage, x, y, c);
 		} finally {
 			gl.setBlendMode(blend);
-			gl.setTint(old);
+			gl.setColor(old);
 			if (update) {
 				gl.restoreTx();
 			}

@@ -992,7 +992,7 @@ public final class LSTRFont extends FontTrans implements IFont, LRelease {
 		final int blend = gl.getBlendMode();
 		try {
 			gl.setBlendMode(BlendMethod.MODE_NORMAL);
-			gl.setTint(c);
+			gl.setColor(c);
 			if (update) {
 				gl.saveTx();
 				final Affine2f xf = gl.tx();
@@ -1049,7 +1049,7 @@ public final class LSTRFont extends FontTrans implements IFont, LRelease {
 			}
 		} finally {
 			gl.setBlendMode(blend);
-			gl.setTint(old);
+			gl.setColor(old);
 			if (update) {
 				gl.restoreTx();
 			}
@@ -1080,7 +1080,7 @@ public final class LSTRFont extends FontTrans implements IFont, LRelease {
 		final int blend = gl.getBlendMode();
 		try {
 			gl.setBlendMode(BlendMethod.MODE_NORMAL);
-			gl.setTint(c);
+			gl.setColor(c);
 			if (update) {
 				gl.saveTx();
 				Affine2f xf = gl.tx();
@@ -1112,7 +1112,7 @@ public final class LSTRFont extends FontTrans implements IFont, LRelease {
 			}
 		} finally {
 			gl.setBlendMode(blend);
-			gl.setTint(old);
+			gl.setColor(old);
 			if (update) {
 				gl.restoreTx();
 			}
