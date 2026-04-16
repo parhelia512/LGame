@@ -75,7 +75,7 @@ public abstract class ActionObject extends Entity implements Config {
 	protected float velocityY;
 	protected boolean enableContinuousCollision;
 
-	private final Vector2f _tempResult = new Vector2f();
+	protected final Vector2f _tempResult = new Vector2f();
 
 	protected boolean _onSlope;
 	protected boolean _isWallSliding;
@@ -109,6 +109,8 @@ public abstract class ActionObject extends Entity implements Config {
 	private float _superJumpCharge = 0f;
 	private boolean _spawnCorrected = false;
 	private boolean _canAirDash = true;
+	private boolean _canWallJump = true;
+	private boolean _isHovering = false;
 
 	private final TArray<ActionStateListener> _listeners = new TArray<ActionStateListener>();
 
@@ -188,7 +190,7 @@ public abstract class ActionObject extends Entity implements Config {
 			currentState = ActorState.CEILING_WALK;
 		} else if (!_groundedTopBottom) {
 			currentState = velocityY < 0 ? ActorState.JUMP : ActorState.FALL;
-		} else if (Math.abs(velocityX) > 0.1f) {
+		} else if (MathUtils.abs(velocityX) > 0.1f) {
 			currentState = ActorState.RUN;
 		} else {
 			currentState = ActorState.IDLE;
@@ -719,6 +721,29 @@ public abstract class ActionObject extends Entity implements Config {
 		return this;
 	}
 
+	public void hover(float hoverSpeed) {
+		if (!_groundedTopBottom) {
+			velocityY = hoverSpeed;
+			_isHovering = true;
+		}
+	}
+
+	public void stopHover() {
+		_isHovering = false;
+	}
+
+	public boolean isHovering() {
+		return _isHovering;
+	}
+
+	public void releaseDirectionalSuperJump(float baseForceX, float baseForceY) {
+		float forceX = baseForceX * (getDirection() == Side.TRIGHT ? 1 : -1);
+		float forceY = -baseForceY * (1f + _superJumpCharge);
+		velocityX = forceX;
+		velocityY = forceY;
+		_superJumpCharge = 0f;
+	}
+
 	public ActionObject applyDefaultDrag() {
 		return drag(DEFAULT_DRAG_FACTOR);
 	}
@@ -746,6 +771,23 @@ public abstract class ActionObject extends Entity implements Config {
 	@Override
 	public LTexture getBitmap() {
 		return animation == null ? null : animation.getSpriteImage();
+	}
+
+	/**
+	 * 是否设置了无法移动的瓦片
+	 * 
+	 * @param tileX
+	 * @param tileY
+	 * @return
+	 */
+	public boolean isBlockedTile(int tileX, int tileY) {
+		if (tiles == null) {
+			return false;
+		}
+		if (tileX < 0 || tileY < 0 || tileX >= tiles.getRow() || tileY >= tiles.getCol()) {
+			return true;
+		}
+		return !tiles.isHit(tileX, tileY);
 	}
 
 	public ObjectState getObjectState() {
@@ -986,6 +1028,15 @@ public abstract class ActionObject extends Entity implements Config {
 		this._flipVerticalAuto = enable;
 	}
 
+	public void wallSlide(float slideSpeed) {
+		if (_groundedLeftRight && !_groundedTopBottom) {
+			velocityY = slideSpeed;
+			_isWallSliding = true;
+		} else {
+			_isWallSliding = false;
+		}
+	}
+
 	public void chargeSuperJump(float chargeRate) {
 		_superJumpCharge += chargeRate;
 		if (_superJumpCharge > 1f)
@@ -1004,6 +1055,26 @@ public abstract class ActionObject extends Entity implements Config {
 			velocityX = getDirection() == Side.TRIGHT ? speed : -speed;
 			currentState = ActorState.DASH;
 			_canAirDash = false;
+		}
+	}
+
+	public void resetAirDash() {
+		if (_groundedTopBottom) {
+			_canAirDash = true;
+		}
+	}
+
+	public void wallJump(float forceX, float forceY) {
+		if (_canWallJump && _groundedLeftRight) {
+			velocityX = (getDirection() == Side.TLEFT ? forceX : -forceX);
+			velocityY = -forceY;
+			_canWallJump = false;
+		}
+	}
+
+	public void resetWallJump() {
+		if (_groundedTopBottom) {
+			_canWallJump = true;
 		}
 	}
 

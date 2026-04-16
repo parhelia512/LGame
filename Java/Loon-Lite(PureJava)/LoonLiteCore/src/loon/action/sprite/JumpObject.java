@@ -42,6 +42,19 @@ public class JumpObject extends ActionObject {
 
 	}
 
+	public static interface JumpEventListener extends JumpListener {
+
+		void onJumpStart();
+
+		void onJumpLand();
+
+		void onDoubleJump();
+
+		void onAirDash();
+
+		void onJumpAttack();
+	}
+
 	public JumpCheckListener listener;
 
 	public float GRAVITY;
@@ -126,11 +139,21 @@ public class JumpObject extends ActionObject {
 			velocityY = -force;
 			freeGround();
 			_forceJump = false;
+			if (listener != null && listener instanceof JumpEventListener) {
+				((JumpEventListener) listener).onJumpStart();
+			}
 		} else if (_jumperTwo && _canJumperTwo) {
 			velocityY = -force;
 			_canJumperTwo = false;
+			if (listener != null && listener instanceof JumpEventListener) {
+				((JumpEventListener) listener).onDoubleJump();
+			}
 		}
 		return this;
+	}
+
+	protected void spawnAfterimage() {
+
 	}
 
 	public JumpObject setForceJump(boolean forceJump) {
@@ -179,42 +202,50 @@ public class JumpObject extends ActionObject {
 
 	@Override
 	public Vector2f collisionTileMap(float speedX, float speedY) {
+		if (tiles == null) {
+			return null;
+		}
 		float x = getX();
 		float y = getY();
 		velocityX += speedX;
 		velocityY += speedY;
 		float newX = x + velocityX;
-		Vector2f tile = tiles.getTileCollision(this, newX, y);
-		if (tile == null) {
+		float newY = y + velocityY;
+		Vector2f tileX = tiles.getTileCollision(this, newX, y);
+		if (tileX == null) {
 			x = newX;
 			_groundedLeftRight = false;
 		} else {
 			if (velocityX > 0) {
-				x = tiles.tilesToPixelsX(tile.x) - getWidth();
+				x = tiles.tilesToPixelsX(tileX.x) - getWidth();
 			} else if (velocityX < 0) {
-				x = tiles.tilesToPixelsY(tile.x + 1);
+				x = tiles.tilesToPixelsX(tileX.x + 1);
 			}
 			velocityX = 0;
 			_groundedLeftRight = true;
 		}
-		float newY = y + velocityY;
-		tile = tiles.getTileCollision(this, x, newY);
-		if (tile == null) {
+		Vector2f tileY = tiles.getTileCollision(this, x, newY);
+		if (tileY == null) {
 			y = newY;
 			_groundedTopBottom = false;
 		} else {
 			if (velocityY > 0) {
-				y = tiles.tilesToPixelsY(tile.y) - getHeight();
+				y = tiles.tilesToPixelsY(tileY.y) - getHeight();
 				velocityY = 0;
 				_canJumperTwo = true;
 				_groundedTopBottom = true;
+				resetAirDash();
+				if (listener != null && listener instanceof JumpEventListener) {
+					((JumpEventListener) listener).onJumpLand();
+				}
 			} else if (velocityY < 0) {
-				y = tiles.tilesToPixelsY(tile.y + 1);
+				y = tiles.tilesToPixelsY(tileY.y + 1);
 				velocityY = 0;
-				isCheck(tile.x(), tile.y());
+				isCheck(tileY.x(), tileY.y());
 			}
 		}
-		return tile != null ? tile.set(x, y) : Vector2f.at(x, y);
+
+		return _tempResult.set(x, y);
 	}
 
 	@Override
@@ -226,6 +257,28 @@ public class JumpObject extends ActionObject {
 		}
 		if (listener != null && listener instanceof JumpListener) {
 			((JumpListener) listener).update(elapsedTime);
+		}
+	}
+
+	public void bounce(float bounceForce) {
+		velocityY = -bounceForce;
+		if (listener != null && listener instanceof JumpEventListener) {
+			((JumpEventListener) listener).onJumpStart();
+		}
+	}
+
+	public void jumpCancel(float force) {
+		if (!_groundedTopBottom) {
+			velocityY = -force;
+			_canJumperTwo = true;
+		}
+	}
+
+	public void jumpAttack() {
+		if (!_groundedTopBottom) {
+			if (listener != null && listener instanceof JumpEventListener) {
+				((JumpEventListener) listener).onJumpAttack();
+			}
 		}
 	}
 

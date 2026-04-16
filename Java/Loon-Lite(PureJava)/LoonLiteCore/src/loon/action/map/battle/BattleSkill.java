@@ -1109,7 +1109,7 @@ public class BattleSkill implements LRelease {
 		case DIAMOND:
 			for (int dx = -rangeRadius; dx <= rangeRadius; dx++)
 				for (int dy = -rangeRadius; dy <= rangeRadius; dy++)
-					if (Math.abs(dx) + Math.abs(dy) <= rangeRadius) {
+					if (MathUtils.abs(dx) + MathUtils.abs(dy) <= rangeRadius) {
 						int nx = caster.gridX + dx;
 						int ny = caster.gridY + dy;
 						if (nx >= 0 && nx < mapWidth && ny >= 0 && ny < mapHeight)

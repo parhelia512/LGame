@@ -2531,15 +2531,23 @@ public final class Pixmap extends PixmapComposite implements Canvas.ColorPixel, 
 		}
 		int w = width - arcWidth;
 		int h = height - arcHeight;
-		if (w > 0 && h > 0) {
-			fillRect(x + arcWidth / 2, y, w, height);
-			fillRect(x, y + arcHeight / 2 - 1, arcWidth / 2, h);
-			fillRect(x + width - arcWidth / 2, y + arcHeight / 2 - 1, arcWidth / 2, h);
+		int halfW = arcWidth / 2;
+		int halfH = arcHeight / 2;
+		if (w > 0 && height > 0) {
+			fillRect(x + halfW, y, w, height);
 		}
-		fillArc(x + 1, y, arcWidth - 1, arcHeight - 1, 90, 90);
-		fillArc(x + width - arcWidth - 1, y, arcWidth - 1, arcHeight - 1, 0, 90);
-		fillArc(x + 1, y + height + -arcHeight, arcWidth - 1, arcHeight - 1, 180, 90);
-		fillArc(x + width - arcWidth - 1, y + height + -arcHeight, arcWidth - 1, arcHeight - 1, 270, 90);
+		if (w > 0) {
+			fillRect(x + halfW, y, w, halfH);
+			fillRect(x + halfW, y + height - halfH, w, halfH);
+		}
+		if (h > 0) {
+			fillRect(x, y + halfW, halfW, h);
+			fillRect(x + width - halfW, y + arcHeight, halfW, h);
+		}
+		fillArc(x + 1, y, arcWidth - 1, arcHeight - 1, 180, 270);
+		fillArc(x + width - arcWidth - 1, y, arcWidth - 1, arcHeight - 1, 270, 360);
+		fillArc(x + 1, y + height + -arcHeight, arcWidth - 1, arcHeight - 1, 0, 180);
+		fillArc(x + width - arcWidth - 1, y + height + -arcHeight, arcWidth - 1, arcHeight - 1, 0, 90);
 		return this;
 	}
 

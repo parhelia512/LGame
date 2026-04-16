@@ -70,6 +70,11 @@ public class BulletEntity extends Entity {
 		public void lifeover(Bullet bullet);
 
 		public void easeover(Bullet bullet);
+
+		void onHit(Bullet bullet, CollisionObject target);
+
+		void onBounce(Bullet bullet, CollisionObject wall);
+
 	}
 
 	public static float getBallisticRange(float speed, float gravity, float iheight) {
@@ -110,6 +115,8 @@ public class BulletEntity extends Entity {
 	private RangeF _limitRangeY;
 
 	private TArray<Bullet> bullets;
+
+	private final TArray<Bullet> _bulletPool = new TArray<Bullet>();
 
 	private LTextureFree textureFree;
 
@@ -255,6 +262,18 @@ public class BulletEntity extends Entity {
 		return _collisionWorld.getCollisionManager();
 	}
 
+	private Bullet obtainBullet(EasingMode easingMode, Animation ani, float x, float y, int dir, int initSpeed,
+			float duration) {
+		Bullet bullet;
+		if (_bulletPool.size > 0) {
+			bullet = _bulletPool.pop();
+			bullet.resetTo(easingMode, ani, x, y, dir, initSpeed, duration);
+		} else {
+			bullet = new Bullet(easingMode, ani, x, y, dir, initSpeed, duration);
+		}
+		return bullet;
+	}
+
 	/**
 	 * 在指定位置同时添加一组子弹,自动成圆形扩散发射(弹幕效果)
 	 * 
@@ -276,7 +295,7 @@ public class BulletEntity extends Entity {
 		for (int i = 0; i < MathUtils.DEG_FULL; i += count) {
 			float newX = startX + MathUtils.cos(MathUtils.toRadians(i + space)) * dot;
 			float newY = startY + MathUtils.sin(MathUtils.toRadians(i + space)) * dot;
-			Bullet bullet = new Bullet(easing, ani, startX, startY);
+			Bullet bullet = obtainBullet(easing, ani, startX, startY, 0, Bullet.INIT_MOVE_SPEED, Bullet.INIT_DURATION);
 			if (w != -1f && h != -1f) {
 				bullet.setSize(w, h);
 			}
@@ -441,13 +460,15 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addUpDownBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet upBullet = new Bullet(easing, ani, startX, startY, Config.TUP);
+		Bullet upBullet = obtainBullet(easing, ani, startX, startY, Config.TUP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			upBullet.setSize(w, h);
 		}
 		addBullet(upBullet);
 		result.add(upBullet);
-		Bullet downBullet = new Bullet(easing, ani, startX, startY, Config.TDOWN);
+		Bullet downBullet = obtainBullet(easing, ani, startX, startY, Config.TDOWN, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			downBullet.setSize(w, h);
 		}
@@ -464,8 +485,8 @@ public class BulletEntity extends Entity {
 	 * @param startY
 	 * @return
 	 */
-	public TArray<Bullet> addCorssBullets(String path, float startX, float startY) {
-		return addCorssBullets(path, startX, startY, -1f, -1f);
+	public TArray<Bullet> addCrossBullets(String path, float startX, float startY) {
+		return addCrossBullets(path, startX, startY, -1f, -1f);
 	}
 
 	/**
@@ -478,8 +499,8 @@ public class BulletEntity extends Entity {
 	 * @param h
 	 * @return
 	 */
-	public TArray<Bullet> addCorssBullets(String path, float startX, float startY, float w, float h) {
-		return addCorssBullets(easingMode, LTextures.loadTexture(path), startX, startY, w, h);
+	public TArray<Bullet> addCrossBullets(String path, float startX, float startY, float w, float h) {
+		return addCrossBullets(easingMode, LTextures.loadTexture(path), startX, startY, w, h);
 	}
 
 	/**
@@ -493,9 +514,9 @@ public class BulletEntity extends Entity {
 	 * @param h
 	 * @return
 	 */
-	public TArray<Bullet> addCorssBullets(EasingMode easing, LTexture tex, float startX, float startY, float w,
+	public TArray<Bullet> addCrossBullets(EasingMode easing, LTexture tex, float startX, float startY, float w,
 			float h) {
-		return addCorssBullets(easing, Animation.getDefaultAnimation(tex), startX, startY, w, h);
+		return addCrossBullets(easing, Animation.getDefaultAnimation(tex), startX, startY, w, h);
 	}
 
 	/**
@@ -509,28 +530,32 @@ public class BulletEntity extends Entity {
 	 * @param h
 	 * @return
 	 */
-	public TArray<Bullet> addCorssBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
+	public TArray<Bullet> addCrossBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet upBullet = new Bullet(easing, ani, startX, startY, Config.TUP);
+		Bullet upBullet = obtainBullet(easing, ani, startX, startY, Config.TUP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			upBullet.setSize(w, h);
 		}
 		addBullet(upBullet);
 		result.add(upBullet);
-		Bullet downBullet = new Bullet(easing, ani, startX, startY, Config.TDOWN);
+		Bullet downBullet = obtainBullet(easing, ani, startX, startY, Config.TDOWN, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			downBullet.setSize(w, h);
 		}
 		addBullet(downBullet);
 		result.add(downBullet);
-		Bullet leftBullet = new Bullet(easing, ani, startX, startY, Config.TLEFT);
+		Bullet leftBullet = obtainBullet(easing, ani, startX, startY, Config.TLEFT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			leftBullet.setSize(w, h);
 		}
 		addBullet(leftBullet);
 		result.add(leftBullet);
-		Bullet rightBullet = new Bullet(easing, ani, startX, startY, Config.TRIGHT);
+		Bullet rightBullet = obtainBullet(easing, ani, startX, startY, Config.TRIGHT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			rightBullet.setSize(w, h);
 		}
@@ -593,25 +618,29 @@ public class BulletEntity extends Entity {
 	 */
 	public TArray<Bullet> addXBullets(EasingMode easing, Animation ani, float startX, float startY, float w, float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet upBullet = new Bullet(easing, ani, startX, startY, Config.UP);
+		Bullet upBullet = obtainBullet(easing, ani, startX, startY, Config.UP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			upBullet.setSize(w, h);
 		}
 		addBullet(upBullet);
 		result.add(upBullet);
-		Bullet downBullet = new Bullet(easing, ani, startX, startY, Config.DOWN);
+		Bullet downBullet = obtainBullet(easing, ani, startX, startY, Config.DOWN, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			downBullet.setSize(w, h);
 		}
 		addBullet(downBullet);
 		result.add(downBullet);
-		Bullet leftBullet = new Bullet(easing, ani, startX, startY, Config.LEFT);
+		Bullet leftBullet = obtainBullet(easing, ani, startX, startY, Config.LEFT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			leftBullet.setSize(w, h);
 		}
 		addBullet(leftBullet);
 		result.add(leftBullet);
-		Bullet rightBullet = new Bullet(easing, ani, startX, startY, Config.RIGHT);
+		Bullet rightBullet = obtainBullet(easing, ani, startX, startY, Config.RIGHT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			rightBullet.setSize(w, h);
 		}
@@ -676,13 +705,15 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addBevelUpDownBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet upBullet = new Bullet(easing, ani, startX, startY, Config.UP);
+		Bullet upBullet = obtainBullet(easing, ani, startX, startY, Config.UP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			upBullet.setSize(w, h);
 		}
 		addBullet(upBullet);
 		result.add(upBullet);
-		Bullet downBullet = new Bullet(easing, ani, startX, startY, Config.DOWN);
+		Bullet downBullet = obtainBullet(easing, ani, startX, startY, Config.DOWN, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			downBullet.setSize(w, h);
 		}
@@ -747,13 +778,15 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addBevelLeftRightBullets(EasingMode easing, Animation ani, float startX, float startY,
 			float w, float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet leftBullet = new Bullet(easing, ani, startX, startY, Config.LEFT);
+		Bullet leftBullet = obtainBullet(easing, ani, startX, startY, Config.LEFT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			leftBullet.setSize(w, h);
 		}
 		addBullet(leftBullet);
 		result.add(leftBullet);
-		Bullet rightBullet = new Bullet(easing, ani, startX, startY, Config.RIGHT);
+		Bullet rightBullet = obtainBullet(easing, ani, startX, startY, Config.RIGHT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			rightBullet.setSize(w, h);
 		}
@@ -818,13 +851,15 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addLeftRightBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet leftBullet = new Bullet(easing, ani, startX, startY, Config.TLEFT);
+		Bullet leftBullet = obtainBullet(easing, ani, startX, startY, Config.TLEFT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			leftBullet.setSize(w, h);
 		}
 		addBullet(leftBullet);
 		result.add(leftBullet);
-		Bullet rightBullet = new Bullet(easing, ani, startX, startY, Config.TRIGHT);
+		Bullet rightBullet = obtainBullet(easing, ani, startX, startY, Config.TRIGHT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			rightBullet.setSize(w, h);
 		}
@@ -889,19 +924,22 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addThreeDownBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet downBullet = new Bullet(easing, ani, startX, startY, Config.TDOWN);
+		Bullet downBullet = obtainBullet(easing, ani, startX, startY, Config.TDOWN, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			downBullet.setSize(w, h);
 		}
 		addBullet(downBullet);
 		result.add(downBullet);
-		Bullet dupBullet = new Bullet(easing, ani, startX, startY, Config.DOWN);
+		Bullet dupBullet = obtainBullet(easing, ani, startX, startY, Config.DOWN, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			dupBullet.setSize(w, h);
 		}
 		addBullet(dupBullet);
 		result.add(dupBullet);
-		Bullet drightBullet = new Bullet(easing, ani, startX, startY, Config.RIGHT);
+		Bullet drightBullet = obtainBullet(easing, ani, startX, startY, Config.RIGHT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			drightBullet.setSize(w, h);
 		}
@@ -966,19 +1004,22 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addThreeUpBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet upBullet = new Bullet(easing, ani, startX, startY, Config.TUP);
+		Bullet upBullet = obtainBullet(easing, ani, startX, startY, Config.TUP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			upBullet.setSize(w, h);
 		}
 		addBullet(upBullet);
 		result.add(upBullet);
-		Bullet dupBullet = new Bullet(easing, ani, startX, startY, Config.UP);
+		Bullet dupBullet = obtainBullet(easing, ani, startX, startY, Config.UP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			dupBullet.setSize(w, h);
 		}
 		addBullet(dupBullet);
 		result.add(dupBullet);
-		Bullet leftBullet = new Bullet(easing, ani, startX, startY, Config.LEFT);
+		Bullet leftBullet = obtainBullet(easing, ani, startX, startY, Config.LEFT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			leftBullet.setSize(w, h);
 		}
@@ -1043,19 +1084,22 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addThreeLeftBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet leftBullet = new Bullet(easing, ani, startX, startY, Config.TLEFT);
+		Bullet leftBullet = obtainBullet(easing, ani, startX, startY, Config.TLEFT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			leftBullet.setSize(w, h);
 		}
 		addBullet(leftBullet);
 		result.add(leftBullet);
-		Bullet dleftBullet = new Bullet(easing, ani, startX, startY, Config.LEFT);
+		Bullet dleftBullet = obtainBullet(easing, ani, startX, startY, Config.LEFT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			dleftBullet.setSize(w, h);
 		}
 		addBullet(dleftBullet);
 		result.add(dleftBullet);
-		Bullet downBullet = new Bullet(easing, ani, startX, startY, Config.DOWN);
+		Bullet downBullet = obtainBullet(easing, ani, startX, startY, Config.DOWN, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			downBullet.setSize(w, h);
 		}
@@ -1120,19 +1164,22 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addThreeRightBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet rightBullet = new Bullet(easing, ani, startX, startY, Config.TRIGHT);
+		Bullet rightBullet = obtainBullet(easing, ani, startX, startY, Config.TRIGHT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			rightBullet.setSize(w, h);
 		}
 		addBullet(rightBullet);
 		result.add(rightBullet);
-		Bullet drightBullet = new Bullet(easing, ani, startX, startY, Config.RIGHT);
+		Bullet drightBullet = obtainBullet(easing, ani, startX, startY, Config.RIGHT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			drightBullet.setSize(w, h);
 		}
 		addBullet(drightBullet);
 		result.add(drightBullet);
-		Bullet upBullet = new Bullet(easing, ani, startX, startY, Config.UP);
+		Bullet upBullet = obtainBullet(easing, ani, startX, startY, Config.UP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			upBullet.setSize(w, h);
 		}
@@ -1197,13 +1244,15 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addTwoDownBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet dupBullet = new Bullet(easing, ani, startX, startY, Config.DOWN);
+		Bullet dupBullet = obtainBullet(easing, ani, startX, startY, Config.DOWN, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			dupBullet.setSize(w, h);
 		}
 		addBullet(dupBullet);
 		result.add(dupBullet);
-		Bullet drightBullet = new Bullet(easing, ani, startX, startY, Config.RIGHT);
+		Bullet drightBullet = obtainBullet(easing, ani, startX, startY, Config.RIGHT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			drightBullet.setSize(w, h);
 		}
@@ -1268,13 +1317,15 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addTwoUpBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet dupBullet = new Bullet(easing, ani, startX, startY, Config.UP);
+		Bullet dupBullet = obtainBullet(easing, ani, startX, startY, Config.UP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			dupBullet.setSize(w, h);
 		}
 		addBullet(dupBullet);
 		result.add(dupBullet);
-		Bullet leftBullet = new Bullet(easing, ani, startX, startY, Config.LEFT);
+		Bullet leftBullet = obtainBullet(easing, ani, startX, startY, Config.LEFT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			leftBullet.setSize(w, h);
 		}
@@ -1339,13 +1390,15 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addTwoLeftBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet dleftBullet = new Bullet(easing, ani, startX, startY, Config.LEFT);
+		Bullet dleftBullet = obtainBullet(easing, ani, startX, startY, Config.LEFT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			dleftBullet.setSize(w, h);
 		}
 		addBullet(dleftBullet);
 		result.add(dleftBullet);
-		Bullet downBullet = new Bullet(easing, ani, startX, startY, Config.DOWN);
+		Bullet downBullet = obtainBullet(easing, ani, startX, startY, Config.DOWN, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			downBullet.setSize(w, h);
 		}
@@ -1410,18 +1463,384 @@ public class BulletEntity extends Entity {
 	public TArray<Bullet> addTwoRightBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
 			float h) {
 		TArray<Bullet> result = new TArray<Bullet>();
-		Bullet drightBullet = new Bullet(easing, ani, startX, startY, Config.RIGHT);
+		Bullet drightBullet = obtainBullet(easing, ani, startX, startY, Config.RIGHT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			drightBullet.setSize(w, h);
 		}
 		addBullet(drightBullet);
 		result.add(drightBullet);
-		Bullet upBullet = new Bullet(easing, ani, startX, startY, Config.UP);
+		Bullet upBullet = obtainBullet(easing, ani, startX, startY, Config.UP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		if (w != -1f && h != -1f) {
 			upBullet.setSize(w, h);
 		}
 		addBullet(upBullet);
 		result.add(upBullet);
+		return result;
+	}
+
+	public TArray<Bullet> addRowBullets(String path, float startX, float startY, float w, float h, int n) {
+		return addRowBullets(easingMode, LTextures.loadTexture(path), startX, startY, w, h, n);
+	}
+
+	public TArray<Bullet> addRowBullets(EasingMode easing, LTexture tex, float startX, float startY, float w, float h,
+			int n) {
+		return addRowBullets(easing, Animation.getDefaultAnimation(tex), startX, startY, w, h, n);
+	}
+
+	/**
+	 * 分N排水平发射子弹
+	 * 
+	 * @param easing
+	 * @param ani
+	 * @param startX
+	 * @param startY
+	 * @param w
+	 * @param h
+	 * @param n
+	 * @return
+	 */
+	public TArray<Bullet> addRowBullets(EasingMode easing, Animation ani, float startX, float startY, float w, float h,
+			int n) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		float spacing = w + 5f;
+		for (int i = 0; i < n; i++) {
+			float x = startX + i * spacing;
+			Bullet bullet = obtainBullet(easing, ani, x, startY, Config.TUP, Bullet.INIT_MOVE_SPEED,
+					Bullet.INIT_DURATION);
+			if (w != -1f && h != -1f) {
+				bullet.setSize(w, h);
+			}
+			addBullet(bullet);
+			result.add(bullet);
+		}
+		return result;
+	}
+
+	public TArray<Bullet> addColumnBullets(String path, float startX, float startY, float w, float h, int n) {
+		return addColumnBullets(easingMode, LTextures.loadTexture(path), startX, startY, w, h, n);
+	}
+
+	public TArray<Bullet> addColumnBullets(EasingMode easing, LTexture tex, float startX, float startY, float w,
+			float h, int n) {
+		return addColumnBullets(easing, Animation.getDefaultAnimation(tex), startX, startY, w, h, n);
+	}
+
+	/**
+	 * 分N行垂直发射子弹
+	 * 
+	 * @param easing
+	 * @param ani
+	 * @param startX
+	 * @param startY
+	 * @param w
+	 * @param h
+	 * @param n
+	 * @return
+	 */
+	public TArray<Bullet> addColumnBullets(EasingMode easing, Animation ani, float startX, float startY, float w,
+			float h, int n) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		float spacing = h + 5f;
+		for (int i = 0; i < n; i++) {
+			float y = startY + i * spacing;
+			Bullet bullet = obtainBullet(easing, ani, startX, y, Config.TRIGHT, Bullet.INIT_MOVE_SPEED,
+					Bullet.INIT_DURATION);
+			if (w != -1f && h != -1f) {
+				bullet.setSize(w, h);
+			}
+			addBullet(bullet);
+			result.add(bullet);
+		}
+		return result;
+	}
+
+	public TArray<Bullet> addMBullets(String path, float startX, float startY, float w, float h) {
+		return addMBullets(easingMode, LTextures.loadTexture(path), startX, startY, w, h);
+	}
+
+	public TArray<Bullet> addMBullets(EasingMode easing, LTexture tex, float startX, float startY, float w, float h) {
+		return addMBullets(easing, Animation.getDefaultAnimation(tex), startX, startY, w, h);
+	}
+
+	public TArray<Bullet> addMBullets(EasingMode easing, Animation ani, float startX, float startY, float w, float h) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		Bullet left = obtainBullet(easing, ani, startX - 30, startY, Config.TRIGHT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
+		Bullet right = obtainBullet(easing, ani, startX + 30, startY, Config.TLEFT, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
+		Bullet mid = obtainBullet(easing, ani, startX, startY, Config.TUP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
+		Bullet[] arr = { left, right, mid };
+		for (Bullet b : arr) {
+			if (w != -1f && h != -1f) {
+				b.setSize(w, h);
+			}
+			addBullet(b);
+			result.add(b);
+		}
+		return result;
+	}
+
+	public TArray<Bullet> addZBullets(String path, float startX, float startY, float w, float h, int n) {
+		return addZBullets(easingMode, LTextures.loadTexture(path), startX, startY, w, h, n);
+	}
+
+	public TArray<Bullet> addZBullets(EasingMode easing, LTexture tex, float startX, float startY, float w, float h,
+			int n) {
+		return addZBullets(easing, Animation.getDefaultAnimation(tex), startX, startY, w, h, n);
+	}
+
+	public TArray<Bullet> addZBullets(EasingMode easing, Animation ani, float startX, float startY, float w, float h,
+			int n) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		for (int i = 0; i < n; i++) {
+			float x = startX + i * 20;
+			float y = startY + i * 10;
+			Bullet bullet = obtainBullet(easing, ani, x, y, Config.TUP, Bullet.INIT_MOVE_SPEED, Bullet.INIT_DURATION);
+			if (w != -1f && h != -1f) {
+				bullet.setSize(w, h);
+			}
+			addBullet(bullet);
+			result.add(bullet);
+		}
+		return result;
+	}
+
+	public TArray<Bullet> addABullets(String path, float startX, float startY, float w, float h) {
+		return addABullets(easingMode, LTextures.loadTexture(path), startX, startY, w, h);
+	}
+
+	public TArray<Bullet> addABullets(EasingMode easing, LTexture tex, float startX, float startY, float w, float h) {
+		return addABullets(easing, Animation.getDefaultAnimation(tex), startX, startY, w, h);
+	}
+
+	public TArray<Bullet> addABullets(EasingMode easing, Animation ani, float startX, float startY, float w, float h) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		Bullet top = obtainBullet(easing, ani, startX, startY, Config.TUP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
+		Bullet left = obtainBullet(easing, ani, startX - 20, startY + 20, Config.TUP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
+		Bullet right = obtainBullet(easing, ani, startX + 20, startY + 20, Config.TUP, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
+		Bullet[] arr = { top, left, right };
+		for (Bullet b : arr) {
+			if (w != -1f && h != -1f) {
+				b.setSize(w, h);
+			}
+			addBullet(b);
+			result.add(b);
+		}
+		return result;
+	}
+
+	public TArray<Bullet> addSpiralBullets(String path, int dir, float startX, float startY, float w, float h, int n,
+			float angleStep) {
+		return addSpiralBullets(easingMode, LTextures.loadTexture(path), dir, startX, startY, w, h, n, angleStep);
+	}
+
+	public TArray<Bullet> addSpiralBullets(EasingMode easing, LTexture tex, int dir, float startX, float startY,
+			float w, float h, int n, float angleStep) {
+		return addSpiralBullets(easing, Animation.getDefaultAnimation(tex), dir, startX, startY, w, h, n, angleStep);
+	}
+
+	public TArray<Bullet> addSpiralBullets(EasingMode easing, Animation ani, int dir, float startX, float startY,
+			float w, float h, int n, float angleStep) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		float angle = 0f;
+		for (int i = 0; i < n; i++) {
+			float dx = MathUtils.cos(angle);
+			float dy = MathUtils.sin(angle);
+			Bullet bullet = obtainBullet(easing, ani, startX, startY, 0, Bullet.INIT_MOVE_SPEED, Bullet.INIT_DURATION);
+			if (w != -1f && h != -1f) {
+				bullet.setSize(w, h);
+			}
+			bullet.fireTo(dx, dy);
+			addBullet(bullet);
+			result.add(bullet);
+			angle += angleStep;
+		}
+		return result;
+	}
+
+	public TArray<Bullet> addSpreadBullets(String path, int dir, float startX, float startY, float w, float h, int n,
+			float spreadAngle) {
+		return addSpreadBullets(easingMode, LTextures.loadTexture(path), dir, startX, startY, w, h, n, spreadAngle);
+	}
+
+	public TArray<Bullet> addSpreadBullets(EasingMode easing, LTexture tex, int dir, float startX, float startY,
+			float w, float h, int n, float spreadAngle) {
+		return addSpreadBullets(easing, Animation.getDefaultAnimation(tex), dir, startX, startY, w, h, n, spreadAngle);
+	}
+
+	public TArray<Bullet> addSpreadBullets(EasingMode easing, Animation ani, int dir, float startX, float startY,
+			float w, float h, int n, float spreadAngle) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		float baseAngle = -spreadAngle / 2f;
+		float step = spreadAngle / (n - 1);
+		for (int i = 0; i < n; i++) {
+			float angle = baseAngle + i * step;
+			float dx = MathUtils.cos(angle);
+			float dy = MathUtils.sin(angle);
+			Bullet bullet = obtainBullet(easing, ani, startX, startY, dir, Bullet.INIT_MOVE_SPEED,
+					Bullet.INIT_DURATION);
+			if (w != -1f && h != -1f) {
+				bullet.setSize(w, h);
+			}
+			bullet.fireTo(dx, dy);
+			addBullet(bullet);
+			result.add(bullet);
+		}
+		return result;
+	}
+
+	public TArray<Bullet> addOrbitBullets(String path, int dir, float startX, float startY, float w, float h, int n,
+			float radius) {
+		return addOrbitBullets(easingMode, LTextures.loadTexture(path), dir, startX, startY, w, h, n, radius);
+	}
+
+	public TArray<Bullet> addOrbitBullets(EasingMode easing, LTexture tex, int dir, float startX, float startY, float w,
+			float h, int n, float radius) {
+		return addOrbitBullets(easing, Animation.getDefaultAnimation(tex), dir, startX, startY, w, h, n, radius);
+	}
+
+	public TArray<Bullet> addOrbitBullets(EasingMode easing, Animation ani, int dir, float startX, float startY,
+			float w, float h, int n, float radius) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		for (int i = 0; i < n; i++) {
+			float angle = MathUtils.TWO_PI * i / n;
+			float x = startX + (MathUtils.cos(angle) * radius);
+			float y = startY + (MathUtils.sin(angle) * radius);
+			Bullet bullet = obtainBullet(easing, ani, x, y, dir, Bullet.INIT_MOVE_SPEED, Bullet.INIT_DURATION);
+			if (w != -1f && h != -1f) {
+				bullet.setSize(w, h);
+			}
+			addBullet(bullet);
+			result.add(bullet);
+		}
+		return result;
+	}
+
+	public TArray<Bullet> addWaveBullets(String path, int dir, float startX, float startY, float w, float h, int n,
+			float amplitude, float stepX) {
+		return addWaveBullets(easingMode, LTextures.loadTexture(path), dir, startX, startY, w, h, n, amplitude, stepX);
+	}
+
+	public TArray<Bullet> addWaveBullets(EasingMode easing, LTexture tex, int dir, float startX, float startY, float w,
+			float h, int n, float amplitude, float stepX) {
+		return addWaveBullets(easing, Animation.getDefaultAnimation(tex), dir, startX, startY, w, h, n, amplitude,
+				stepX);
+	}
+
+	public TArray<Bullet> addWaveBullets(EasingMode easing, Animation ani, int dir, float startX, float startY, float w,
+			float h, int n, float amplitude, float stepX) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		for (int i = 0; i < n; i++) {
+			float x = startX + i * stepX;
+			float y = startY + MathUtils.sin(i * 0.5f) * amplitude;
+			Bullet bullet = obtainBullet(easing, ani, x, y, dir, Bullet.INIT_MOVE_SPEED, Bullet.INIT_DURATION);
+			if (w != -1f && h != -1f) {
+				bullet.setSize(w, h);
+			}
+			addBullet(bullet);
+			result.add(bullet);
+		}
+		return result;
+	}
+
+	public TArray<Bullet> addRandomBullets(String path, int dir, float startX, float startY, float w, float h, int n) {
+		return addRandomBullets(easingMode, LTextures.loadTexture(path), dir, startX, startY, w, h, n);
+	}
+
+	public TArray<Bullet> addRandomBullets(EasingMode easing, LTexture tex, int dir, float startX, float startY,
+			float w, float h, int n) {
+		return addRandomBullets(easing, Animation.getDefaultAnimation(tex), dir, startX, startY, w, h, n);
+	}
+
+	public TArray<Bullet> addRandomBullets(EasingMode easing, Animation ani, int dir, float startX, float startY,
+			float w, float h, int n) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		for (int i = 0; i < n; i++) {
+			float angle = (MathUtils.random() * 2 * MathUtils.PI);
+			float dx = MathUtils.cos(angle);
+			float dy = MathUtils.sin(angle);
+			Bullet bullet = obtainBullet(easing, ani, startX, startY, dir, Bullet.INIT_MOVE_SPEED,
+					Bullet.INIT_DURATION);
+			if (w != -1f && h != -1f) {
+				bullet.setSize(w, h);
+			}
+			bullet.fireTo(dx, dy);
+			addBullet(bullet);
+			result.add(bullet);
+		}
+		return result;
+	}
+
+	public TArray<Bullet> addVariableSpiralBullets(String path, int dir, float startX, float startY, float w, float h,
+			int n, float angleStep, float speedStep) {
+		return addVariableSpiralBullets(easingMode, LTextures.loadTexture(path), dir, startX, startY, w, h, n,
+				angleStep, speedStep);
+	}
+
+	public TArray<Bullet> addVariableSpiralBullets(EasingMode easing, LTexture tex, int dir, float startX, float startY,
+			float w, float h, int n, float angleStep, float speedStep) {
+		return addVariableSpiralBullets(easing, Animation.getDefaultAnimation(tex), dir, startX, startY, w, h, n,
+				angleStep, speedStep);
+	}
+
+	public TArray<Bullet> addVariableSpiralBullets(EasingMode easing, Animation ani, int dir, float startX,
+			float startY, float w, float h, int n, float angleStep, float speedStep) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		float angle = 0f;
+		int speed = Bullet.INIT_MOVE_SPEED;
+		for (int i = 0; i < n; i++) {
+			float dx = MathUtils.cos(angle);
+			float dy = MathUtils.sin(angle);
+			Bullet bullet = obtainBullet(easing, ani, startX, startY, dir, speed, Bullet.INIT_DURATION);
+			if (w != -1f && h != -1f) {
+				bullet.setSize(w, h);
+			}
+			addBullet(bullet);
+			result.add(bullet);
+			bullet.fireTo(dx, dy);
+			angle += angleStep;
+			speed += speedStep;
+		}
+		return result;
+	}
+
+	public TArray<Bullet> addWaveSpreadBullets(String path, int dir, float startX, float startY, float w, float h,
+			int n, float spreadAngle, float amplitude) {
+		return addWaveSpreadBullets(easingMode, LTextures.loadTexture(path), dir, startX, startY, w, h, n, spreadAngle,
+				amplitude);
+	}
+
+	public TArray<Bullet> addWaveSpreadBullets(EasingMode easing, LTexture tex, int dir, float startX, float startY,
+			float w, float h, int n, float spreadAngle, float amplitude) {
+		return addWaveSpreadBullets(easing, Animation.getDefaultAnimation(tex), dir, startX, startY, w, h, n,
+				spreadAngle, amplitude);
+	}
+
+	public TArray<Bullet> addWaveSpreadBullets(EasingMode easing, Animation ani, int dir, float startX, float startY,
+			float w, float h, int n, float spreadAngle, float amplitude) {
+		TArray<Bullet> result = new TArray<Bullet>();
+		float baseAngle = -spreadAngle / 2f;
+		float step = spreadAngle / (n - 1);
+		for (int i = 0; i < n; i++) {
+			float angle = baseAngle + i * step;
+			float dx = MathUtils.cos(angle);
+			float dy = MathUtils.sin(angle);
+			float offsetY = MathUtils.sin(i * 0.5f) * amplitude;
+			Bullet bullet = obtainBullet(easing, ani, startX, startY + offsetY, dir, Bullet.INIT_MOVE_SPEED,
+					Bullet.INIT_DURATION);
+			if (w != -1f && h != -1f) {
+				bullet.setSize(w, h);
+			}
+			bullet.fireTo(dx, dy);
+			addBullet(bullet);
+			result.add(bullet);
+		}
 		return result;
 	}
 
@@ -1450,44 +1869,48 @@ public class BulletEntity extends Entity {
 	}
 
 	public Bullet addBullet(EasingMode easing, LTexture texture, float x, float y, int dir) {
-		Bullet bullet = new Bullet(easing, texture, x, y, dir);
+		Bullet bullet = obtainBullet(easing, Animation.getDefaultAnimation(texture), x, y, dir, Bullet.INIT_MOVE_SPEED,
+				Bullet.INIT_DURATION);
 		addBullet(bullet);
 		return bullet;
 	}
 
 	public Bullet addBullet(EasingMode easing, Animation ani, float x, float y, int dir) {
-		Bullet bullet = new Bullet(easing, ani, x, y, dir);
+		Bullet bullet = obtainBullet(easing, ani, x, y, dir, Bullet.INIT_MOVE_SPEED, Bullet.INIT_DURATION);
 		addBullet(bullet);
 		return bullet;
 	}
 
 	public Bullet addBullet(EasingMode easing, String path, float x, float y, int dir) {
-		Bullet bullet = new Bullet(easing, LSystem.loadTexture(path), x, y, dir);
+		Bullet bullet = obtainBullet(easing, Animation.getDefaultAnimation(LSystem.loadTexture(path)), x, y, dir,
+				Bullet.INIT_MOVE_SPEED, Bullet.INIT_DURATION);
 		addBullet(bullet);
 		return bullet;
 	}
 
 	public Bullet addBullet(EasingMode easing, Animation ani, float x, float y, int dir, int initSpeed,
 			float duration) {
-		Bullet bullet = new Bullet(easing, ani, x, y, dir, initSpeed, duration);
+		Bullet bullet = obtainBullet(easing, ani, x, y, dir, initSpeed, duration);
 		addBullet(bullet);
 		return bullet;
 	}
 
 	public Bullet addBullet(EasingMode easing, Animation ani, float x, float y, int dir, int initSpeed) {
-		Bullet bullet = new Bullet(easing, ani, x, y, dir, initSpeed);
+		Bullet bullet = obtainBullet(easing, ani, x, y, dir, initSpeed, Bullet.INIT_DURATION);
 		addBullet(bullet);
 		return bullet;
 	}
 
 	public Bullet addBullet(EasingMode easing, String path, float x, float y, int dir, int initSpeed) {
-		Bullet bullet = new Bullet(easing, LSystem.loadTexture(path), x, y, dir, initSpeed);
+		Bullet bullet = obtainBullet(easing, Animation.getDefaultAnimation(LSystem.loadTexture(path)), x, y, dir,
+				initSpeed, Bullet.INIT_DURATION);
 		addBullet(bullet);
 		return bullet;
 	}
 
 	public Bullet addBullet(EasingMode easing, String path, float x, float y, int dir, int initSpeed, float duration) {
-		Bullet bullet = new Bullet(easing, LSystem.loadTexture(path), x, y, dir, initSpeed, duration);
+		Bullet bullet = obtainBullet(easing, Animation.getDefaultAnimation(LSystem.loadTexture(path)), x, y, dir,
+				initSpeed, duration);
 		addBullet(bullet);
 		return bullet;
 	}
@@ -1535,6 +1958,9 @@ public class BulletEntity extends Entity {
 		bullets.remove(bullet);
 		_collisionWorld.remove(bullet);
 		_collisionWorld.getCollisionManager().removeObject(bullet);
+		if (!_bulletPool.contains(bullet)) {
+			_bulletPool.add(bullet);
+		}
 		bullet.setSuper(null);
 		bullet.onDetached();
 		if (_bulletListener != null) {
@@ -1713,49 +2139,69 @@ public class BulletEntity extends Entity {
 
 	@Override
 	protected void onUpdate(final long elapsedTime) {
-		if (_destroyed) {
+		if (_destroyed || !_running) {
 			return;
 		}
-		if (_running) {
-			for (int i = this.bullets.size - 1; i >= 0; i--) {
-				Bullet bullet = bullets.get(i);
-				if (bullet != null) {
-					bullet.update(elapsedTime);
-					if (_bulletListener != null) {
-						_bulletListener.updateable(elapsedTime, bullet);
-						bullet.checkLifeOver(_bulletListener);
-						if (bullet.isEaseCompleted()) {
-							_bulletListener.easeover(bullet);
-						}
+		for (int i = bullets.size() - 1; i >= 0; i--) {
+			Bullet bullet = bullets.get(i);
+			if (bullet == null || !bullet.isVisible()) {
+				continue;
+			}
+			bullet.update(elapsedTime);
+			if (_bulletListener != null) {
+				_bulletListener.updateable(elapsedTime, bullet);
+				bullet.checkLifeOver(_bulletListener);
+				if (bullet.isEaseCompleted()) {
+					_bulletListener.easeover(bullet);
+				}
+			}
+			fixMovePosition(bullet);
+			if (_autoRemoveOfBounds) {
+				RectBox worldRect = getCollisionBox();
+				RectBox bulletRect = bullet.getRectBox();
+				if (!worldRect.intersects(bulletRect)) {
+					bullet.freeBullet();
+					continue;
+				}
+			}
+			if (_checkCollision) {
+				Sprites sprs = _sprites;
+				ISprite[] spriteList = (sprs != null) ? sprs._sprites : null;
+				if (spriteList == null || spriteList.length == 0) {
+					continue;
+				}
+				float cx = bullet.getX() + bullet.getWidth() / 2f;
+				float cy = bullet.getY() + bullet.getHeight() / 2f;
+				float radius = MathUtils.min(bullet.getWidth(), bullet.getHeight()) / 2f;
+				boolean hasCollided = false;
+				for (int j = spriteList.length - 1; j >= 0; j--) {
+					ISprite target = spriteList[j];
+					if (target == null || target == this || !(target instanceof CollisionObject)
+							|| !((CollisionObject) target).isVisible()) {
+						continue;
 					}
-					fixMovePosition(bullet);
-					if (_autoRemoveOfBounds) {
-						RectBox worldRect = getCollisionBox();
-						RectBox bulletRect = bullet.getRectBox();
-						if (!(worldRect.contains(bulletRect) || worldRect.intersects(bulletRect))) {
-							removeWorld(bullet);
-						}
-					}
-					if (_checkCollision) {
-						final Sprites sprs = _sprites;
-						if (sprs != null) {
-							final ISprite[] list = sprs._sprites;
-							if (list != null) {
-								for (int j = list.length - 1; j >= 0; j--) {
-									final ISprite spr = list[j];
-									if (spr != null && spr != this && spr instanceof CollisionObject) {
-										CollisionObject dstObject = (CollisionObject) spr;
-										if (bullet.intersects(dstObject) || bullet.contains(dstObject)) {
-											onTriggerCollision(bullet, dstObject, _collisionActionListener);
-										}
-									}
-								}
-							}
+					CollisionObject collTarget = (CollisionObject) target;
+					RectBox targetBox = collTarget.getRectBox();
+					if (circleIntersectsRect(cx, cy, radius, targetBox)) {
+						if (!hasCollided) {
+							onTriggerCollision(bullet, collTarget, _collisionActionListener);
+							bullet.checkCollision(collTarget);
+							hasCollided = true;
+							break;
 						}
 					}
 				}
 			}
+
 		}
+	}
+
+	private boolean circleIntersectsRect(float cx, float cy, float radius, RectBox rect) {
+		float closestX = MathUtils.max(rect.x, MathUtils.min(cx, rect.x + rect.width));
+		float closestY = MathUtils.max(rect.y, MathUtils.min(cy, rect.y + rect.height));
+		float dx = cx - closestX;
+		float dy = cy - closestY;
+		return (dx * dx + dy * dy) <= (radius * radius);
 	}
 
 	@Override

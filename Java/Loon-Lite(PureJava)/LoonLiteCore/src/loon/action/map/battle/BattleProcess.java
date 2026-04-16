@@ -1247,7 +1247,7 @@ public class BattleProcess extends CoroutineProcess {
 	}
 
 	public BattleProcess setMaxRoundLimit(int maxRound) {
-		this._maxRoundLimit = Math.max(1, maxRound);
+		this._maxRoundLimit = MathUtils.max(1, maxRound);
 		return this;
 	}
 

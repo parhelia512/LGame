@@ -50,17 +50,26 @@ public class AStarFinder implements Updateable, LRelease {
 
 	public static final int ASTAR = 1;
 
-	private class ScoredPath {
+	private static class ScoredPath {
+		float score;
+		Node node;
 
-		private float score;
-
-		private TArray<Vector2f> pathList;
-
-		private ScoredPath(float score, TArray<Vector2f> pathList) {
+		ScoredPath(float score, Node node) {
 			this.score = score;
-			this.pathList = pathList;
+			this.node = node;
 		}
+	}
 
+	private static class Node {
+		Vector2f pos;
+		Node parent;
+		float score;
+
+		Node(Vector2f pos, Node parent, float score) {
+			this.pos = pos;
+			this.parent = parent;
+			this.score = score;
+		}
 	}
 
 	public final static AStarFindHeuristic ASTAR_CLOSEST = new Closest();
@@ -228,8 +237,6 @@ public class AStarFinder implements Updateable, LRelease {
 
 	private ObjectSet<Vector2f> _closedList;
 
-	private ScoredPath _spath;
-
 	private boolean _flying, _alldirMove, _closed, _running, _bevel;
 
 	private Field2D _findMap;
@@ -290,69 +297,44 @@ public class AStarFinder implements Updateable, LRelease {
 		return this;
 	}
 
-	@Override
-	public int hashCode() {
-		int result = 144;
-		result = LSystem.unite(result, _findMap);
-		result = LSystem.unite(result, _startX);
-		result = LSystem.unite(result, _startY);
-		result = LSystem.unite(result, _endX);
-		result = LSystem.unite(result, _endY);
-		result = LSystem.unite(result, _flying);
-		result = LSystem.unite(result, _bevel);
-		result = LSystem.unite(result, _alldirMove);
-		result = LSystem.unite(result, _findHeuristic);
-		return result;
-	}
-
-	@Override
-	public boolean equals(Object o) {
-		if (o == null) {
-			return false;
-		}
-		if (o instanceof AStarFinder) {
-			return this._pathFoundListener == ((AStarFinder) o)._pathFoundListener;
-		}
-		return false;
-	}
-
 	private TArray<Vector2f> calc(Field2D m, Vector2f start, Vector2f goal, boolean bevel, boolean diagonal) {
 		if (start.equals(goal)) {
-			TArray<Vector2f> v = new TArray<Vector2f>();
+			TArray<Vector2f> v = new TArray<>();
 			v.add(start);
 			return v;
 		}
-		this._goal = goal;
-		if (_openList == null) {
-			_openList = new ObjectSet<Vector2f>();
-		} else {
-			_openList.clear();
-		}
-		if (_closedList == null) {
-			_closedList = new ObjectSet<Vector2f>();
-		} else {
-			_closedList.clear();
-		}
-		if (_nextList == null) {
-			_nextList = new SortedList<ScoredPath>();
-		} else {
-			_nextList.clear();
-		}
+		_goal = goal;
+		_openList = new ObjectSet<Vector2f>();
+		_closedList = new ObjectSet<Vector2f>();
+		_nextList = new SortedList<ScoredPath>();
+		Node startNode = new Node(start, null, 0);
 		_openList.add(start);
-		if (_pathList == null) {
-			_pathList = new TArray<Vector2f>();
-		} else {
-			_pathList.clear();
-		}
-		_pathList.add(start);
-		if (_spath == null) {
-			_spath = new ScoredPath(0, _pathList);
-		} else {
-			_spath.score = 0;
-			_spath.pathList = _pathList;
-		}
-		_nextList.add(_spath);
+		_nextList.add(new ScoredPath(0, startNode));
 		return findPath(m, bevel, diagonal, _algorithm);
+	}
+
+	private TArray<Vector2f> reconstructPath(Node node) {
+		TArray<Vector2f> path = new TArray<>();
+		while (node != null) {
+			path.add(node.pos);
+			node = node.parent;
+		}
+		path.reverse();
+		return path;
+	}
+
+	private void insert(float score, Node node) {
+		int low = 0, high = _nextList.size - 1;
+		while (low <= high) {
+			int mid = (low + high) >>> 1;
+			ScoredPath spath = _nextList.get(mid);
+			if (spath.score < score) {
+				low = mid + 1;
+			} else {
+				high = mid - 1;
+			}
+		}
+		_nextList.add(low, new ScoredPath(score, node));
 	}
 
 	public AStarFinder setOverflow(int over) {
@@ -403,12 +385,13 @@ public class AStarFinder implements Updateable, LRelease {
 				break;
 			}
 			ScoredPath spath = _nextList.pop();
-			Vector2f current = spath.pathList.get(spath.pathList.size - 1);
+			Node currentNode = spath.node;
+			Vector2f current = currentNode.pos;
 			if (algorithm == ASTAR) {
 				_closedList.add(current);
 			}
 			if (current.equals(_goal)) {
-				return new TArray<Vector2f>(spath.pathList);
+				return reconstructPath(currentNode);
 			}
 			TArray<Vector2f> step = map.neighbors(current, bevel, diagonal);
 			final int size = step.size;
@@ -427,27 +410,13 @@ public class AStarFinder implements Updateable, LRelease {
 				} else {
 					_openList.add(next);
 				}
-				TArray<Vector2f> pathList = new TArray<Vector2f>(spath.pathList);
-				pathList.add(next);
-				float score = spath.score + _findHeuristic.getScore(_goal.x, _goal.y, next.x, next.y)
+				float score = currentNode.score + _findHeuristic.getScore(_goal.x, _goal.y, next.x, next.y)
 						- map.getCost(next.x(), next.y());
-				;
-				insert(score, pathList);
+				Node nextNode = new Node(next, currentNode, score);
+				insert(score, nextNode);
 			}
 		}
 		return null;
-	}
-
-	private void insert(float score, TArray<Vector2f> list) {
-		int size = _nextList.size;
-		for (int i = 0; i < size; i++) {
-			ScoredPath spath = _nextList.get(i);
-			if (spath.score >= score) {
-				_nextList.add(new ScoredPath(score, list));
-				return;
-			}
-		}
-		_nextList.add(new ScoredPath(score, list));
 	}
 
 	public int getStartX() {
@@ -472,6 +441,32 @@ public class AStarFinder implements Updateable, LRelease {
 
 	public boolean isAllDirectionMove() {
 		return _alldirMove;
+	}
+
+	@Override
+	public int hashCode() {
+		int result = 144;
+		result = LSystem.unite(result, _findMap);
+		result = LSystem.unite(result, _startX);
+		result = LSystem.unite(result, _startY);
+		result = LSystem.unite(result, _endX);
+		result = LSystem.unite(result, _endY);
+		result = LSystem.unite(result, _flying);
+		result = LSystem.unite(result, _bevel);
+		result = LSystem.unite(result, _alldirMove);
+		result = LSystem.unite(result, _findHeuristic);
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (o == null) {
+			return false;
+		}
+		if (o instanceof AStarFinder) {
+			return this._pathFoundListener == ((AStarFinder) o)._pathFoundListener;
+		}
+		return false;
 	}
 
 	@Override
@@ -503,7 +498,6 @@ public class AStarFinder implements Updateable, LRelease {
 			_closedList.clear();
 			_closedList = null;
 		}
-		_spath = null;
 		_goal = null;
 		_closed = true;
 		_running = false;

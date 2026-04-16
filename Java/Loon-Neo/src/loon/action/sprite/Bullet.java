@@ -37,6 +37,7 @@ import loon.geom.XY;
 import loon.opengl.GLEx;
 import loon.utils.Easing.EasingMode;
 import loon.utils.MathUtils;
+import loon.utils.timer.Duration;
 import loon.utils.timer.EaseTimer;
 import loon.utils.timer.LTimerContext;
 
@@ -66,23 +67,25 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	private int _direction;
 	private int _initSpeed;
 
+	private boolean _destroyOnHit;
+	private boolean _isHoming;
+
 	private final Vector2f _speed = new Vector2f();
 	private final Vector2f _waveOffset = new Vector2f();
+	private final Vector2f _baseMoveOffset = new Vector2f();
+	private final Vector2f _lastPos = new Vector2f();
 
 	private final EaseTimer _easeTimer;
-
 	private Field2D _arrayMap;
-
 	private Animation _animation;
-
 	private BulletListener _listener;
-
-	private Shape _otherShape = null;
+	private Shape _otherShape;
 
 	private boolean _dirToAngle;
 	private boolean _visible;
 	private boolean _active;
 	private boolean _autoRemoved;
+	private boolean _destroyed;
 
 	private float _width;
 	private float _height;
@@ -95,6 +98,24 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	private float _lifeCounter;
 
 	private LColor _baseColor;
+
+	private float _acceleration;
+	private float _maxSpeed;
+	private float _gravityScale;
+	private float _damping;
+	private float _alphaFadeSpeed;
+	private float _scaleFadeSpeed;
+	private float _damage;
+	private float _homingRotateSpeed;
+	private float _selfRotateSpeed;
+
+	private final Vector2f _targetPos = new Vector2f();
+
+	private int _teamLayer;
+	private int _bounceCount;
+	private int _bounceMax;
+	private int _pierceCount;
+	private int _pierceMax;
 
 	public Bullet(EasingMode easingMode, LTexture tex, float x, float y) {
 		this(easingMode, tex, x, y, 0, INIT_DURATION);
@@ -155,39 +176,159 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 
 	public Bullet(int bulletType, EasingMode easingMode, Animation ani, float x, float y, float w, float h, int dir,
 			int bulletInitSpeed, float duration) {
-		this.setLocation(x, y);
-		this.setObjectFlag(BUTTLE_DEFAULT_NAME);
-		this._easeTimer = new EaseTimer(duration, easingMode);
-		this._waveType = WaveType.None;
-		this._baseColor = LColor.white.cpy();
-		this._animation = ani;
-		this._initSpeed = bulletInitSpeed;
-		this._bulletType = bulletType;
-		this._direction = -1;
-		this._lifeTimer = this._lifeCounter = 0f;
-		this._scaleX = this._scaleY = 1f;
-		this._waveamplitude = this._wavefrequency = 1f;
-		this._scaleSpeed = 1f;
-		this._visible = true;
-		this._dirToAngle = true;
-		this._active = true;
-		this._autoRemoved = true;
-		this._width = w;
-		this._height = h;
-		this.setDirection(dir);
+		setLocation(x, y);
+		setObjectFlag(BUTTLE_DEFAULT_NAME);
+		_easeTimer = new EaseTimer(duration, easingMode);
+		_waveType = WaveType.None;
+		_baseColor = LColor.white.cpy();
+		_animation = ani;
+		_initSpeed = bulletInitSpeed;
+		_bulletType = bulletType;
+		_direction = -1;
+		_lifeTimer = _lifeCounter = 0f;
+		_scaleX = _scaleY = 1f;
+		_waveamplitude = _wavefrequency = 1f;
+		_scaleSpeed = 1f;
+		_visible = true;
+		_dirToAngle = true;
+		_active = true;
+		_autoRemoved = true;
+		_width = w;
+		_height = h;
+		_destroyed = false;
+		_acceleration = 0f;
+		_maxSpeed = 9999f;
+		_gravityScale = 0f;
+		_damping = 1f;
+		_bounceCount = 0;
+		_bounceMax = 0;
+		_pierceCount = 0;
+		_pierceMax = 0;
+		_alphaFadeSpeed = 0f;
+		_scaleFadeSpeed = 0f;
+		_teamLayer = 0;
+		_damage = 1f;
+		_destroyOnHit = true;
+		_selfRotateSpeed = 0f;
+		_isHoming = false;
+		_homingRotateSpeed = 90f;
+		_lastPos.set(x, y);
+		setDirection(dir);
+	}
+
+	public Bullet setAcceleration(float acc) {
+		_acceleration = acc;
+		return this;
+	}
+
+	public Bullet setMaxSpeed(float max) {
+		_maxSpeed = max;
+		return this;
+	}
+
+	public Bullet setGravity(float g) {
+		_gravityScale = g;
+		return this;
+	}
+
+	public Bullet setDamping(float d) {
+		_damping = d;
+		return this;
+	}
+
+	public Bullet setBounceMax(int max) {
+		_bounceMax = max;
+		return this;
+	}
+
+	public Bullet setPierceMax(int max) {
+		_pierceMax = max;
+		return this;
+	}
+
+	public Bullet setAlphaFade(float fade) {
+		_alphaFadeSpeed = fade;
+		return this;
+	}
+
+	public Bullet setScaleFade(float fade) {
+		_scaleFadeSpeed = fade;
+		return this;
+	}
+
+	public Bullet setTeamLayer(int layer) {
+		_teamLayer = layer;
+		return this;
+	}
+
+	public Bullet setDamage(float dmg) {
+		_damage = dmg;
+		return this;
+	}
+
+	public Bullet setDestroyOnHit(boolean b) {
+		_destroyOnHit = b;
+		return this;
+	}
+
+	public Bullet setSelfRotateSpeed(float s) {
+		_selfRotateSpeed = s;
+		return this;
+	}
+
+	public float getSelfRotateSpeed() {
+		return _selfRotateSpeed;
+	}
+
+	public float getDamage() {
+		return _damage;
+	}
+
+	public int getTeamLayer() {
+		return _teamLayer;
+	}
+
+	public Bullet setHoming(boolean homing) {
+		_isHoming = homing;
+		return this;
+	}
+
+	public Bullet setHomingTarget(Vector2f target) {
+		_targetPos.set(target);
+		_isHoming = true;
+		return this;
+	}
+
+	public void checkCollision(CollisionObject other) {
+		if (_destroyed || other == null || !other.isVisible()) {
+			return;
+		}
+		if (isCollision(other)) {
+			if (_listener != null) {
+				_listener.onHit(this, other);
+			}
+			if (_pierceCount < _pierceMax) {
+				_pierceCount++;
+			} else {
+				if (_destroyOnHit) {
+					freeBullet();
+				}
+			}
+			if (_bounceCount < _bounceMax) {
+				_speed.reflectSelf(Vector2f.AXIS_X());
+				_bounceCount++;
+				if (_listener != null) {
+					_listener.onBounce(this, other);
+				}
+			}
+		}
 	}
 
 	public Bullet randDirection() {
-		int randXDirection = MathUtils.random(0, 1);
-		if (randXDirection == 0) {
-			randXDirection--;
-		}
-		setSpeedX(randXDirection * _initSpeed);
-		int randYDirection = MathUtils.random(0, 1);
-		if (randYDirection == 0) {
-			randYDirection--;
-		}
-		setSpeedY(randYDirection * _initSpeed);
+		int rx = MathUtils.random(0, 1) * 2 - 1;
+		int ry = MathUtils.random(0, 1) * 2 - 1;
+		setSpeedX(rx * _initSpeed);
+		setSpeedY(ry * _initSpeed);
 		return this;
 	}
 
@@ -197,113 +338,95 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	}
 
 	public Bullet reflectLeft() {
-		_speed.x = MathUtils.abs(_speed.x);
-		_speed.x++;
-		if (_speed.y > 0) {
-			_speed.y++;
-		} else {
-			_speed.y--;
-		}
-		setSpeedX(-_speed.x);
-		setSpeedY(_speed.y);
+		_speed.x = -MathUtils.abs(_speed.x + 1);
+		_speed.y += _speed.y > 0 ? 1 : -1;
 		return this;
 	}
 
 	public Bullet reflectRight() {
-		_speed.x = MathUtils.abs(_speed.x);
-		_speed.x++;
-		if (_speed.y > 0) {
-			_speed.y++;
-		} else {
-			_speed.y--;
-		}
-		setSpeedX(_speed.x);
-		setSpeedY(_speed.y);
+		_speed.x = MathUtils.abs(_speed.x + 1);
+		_speed.y += _speed.y > 0 ? 1 : -1;
 		return this;
 	}
 
 	public WaveType getWaveType() {
-		return this._waveType;
+		return _waveType;
 	}
 
 	public Bullet setWaveType(WaveType w) {
-		if (w == null) {
-			this._waveType = WaveType.None;
-		} else {
-			this._waveType = w;
-		}
+		_waveType = w == null ? WaveType.None : w;
 		return this;
 	}
 
 	public Bullet setWaveAmplitude(float a) {
-		this._waveamplitude = a;
+		_waveamplitude = a;
 		return this;
 	}
 
 	public float getWaveAmplitude() {
-		return this._waveamplitude;
+		return _waveamplitude;
 	}
 
 	public Bullet setWaveFrequency(float f) {
-		this._wavefrequency = f;
+		_wavefrequency = f;
 		return this;
 	}
 
 	public float getWaveFrequency() {
-		return this._wavefrequency;
+		return _wavefrequency;
 	}
 
 	public EaseTimer getEaseTimer() {
-		return this._easeTimer;
+		return _easeTimer;
 	}
 
 	public Bullet setEaseTimerLoop(boolean l) {
-		this._easeTimer.setLoop(l);
+		_easeTimer.setLoop(l);
 		return this;
 	}
 
 	public boolean isEaseTimerLoop() {
-		return this._easeTimer.isLoop();
+		return _easeTimer.isLoop();
 	}
 
 	public boolean isEaseCompleted() {
-		return this._easeTimer.isCompleted();
+		return _easeTimer.isCompleted();
 	}
 
 	public boolean isAutoRemoved() {
-		return this._autoRemoved;
+		return _autoRemoved;
 	}
 
 	public Bullet setAutoRemoved(boolean a) {
-		this._autoRemoved = a;
+		_autoRemoved = a;
 		return this;
 	}
 
 	public Bullet setListener(BulletListener l) {
-		this._listener = l;
+		_listener = l;
 		return this;
 	}
 
 	public BulletListener getListener() {
-		return this._listener;
+		return _listener;
 	}
 
 	public Bullet setDuration(float d) {
-		this._easeTimer.setDuration(d);
+		_easeTimer.setDuration(d);
 		return this;
 	}
 
 	public float getLifeTimer() {
-		return this._lifeTimer;
+		return _lifeTimer;
 	}
 
 	public Bullet setLifeTimer(float f) {
-		this._lifeTimer = f;
+		_lifeTimer = f;
 		return this;
 	}
 
 	public Bullet clearSpeed() {
-		this._speed.setEmpty();
+		_speed.setZero();
 		return this;
 	}
 
@@ -317,13 +440,13 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 		}
 		onDrawable(g, offsetX, offsetY);
 		if (_animation != null) {
-			LTexture texture = _animation.getSpriteImage();
-			float tmp = _baseColor.a;
-			if (texture != null) {
-				g.draw(texture, getX() + offsetX, getY() + offsetY, getWidth(), getHeight(),
+			LTexture tex = _animation.getSpriteImage();
+			float a = _baseColor.a;
+			if (tex != null) {
+				g.draw(tex, getX() + offsetX, getY() + offsetY, getWidth(), getHeight(),
 						_baseColor.setAlpha(_objectAlpha), _objectRotation);
 			}
-			_baseColor.a = tmp;
+			_baseColor.a = a;
 		}
 	}
 
@@ -332,20 +455,83 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 		if (_destroyed) {
 			return;
 		}
-		if ((_speed.getX() == 0) && (_speed.getY() == 0)) {
-			this._active = false;
-		}
+		float delta = Duration.toS(elapsedTime);
 		if (_active) {
 			onUpdateable(elapsedTime);
-			_animation.update(elapsedTime);
+			if (_animation != null) {
+				_animation.update(elapsedTime);
+			}
 			_easeTimer.update(elapsedTime);
+			applyAcceleration(delta);
+			applyGravity(delta);
+			updateHoming(delta);
+			applyFadeEffect(delta);
+			_objectRotation += _selfRotateSpeed * delta;
 			if (!checkLifeOver(_listener)) {
-				final float v = LSystem.getScaleFPS();
-				Vector2f speedOffset = getWaveSpeedOffset(_easeTimer);
-				setLocation(getX() + speedOffset.x * v, getY() + speedOffset.y * v);
+				float v = LSystem.getScaleFPS();
+				Vector2f offset = getWaveSpeedOffset(_easeTimer);
+				float newX = getX() + (_speed.x + offset.x) * v;
+				float newY = getY() + (_speed.y + offset.y) * v;
+				setLocation(newX, newY);
 			}
 			if (_listener != null && _easeTimer.isCompleted()) {
 				_listener.easeover(this);
+			}
+		}
+		_lastPos.set(getLocation());
+	}
+
+	public Bullet setHomingRotateSpeed(float speed) {
+		_homingRotateSpeed = speed;
+		return this;
+	}
+
+	private void updateHoming(float deltaTime) {
+		if (!_isHoming || _speed.isZero()) {
+			return;
+		}
+		float targetAngle = MathUtils.atan2(_targetPos.y - getY(), _targetPos.x - getX());
+		float currentAngle = MathUtils.atan2(_speed.y, _speed.x);
+		float diff = targetAngle - currentAngle;
+		diff = MathUtils.atan2(MathUtils.sin(diff), MathUtils.cos(diff));
+		float maxStep = _homingRotateSpeed * deltaTime;
+		diff = MathUtils.clamp(diff, -maxStep, maxStep);
+		float newAngle = currentAngle + diff;
+		float len = _speed.length();
+		_speed.x = MathUtils.cos(newAngle) * len;
+		_speed.y = MathUtils.sin(newAngle) * len;
+	}
+
+	private void applyAcceleration(float deltaTime) {
+		if (_acceleration != 0) {
+			_speed.mulSelf(1 + _acceleration * deltaTime);
+		}
+		if (_damping < 1) {
+			_speed.mulSelf(_damping);
+		}
+		if (_speed.length() > _maxSpeed) {
+			_speed.norSelf().mulSelf(_maxSpeed);
+		}
+	}
+
+	private void applyGravity(float deltaTime) {
+		if (_gravityScale != 0) {
+			_speed.y += _gravityScale * deltaTime;
+		}
+	}
+
+	private void applyFadeEffect(float deltaTime) {
+		if (_alphaFadeSpeed != 0) {
+			_baseColor.a = MathUtils.max(0, _baseColor.a - _alphaFadeSpeed * deltaTime);
+			if (_baseColor.a <= 0) {
+				freeBullet();
+			}
+		}
+		if (_scaleFadeSpeed != 0) {
+			_scaleX = MathUtils.max(0, _scaleX - _scaleFadeSpeed * deltaTime);
+			_scaleY = MathUtils.max(0, _scaleY - _scaleFadeSpeed * deltaTime);
+			if (_scaleX <= 0 && _scaleY <= 0) {
+				freeBullet();
 			}
 		}
 	}
@@ -356,21 +542,16 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	 * @param l
 	 */
 	protected boolean checkLifeOver(BulletListener l) {
-		if (_lifeTimer > 0f) {
-			if (_lifeCounter >= _lifeTimer) {
-				if (l != null) {
-					l.lifeover(this);
-				}
-				if (_autoRemoved) {
-					BulletEntity bm = getSuper();
-					if (bm != null) {
-						bm.removeBullet(this);
-					}
-				}
-				_lifeCounter = 0f;
-				return true;
+		if (_lifeTimer <= 0) {
+			return false;
+		}
+		_lifeCounter += _easeTimer.getDelta();
+		if (_lifeCounter >= _lifeTimer) {
+			if (l != null) {
+				l.lifeover(this);
 			}
-			_lifeCounter += _easeTimer.getDelta();
+			freeBullet();
+			return true;
 		}
 		return false;
 	}
@@ -383,26 +564,34 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	 */
 	protected Vector2f getWaveSpeedOffset(EaseTimer ease) {
 		float delta = _easeTimer.getProgress();
-		float angle = 0f;
+		_baseMoveOffset.set(_speed.x * delta, _speed.y * delta);
+		float angle = 0;
+
+		float dirAngle = MathUtils.atan2(_speed.y, _speed.x);
+
 		switch (_waveType) {
 		case Sin:
 			angle = _waveamplitude * MathUtils.sin(delta * MathUtils.TWO_PI * _wavefrequency);
-			_waveOffset.set(_speed.getX() * MathUtils.cos(angle), _speed.getY() * MathUtils.sin(angle));
+			_waveOffset.set(_baseMoveOffset.x + MathUtils.cos(dirAngle + MathUtils.HALF_PI) * angle,
+					_baseMoveOffset.y + MathUtils.sin(dirAngle + MathUtils.HALF_PI) * angle);
 			break;
 		case Cos:
 			angle = _waveamplitude * MathUtils.cos(delta * MathUtils.TWO_PI * _wavefrequency);
-			_waveOffset.set(_speed.getX() * MathUtils.cos(angle), _speed.getY() * MathUtils.sin(angle));
+			_waveOffset.set(_baseMoveOffset.x + MathUtils.cos(dirAngle + MathUtils.HALF_PI) * angle,
+					_baseMoveOffset.y + MathUtils.sin(dirAngle + MathUtils.HALF_PI) * angle);
 			break;
 		case Sin_Rotate:
 			angle = MathUtils.waveSin(_wavefrequency, _waveamplitude, ease.getDelta()) * delta;
-			_waveOffset.set(_speed.getX() * MathUtils.cos(angle), _speed.getY() * MathUtils.sin(angle));
+			_waveOffset.set(_baseMoveOffset.x * MathUtils.cos(angle) - _baseMoveOffset.y * MathUtils.sin(angle),
+					_baseMoveOffset.x * MathUtils.sin(angle) + _baseMoveOffset.y * MathUtils.cos(angle));
 			break;
 		case Cos_Rotate:
 			angle = MathUtils.waveCos(_wavefrequency, _waveamplitude, ease.getDelta()) * delta;
-			_waveOffset.set(_speed.getX() * MathUtils.cos(angle), _speed.getY() * MathUtils.sin(angle));
+			_waveOffset.set(_baseMoveOffset.x * MathUtils.cos(angle) - _baseMoveOffset.y * MathUtils.sin(angle),
+					_baseMoveOffset.x * MathUtils.sin(angle) + _baseMoveOffset.y * MathUtils.cos(angle));
 			break;
 		default:
-			_waveOffset.set(_speed.getX() * delta, _speed.getY() * delta);
+			_waveOffset.set(_baseMoveOffset);
 			break;
 		}
 		return _waveOffset;
@@ -413,20 +602,20 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	}
 
 	public float getScaleSpeed() {
-		return this._scaleSpeed;
+		return _scaleSpeed;
 	}
 
 	public Bullet setScaleSpeed(float s) {
-		if (s == this._scaleSpeed) {
+		if (s <= 0 || s == _scaleSpeed) {
 			return this;
 		}
-		this._scaleSpeed = s;
-		this._speed.mulSelf(s);
+		_speed.mulSelf(s / _scaleSpeed);
+		_scaleSpeed = s;
 		return this;
 	}
 
 	public Vector2f getWaveOffset() {
-		return this._waveOffset;
+		return _waveOffset.cpy();
 	}
 
 	protected void onAttached() {
@@ -442,9 +631,8 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	}
 
 	protected void onDrawable(GLEx g, float offsetX, float offsetY) {
-		if (_listener != null) {
+		if (_listener != null)
 			_listener.drawable(g, this);
-		}
 	}
 
 	protected void onUpdateable(long elapsedTime) {
@@ -462,7 +650,7 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	}
 
 	public Bullet setDirToAngle(boolean dta) {
-		this._dirToAngle = dta;
+		_dirToAngle = dta;
 		return this;
 	}
 
@@ -471,105 +659,109 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	}
 
 	public Bullet setSpeedX(float x) {
-		_speed.setX(x);
+		_speed.x = x;
 		return this;
 	}
 
 	public Bullet setSpeedY(float y) {
-		_speed.setX(y);
+		_speed.y = y;
 		return this;
 	}
 
 	public Bullet setInitSpeed(int s) {
-		if (this._initSpeed != s) {
-			this._initSpeed = s;
-			Field2D.getDirectionToPoint(this._direction, this._initSpeed, this._speed);
+		if (s > 0 && _initSpeed != s) {
+			_initSpeed = s;
+			Field2D.getDirectionToPoint(_direction, _initSpeed, _speed);
 		}
 		return this;
 	}
 
 	public int getInitSpeed() {
-		return this._initSpeed;
+		return _initSpeed;
 	}
 
 	public Bullet fireTo(ISprite spr) {
-		return fireTo(spr, 0f, 0f);
+		return fireTo(spr, 0, 0);
 	}
 
-	public Bullet fireTo(ISprite spr, float offsetX, float offsetY) {
+	public Bullet fireTo(ISprite spr, float ox, float oy) {
 		if (spr == null) {
 			return this;
 		}
-		return setMoveTargetToRotation(
-				Vector2f.at(spr.getX() + spr.getWidth() / 2f + offsetX, spr.getY() + spr.getHeight() / 2f + offsetY));
+		return setMoveTargetToRotation(spr.getX() + spr.getWidth() / 2 + ox, spr.getY() + spr.getHeight() / 2 + oy);
 	}
 
 	public Bullet fireTo(ActionBind act) {
-		return fireTo(act, 0f, 0f);
+		return fireTo(act, 0, 0);
 	}
 
-	public Bullet fireTo(ActionBind act, float offsetX, float offsetY) {
+	public Bullet fireTo(ActionBind act, float ox, float oy) {
 		if (act == null) {
 			return this;
 		}
-		return setMoveTargetToRotation(
-				Vector2f.at(act.getX() + act.getWidth() / 2f + offsetX, act.getY() + act.getHeight() / 2f + offsetY));
+		return setMoveTargetToRotation(act.getX() + act.getWidth() / 2 + ox, act.getY() + act.getHeight() / 2 + oy);
 	}
 
 	public Bullet fireTo(XY pos) {
 		if (pos == null) {
 			return this;
 		}
-		return setMoveTargetToRotation(Vector2f.at(pos));
+		return setMoveTargetToRotation(pos.getX(), pos.getY());
 	}
 
-	public Bullet fireTo(float dstX, float dstY) {
-		return setMoveTargetToRotation(dstX, dstY);
+	public Bullet fireTo(float x, float y) {
+		return setMoveTargetToRotation(x, y);
 	}
 
-	public Bullet setMoveTargetToRotation(float dstX, float dstY) {
-		return setMoveTargetToRotation(Vector2f.at(dstX, dstY));
+	public Bullet setMoveTargetToRotation(float tx, float ty) {
+		float dx = tx - getX();
+		float dy = ty - getY();
+		float len = MathUtils.sqrt(dx * dx + dy * dy);
+		if (len > 0) {
+			_speed.x = dx / len * _initSpeed;
+			_speed.y = dy / len * _initSpeed;
+		}
+		if (_dirToAngle) {
+			setRotation(MathUtils.atan2(dy, dx) * MathUtils.RAD_TO_DEG);
+		}
+		_direction = Field2D.getDirection(getLocation(), Vector2f.at(tx, ty));
+		return this;
 	}
 
 	public Bullet setMoveTargetToRotation(Vector2f target) {
 		if (target == null) {
 			return this;
 		}
-		float rot = Field2D.rotation(getLocation(), target);
-		if (_dirToAngle) {
-			this.setRotation(rot);
-		}
-		this._direction = Field2D.getDirection(getLocation(), target);
-		float dir = MathUtils.atan2(target.getY() - getY(), target.getX() - getX());
-		float sx = (MathUtils.cos(dir) * this._initSpeed);
-		float sy = (MathUtils.sin(dir) * this._initSpeed);
-		this._speed.setLocation(sx, sy);
-		return this;
+		return setMoveTargetToRotation(target.x, target.y);
 	}
 
 	public Bullet setDirection(int dir) {
-		Field2D.getDirectionToPoint(dir, this._initSpeed, _speed);
+		Field2D.getDirectionToPoint(dir, _initSpeed, _speed);
 		if (_dirToAngle) {
-			this.setRotation(Field2D.getDirectionToAngle(dir));
+			setRotation(Field2D.getDirectionToAngle(dir));
 		}
-		this._direction = dir;
+		_direction = dir;
 		return this;
 	}
 
 	public boolean isCollision(CollisionObject o) {
-		if (o == null) {
+		if (o == null || _destroyed) {
 			return false;
 		}
-		RectBox rect = getCollisionArea();
-		return rect.intersects(o.getRectBox()) || rect.contains(o.getRectBox());
+		if (_otherShape != null) {
+			return _otherShape.intersects(o.getRectBox());
+		}
+		return getCollisionArea().intersects(o.getRectBox());
 	}
 
 	public boolean isCollision(Shape shape) {
-		if (shape == null) {
+		if (shape == null || _destroyed) {
 			return false;
 		}
-		RectBox rect = getCollisionArea();
-		return rect.intersects(shape) || rect.contains(shape);
+		if (_otherShape != null) {
+			return _otherShape.intersects(shape);
+		}
+		return getCollisionArea().intersects(shape);
 	}
 
 	public Animation getAnimation() {
@@ -582,16 +774,16 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 
 	@Override
 	public RectBox getCollisionArea() {
-		return setRect(MathUtils.getBounds(getScalePixelX(), getScalePixelY(), getWidth(), getHeight(), _objectRotation,
-				_objectRect));
+		return MathUtils.getBounds(getScalePixelX(), getScalePixelY(), getWidth(), getHeight(), _objectRotation,
+				_objectRect);
 	}
 
 	public float getScalePixelX() {
-		return ((_scaleX == 1f) ? getX() : (getX() + getWidth() / 2f));
+		return _scaleX == 1 ? getX() : getX() + getWidth() / 2;
 	}
 
 	public float getScalePixelY() {
-		return ((_scaleY == 1f) ? getY() : (getY() + getHeight() / 2f));
+		return _scaleY == 1 ? getY() : getY() + getHeight() / 2;
 	}
 
 	@Override
@@ -620,29 +812,28 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	}
 
 	@Override
-	public boolean intersects(Shape shape) {
-		return getCollisionArea().intersects(shape);
+	public boolean intersects(Shape s) {
+		return getCollisionArea().intersects(s);
 	}
 
 	@Override
-	public boolean contains(Shape shape) {
-		return getCollisionArea().contains(shape);
+	public boolean contains(Shape s) {
+		return getCollisionArea().contains(s);
 	}
 
 	@Override
-	public boolean collided(Shape shape) {
-		return getCollisionArea().collided(shape);
+	public boolean collided(Shape s) {
+		return getCollisionArea().collided(s);
 	}
 
 	@Override
 	public float getWidth() {
-		return _width > 1 ? (_width * this._scaleX) : _animation == null ? 0 : (_animation.getWidth() * this._scaleX);
+		return _width > 1 ? _width * _scaleX : (_animation == null ? 0 : _animation.getWidth() * _scaleX);
 	}
 
 	@Override
 	public float getHeight() {
-		return _height > 1 ? (_height * this._scaleY)
-				: _animation == null ? 0 : (_animation.getHeight() * this._scaleY);
+		return _height > 1 ? _height * _scaleY : (_animation == null ? 0 : _animation.getHeight() * _scaleY);
 	}
 
 	@Override
@@ -652,21 +843,23 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 
 	@Override
 	public void setVisible(boolean v) {
-		this._visible = v;
+		_visible = v;
 	}
 
 	@Override
 	public LColor getColor() {
-		return _baseColor == null ? null : _baseColor.cpy();
+		return _baseColor;
 	}
 
 	@Override
-	public void setColor(LColor newColor) {
-		this._baseColor = newColor;
+	public void setColor(LColor c) {
+		if (c != null) {
+			_baseColor = c;
+		}
 	}
 
-	public Bullet setField2D(Field2D arrayMap) {
-		this._arrayMap = arrayMap;
+	public Bullet setField2D(Field2D f) {
+		_arrayMap = f;
 		return this;
 	}
 
@@ -685,31 +878,31 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 		return _scaleY;
 	}
 
-	public Bullet setScale(float scale) {
-		setScale(scale, scale);
+	public Bullet setScale(float s) {
+		setScale(s, s);
 		return this;
 	}
 
 	@Override
-	public void setScale(float sx, float sy) {
-		this._scaleX = sx;
-		this._scaleY = sy;
+	public void setScale(float x, float y) {
+		_scaleX = x;
+		_scaleY = y;
 	}
 
 	@Override
 	public Bullet setSize(float w, float h) {
-		this._width = w;
-		this._height = h;
+		_width = w;
+		_height = h;
 		return this;
 	}
 
 	public Bullet setWidth(float w) {
-		this._width = w;
+		_width = w;
 		return this;
 	}
 
 	public Bullet setHeight(float h) {
-		this._height = h;
+		_height = h;
 		return this;
 	}
 
@@ -727,8 +920,8 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 		return _active;
 	}
 
-	public Bullet setActive(boolean active) {
-		this._active = active;
+	public Bullet setActive(boolean b) {
+		_active = b;
 		return this;
 	}
 
@@ -744,18 +937,18 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 		return _bulletType;
 	}
 
-	public Bullet setBulletType(int bulletType) {
-		this._bulletType = bulletType;
+	public Bullet setBulletType(int t) {
+		_bulletType = t;
 		return this;
 	}
 
 	public Bullet setCustomShape(Shape s) {
-		this._otherShape = s;
+		_otherShape = s;
 		return this;
 	}
 
 	public Shape getCustomShape() {
-		return this._otherShape;
+		return _otherShape;
 	}
 
 	@Override
@@ -773,6 +966,54 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 		return PlayerUtils.isActionCompleted(this);
 	}
 
+	public void resetTo(EasingMode easingMode, Animation ani, float x, float y) {
+		_destroyed = false;
+		_visible = true;
+		_active = true;
+		_autoRemoved = true;
+		_easeTimer.reset();
+		_easeTimer.setEasingMode(easingMode);
+		_animation = ani;
+		setLocation(x, y);
+		_lastPos.set(x, y);
+		clearSpeed();
+		_direction = -1;
+		_lifeCounter = 0;
+		_pierceCount = 0;
+		_bounceCount = 0;
+		_baseColor.reset();
+		_scaleX = _scaleY = 1f;
+		_objectRotation = 0;
+		_objectAlpha = 1f;
+	}
+
+	public void resetTo(EasingMode easingMode, Animation ani, float x, float y, int dir) {
+		resetTo(easingMode, ani, x, y);
+		setDirection(dir);
+	}
+
+	public void resetTo(EasingMode easingMode, Animation ani, float x, float y, int dir, int initSpeed) {
+		resetTo(easingMode, ani, x, y, dir);
+		_initSpeed = initSpeed;
+		setDirection(dir);
+	}
+
+	public void resetTo(EasingMode easingMode, Animation ani, float x, float y, int dir, int initSpeed,
+			float duration) {
+		resetTo(easingMode, ani, x, y, dir, initSpeed);
+		_easeTimer.setDuration(duration);
+	}
+
+	public void freeBullet() {
+		if (_destroyed) {
+			return;
+		}
+		if (_autoRemoved && getSuper() != null) {
+			getSuper().removeWorld(this);
+		}
+		_destroyed = true;
+	}
+
 	@Override
 	protected void _onDestroy() {
 		if (_animation != null) {
@@ -781,6 +1022,7 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 		}
 		_listener = null;
 		_visible = false;
+		_active = false;
+		_destroyed = true;
 	}
-
 }

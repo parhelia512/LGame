@@ -23,8 +23,6 @@ package loon.component;
 import loon.LSysException;
 import loon.LTexture;
 import loon.canvas.LColor;
-import loon.canvas.Pixmap;
-import loon.canvas.PixmapComposite;
 import loon.component.skin.SkinManager;
 import loon.events.Touched;
 import loon.font.IFont;
@@ -72,28 +70,6 @@ public class LSpiralMenu extends LContainer {
 		void onCollapseStart();
 
 		void onCollapseFinish();
-	}
-
-	public final static LTexture createDefaultCircleButton(LColor c, int width, int height) {
-		Pixmap pixmap = new Pixmap(width, height, true);
-		pixmap.setComposite(PixmapComposite.DST);
-		pixmap.setAlpha(0.8f);
-		pixmap.fillOval(0, 0, width, height, c);
-		pixmap.drawOval(0, 0, width, height, c.darker());
-		return pixmap.texture();
-	}
-
-	public final static LTexture createDefaultRoundButton(LColor c, int width, int height) {
-		return createDefaultRoundButton(c, width, height, 40);
-	}
-
-	public final static LTexture createDefaultRoundButton(LColor c, int width, int height, int radius) {
-		Pixmap pixmap = new Pixmap(width, height, true);
-		pixmap.setComposite(PixmapComposite.DST);
-		pixmap.setAlpha(0.8f);
-		pixmap.setColor(c);
-		pixmap.fillRoundRect(0, 0, width, height, radius);
-		return pixmap.texture();
 	}
 
 	public static class SpiralButton extends LClickButton {
@@ -246,13 +222,18 @@ public class LSpiralMenu extends LContainer {
 
 	public LSpiralMenu(final IFont font, final String text, final int btnW, final int btnH, final String[] texts, int x,
 			int y, int menuWidth, int menuHeight) {
-		this(font, text, createDefaultRoundButton(LColor.gray, btnW, btnH), btnW, btnH, texts, x, y, menuWidth,
+		this(font, text, DefUI.createDefaultButton(LColor.gray, btnW, btnH), btnW, btnH, texts, x, y, menuWidth,
 				menuHeight);
 	}
 
 	public LSpiralMenu(final IFont font, final String text, final LTexture image, final int btnW, final int btnH,
 			final String[] texts, int x, int y, int menuWidth, int menuHeight) {
 		this(font, LClickButton.make(font, text, btnW, btnH, image), texts, x, y, menuWidth, menuHeight);
+	}
+
+	public LSpiralMenu(final IFont font, final String text, final LTexture hover, final LTexture clicked,
+			final int btnW, final int btnH, final String[] texts, int x, int y, int menuWidth, int menuHeight) {
+		this(font, LClickButton.make(font, text, btnW, btnH, hover, clicked), texts, x, y, menuWidth, menuHeight);
 	}
 
 	public LSpiralMenu(IFont font, LClickButton mainBtn, final String[] texts, int x, int y, int w, int h) {
@@ -300,7 +281,13 @@ public class LSpiralMenu extends LContainer {
 					_rotationDirection);
 
 			if (_mainButton.getIdleClick() != null) {
-				btn.setTexture(_mainButton.getIdleClick());
+				btn.setIdleClick(_mainButton.getIdleClick());
+			}
+			if (_mainButton.getHoverClick() != null) {
+				btn.setHoverClick(_mainButton.getHoverClick());
+			}
+			if (_mainButton.getClickedClick() != null) {
+				btn.setClickedClick(_mainButton.getClickedClick());
 			}
 
 			btn.up(new Touched() {
@@ -315,7 +302,6 @@ public class LSpiralMenu extends LContainer {
 			add(btn);
 			_skillButtons.add(btn);
 		}
-
 	}
 
 	public void expandMenu() {

@@ -174,6 +174,8 @@ public class BattleMapObject extends Role implements LRelease {
 	/** 默认缓动函数 */
 	private static final Easing DEFAULT_EASING = Easing.TIME_LINEAR;
 
+	private final TArray<PointI> filterValidTempPath = new TArray<PointI>();
+
 	protected ObjectStateListener objectStateListener;
 
 	// 初始(当前)坐标
@@ -225,6 +227,7 @@ public class BattleMapObject extends Role implements LRelease {
 	private final Vector2f moveOffsetPixel = new Vector2f();
 	private final Vector2f gxTempResult = new Vector2f();
 	private final IsoResult isoTempResult = new IsoResult();
+	private final PointI gridTempPoint = new PointI();
 
 	// 移动模式
 	private MovementMode currentMode = MovementMode.WALK;
@@ -410,7 +413,7 @@ public class BattleMapObject extends Role implements LRelease {
 			int tx = gridX + dx;
 			int ty = gridY + dy;
 
-			if (canMoveTo(new PointI(tx, ty))) {
+			if (canMoveTo(tx, ty)) {
 				paused = false;
 				clearPath();
 				moveToGrid(tx, ty);
@@ -613,8 +616,10 @@ public class BattleMapObject extends Role implements LRelease {
 		}
 		// 过滤无效路径
 		TArray<PointI> valid = filterValidPath(path);
-		path.clear();
-		path.addAll(valid);
+		if (valid.size > 0) {
+			path.clear();
+			path.addAll(valid);
+		}
 		if (path.isEmpty()) {
 			endMovement();
 			return;
@@ -1387,6 +1392,17 @@ public class BattleMapObject extends Role implements LRelease {
 	/**
 	 * 判断是否可移动到目标瓦片
 	 * 
+	 * @param gx
+	 * @param gy
+	 * @return
+	 */
+	public boolean canMoveTo(int gx, int gy) {
+		return canMoveTo(gridTempPoint.set(gx, gy));
+	}
+
+	/**
+	 * 判断是否可移动到目标瓦片
+	 * 
 	 * @param tile
 	 * @return
 	 */
@@ -1420,9 +1436,9 @@ public class BattleMapObject extends Role implements LRelease {
 	}
 
 	private TArray<PointI> filterValidPath(TArray<PointI> paths) {
-		TArray<PointI> r = new TArray<PointI>();
+		filterValidTempPath.clear();
 		if (paths == null || paths.isEmpty()) {
-			return r;
+			return filterValidTempPath;
 		}
 		int ap = actionPoints;
 		for (PointI p : paths) {
@@ -1434,9 +1450,9 @@ public class BattleMapObject extends Role implements LRelease {
 				break;
 			}
 			ap -= c;
-			r.add(p);
+			filterValidTempPath.add(p);
 		}
-		return r;
+		return filterValidTempPath;
 	}
 
 	private int getTileCost(PointI tile) {
@@ -1826,9 +1842,9 @@ public class BattleMapObject extends Role implements LRelease {
 	public void knockBack(int fromX, int fromY, int distance) {
 		int dx = gridX - fromX;
 		int dy = gridY - fromY;
-		int tx = gridX + (dx == 0 ? 0 : dx / Math.abs(dx)) * distance;
-		int ty = gridY + (dy == 0 ? 0 : dy / Math.abs(dy)) * distance;
-		if (canMoveTo(new PointI(tx, ty))) {
+		int tx = gridX + (dx == 0 ? 0 : dx / MathUtils.abs(dx)) * distance;
+		int ty = gridY + (dy == 0 ? 0 : dy / MathUtils.abs(dy)) * distance;
+		if (canMoveTo(tx, ty)) {
 			moveToGrid(tx, ty);
 		}
 		if (objectStateListener != null) {

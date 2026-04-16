@@ -29,6 +29,7 @@ import loon.action.map.Side;
 import loon.canvas.LColor;
 import loon.geom.Vector2f;
 import loon.opengl.GLEx;
+import loon.utils.Easing;
 import loon.utils.MathUtils;
 import loon.utils.TArray;
 
@@ -44,23 +45,18 @@ import loon.utils.TArray;
 public class AfterImageEffect extends BaseAbstractEffect {
 
 	public final static int LINE = 0;
-
 	public final static int CURVE = 1;
 
 	public final class AfterObject {
 
 		float alpha = 1f;
-
 		float x = 0f;
-
 		float y = 0f;
-
 		float width = 0f;
-
 		float height = 0f;
-
+		float scale = 1f;
+		float rotation = 0f;
 		LTexture texture;
-
 		AfterObject previous;
 
 		public AfterObject() {
@@ -78,6 +74,8 @@ public class AfterImageEffect extends BaseAbstractEffect {
 			this.width = w;
 			this.height = h;
 			this.alpha = a;
+			this.scale = 1f;
+			this.rotation = 0f;
 		}
 
 		public AfterObject setTexture(LTexture t) {
@@ -103,7 +101,7 @@ public class AfterImageEffect extends BaseAbstractEffect {
 		}
 
 		public AfterObject setAlpha(float a) {
-			this.alpha = a;
+			this.alpha = MathUtils.clamp(a, 0f, 1f);
 			return this;
 		}
 
@@ -111,47 +109,59 @@ public class AfterImageEffect extends BaseAbstractEffect {
 			return this.alpha;
 		}
 
+		public AfterObject setScale(float s) {
+			this.scale = MathUtils.clamp(s, 0.1f, 2f);
+			return this;
+		}
+
+		public float getScale() {
+			return this.scale;
+		}
+
+		public AfterObject setRotation(float r) {
+			this.rotation = r;
+			return this;
+		}
+
+		public float getRotation() {
+			return this.rotation;
+		}
 	}
 
-	private final TArray<AfterImageEffect.AfterObject> _backAfters = new TArray<AfterImageEffect.AfterObject>();
-
+	private final TArray<AfterImageEffect.AfterObject> _backAfters = new TArray<>();
 	private final LColor _shadowColor = new LColor();
-
 	private final LColor _tempColor = new LColor();
-
 	private LTexture _afterTexture;
 
 	private boolean _hideFirstObject;
-
 	private boolean _makeAutoEffect;
-
 	private boolean _displayCompleted;
-
 	private boolean _moveOrbitReverse;
-
 	private boolean _inited;
-
 	private boolean _looping;
-
 	private boolean _playing;
-
 	private boolean _alphaDecreasing;
 
 	private int _moveOrbit = 0;
-
 	private int _indexNext = 0;
-
 	private int _moveDir = Config.EMPTY;
 
 	private float _orbitValue = 0f;
-
 	private float _startX, _startY, _startWidth, _startHeight;
-
 	private TArray<AfterImageEffect.AfterObject> _afterObjects;
-
 	private float _interval = 0f;
-
 	private int _count = 0;
+	// 残影缩放衰减
+	private boolean _scaleDecreasing = true;
+	// 残影旋转效果
+	private boolean _rotationEnabled = false;
+	private boolean _reversePlay = false;
+	// 缩放步长
+	private float _scaleStep = 0.05f;
+	// 旋转步长
+	private float _rotationStep = 5f;
+	// 缓动类型
+	private Easing _easeType = Easing.TIME_LINEAR;
 
 	public AfterImageEffect(String path, float startX, float startY, int count) {
 		this(Config.TRIGHT, path, startX, startY, count);
@@ -238,7 +248,7 @@ public class AfterImageEffect extends BaseAbstractEffect {
 	}
 
 	public AfterImageEffect setInterval(float i) {
-		this._interval = i;
+		this._interval = MathUtils.max(i, 0f);
 		return this;
 	}
 
@@ -247,7 +257,7 @@ public class AfterImageEffect extends BaseAbstractEffect {
 	}
 
 	public AfterImageEffect setCount(int c) {
-		this._count = c + 1;
+		this._count = MathUtils.max(c + 1, 2);
 		return this;
 	}
 
@@ -257,7 +267,7 @@ public class AfterImageEffect extends BaseAbstractEffect {
 
 	private void initAfterObjects() {
 		if (_afterObjects == null) {
-			_afterObjects = new TArray<AfterImageEffect.AfterObject>(_count);
+			_afterObjects = new TArray<>(_count);
 			_inited = false;
 		}
 	}
@@ -297,16 +307,6 @@ public class AfterImageEffect extends BaseAbstractEffect {
 		return addAfterObject(LTextures.loadTexture(path), x, y, w, h);
 	}
 
-	/**
-	 * 自定义单独残像的图片与显示位置
-	 * 
-	 * @param tex
-	 * @param x
-	 * @param y
-	 * @param w
-	 * @param h
-	 * @return
-	 */
 	public AfterImageEffect addAfterObject(LTexture tex, float x, float y, float w, float h) {
 		initAfterObjects();
 		_makeAutoEffect = false;
@@ -316,110 +316,80 @@ public class AfterImageEffect extends BaseAbstractEffect {
 		return this;
 	}
 
-	/**
-	 * 构建一组向默认方向移动的残像图
-	 * 
-	 * @param x
-	 * @param y
-	 * @param w
-	 * @param h
-	 * @return
-	 */
 	public AfterImageEffect createAfterObjects(float x, float y, float w, float h) {
 		initAfterObjects();
 		if (_afterObjects.size > 0) {
 			clearAfterObjects();
 		}
+
+		final float totalCount = _count;
+
 		for (int i = 0; i < _count; i++) {
 			final AfterObject after = new AfterObject();
 			after.width = w;
 			after.height = h;
+			float alphaProgress = getEaseProgress((float) i / totalCount);
 			if (_alphaDecreasing) {
-				after.alpha = (_count - i) * 1f / _count;
+				after.alpha = MathUtils.clamp(1f - alphaProgress, _scaleStep, 1f);
 			} else {
-				after.alpha = (float) i / _count;
+				after.alpha = MathUtils.clamp(alphaProgress, _scaleStep, 1f);
 			}
+
+			if (_scaleDecreasing) {
+				float progress = (float) i / (_count - 1);
+				float scale = 0.5f + progress * 0.5f;
+				after.setScale(scale);
+			}
+
+			if (_rotationEnabled) {
+				after.setRotation(i * _rotationStep);
+			}
+
+			float stepX = i * (w + _interval);
+			float stepY = i * (h + _interval);
+
 			switch (_moveDir) {
 			case Config.UP:
-				after.x = +(i * (w + _interval));
-				after.y = -(i * (h + _interval));
+				after.x = stepX;
+				after.y = -stepY;
 				updateOrbit(after, i, true, true);
 				break;
 			case Config.LEFT:
-				after.x = -(i * (w + _interval));
-				after.y = -(i * (h + _interval));
+				after.x = -stepX;
+				after.y = -stepY;
 				updateOrbit(after, i, false, true);
 				break;
 			default:
 			case Config.RIGHT:
-				after.x = +(i * (w + _interval));
-				after.y = +(i * (h + _interval));
+				after.x = stepX;
+				after.y = stepY;
 				updateOrbit(after, i, false, true);
 				break;
 			case Config.DOWN:
-				after.x = -(i * (w + _interval));
-				after.y = +(i * (h + _interval));
+				after.x = -stepX;
+				after.y = stepY;
 				updateOrbit(after, i, true, true);
 				break;
 			case Config.TUP:
-				after.y = -(i * (h + _interval));
+				after.y = -stepY;
 				updateOrbit(after, i, true, false);
 				break;
 			case Config.TLEFT:
-				after.x = -(i * (w + _interval));
+				after.x = -stepX;
 				updateOrbit(after, i, false, true);
 				break;
 			case Config.TRIGHT:
-				after.x = +(i * (w + _interval));
+				after.x = stepX;
 				updateOrbit(after, i, false, true);
 				break;
 			case Config.TDOWN:
-				after.y = +(i * (h + _interval));
+				after.y = stepY;
 				updateOrbit(after, i, true, false);
 				break;
 			}
 			_afterObjects.add(after);
 		}
 		return this;
-	}
-
-	public Vector2f getAutoMoveDistance() {
-		final Vector2f result = new Vector2f();
-		for (int i = 0; i < _afterObjects.size; i++) {
-			final AfterObject after = _afterObjects.get(i);
-			switch (_moveDir) {
-			case Config.UP:
-				result.x += +(i * (after.width + _interval));
-				result.y += -(i * (after.height + _interval));
-				break;
-			case Config.LEFT:
-				result.x += -(i * (after.width + _interval));
-				result.y += -(i * (after.height + _interval));
-				break;
-			default:
-			case Config.RIGHT:
-				result.x += +(i * (after.width + _interval));
-				result.y += +(i * (after.height + _interval));
-				break;
-			case Config.DOWN:
-				result.x += -(i * (after.width + _interval));
-				result.y += +(i * (after.height + _interval));
-				break;
-			case Config.TUP:
-				result.y += -(i * (after.height + _interval));
-				break;
-			case Config.TLEFT:
-				result.x += -(i * (after.width + _interval));
-				break;
-			case Config.TRIGHT:
-				result.x += +(i * (after.width + _interval));
-				break;
-			case Config.TDOWN:
-				result.y += +(i * (after.height + _interval));
-				break;
-			}
-		}
-		return result;
 	}
 
 	private void updateOrbit(AfterObject o, int idx, boolean c, boolean r) {
@@ -461,16 +431,49 @@ public class AfterImageEffect extends BaseAbstractEffect {
 		}
 	}
 
+	public Vector2f getAutoMoveDistance() {
+		final Vector2f result = new Vector2f();
+		for (int i = 0; i < _afterObjects.size; i++) {
+			final AfterObject after = _afterObjects.get(i);
+			switch (_moveDir) {
+			case Config.UP:
+				result.x += +(i * (after.width + _interval));
+				result.y += -(i * (after.height + _interval));
+				break;
+			case Config.LEFT:
+				result.x += -(i * (after.width + _interval));
+				result.y += -(i * (after.height + _interval));
+				break;
+			default:
+			case Config.RIGHT:
+				result.x += +(i * (after.width + _interval));
+				result.y += +(i * (after.height + _interval));
+				break;
+			case Config.DOWN:
+				result.x += -(i * (after.width + _interval));
+				result.y += +(i * (after.height + _interval));
+				break;
+			case Config.TUP:
+				result.y += -(i * (after.height + _interval));
+				break;
+			case Config.TLEFT:
+				result.x += -(i * (after.width + _interval));
+				break;
+			case Config.TRIGHT:
+				result.x += +(i * (after.width + _interval));
+				break;
+			case Config.TDOWN:
+				result.y += +(i * (after.height + _interval));
+				break;
+			}
+		}
+		return result;
+	}
+
 	public boolean isAlphaDecreasing() {
 		return this._alphaDecreasing;
 	}
 
-	/**
-	 * 此项为true时,alpha数值逐渐减少而非增加,也就是残像会越来越淡而非越来越清晰
-	 * 
-	 * @param d
-	 * @return
-	 */
 	public AfterImageEffect setAlphaDecreasing(boolean d) {
 		this._alphaDecreasing = d;
 		return this;
@@ -480,24 +483,28 @@ public class AfterImageEffect extends BaseAbstractEffect {
 		if (_playing) {
 			return this;
 		}
+		if (_afterTexture == null && _makeAutoEffect) {
+			return this;
+		}
 		if (!_inited && _makeAutoEffect) {
 			makeEffect();
 			_inited = true;
 		} else if (!_inited) {
 			final int size = _afterObjects.size;
+			if (size <= 0) {
+				return this;
+			}
 			if (size > _count) {
 				final float skip = (float) size / _count;
-				final TArray<AfterImageEffect.AfterObject> temp = new TArray<AfterImageEffect.AfterObject>();
+				final TArray<AfterImageEffect.AfterObject> temp = new TArray<>();
 				int counter = 0;
 				for (float i = 0; i < size; i += skip) {
 					int idx = MathUtils.iceil(i);
 					if (idx < size) {
 						final AfterObject after = _afterObjects.get(idx);
-						if (_alphaDecreasing) {
-							after.alpha = (size - idx) * 1f / size;
-						} else {
-							after.alpha = (float) counter / (_count - 1);
-						}
+						float alphaProgress = getEaseProgress((float) counter / _count);
+						after.alpha = _alphaDecreasing ? MathUtils.clamp(1f - alphaProgress, 0.05f, 1f)
+								: MathUtils.clamp(alphaProgress, 0.05f, 1f);
 						temp.add(after);
 						counter++;
 					}
@@ -508,11 +515,9 @@ public class AfterImageEffect extends BaseAbstractEffect {
 				_count = size;
 				for (int i = 0; i < size; i++) {
 					final AfterObject after = _afterObjects.get(i);
-					if (_alphaDecreasing) {
-						after.alpha = (size - i) * 1f / size;
-					} else {
-						after.alpha = (float) i / (size - 1);
-					}
+					float alphaProgress = getEaseProgress((float) i / size);
+					after.alpha = _alphaDecreasing ? MathUtils.clamp(1f - alphaProgress, 0.05f, 1f)
+							: MathUtils.clamp(alphaProgress, 0.05f, 1f);
 				}
 			}
 			_backAfters.addAll(_afterObjects);
@@ -531,41 +536,45 @@ public class AfterImageEffect extends BaseAbstractEffect {
 	}
 
 	@Override
-	public void onUpdate(long e) {
-		if (checkAutoRemove()) {
+	public void onUpdate(long elapsedTime) {
+		if (checkAutoRemove() || !_inited) {
 			return;
 		}
-		if (!_inited) {
-			return;
-		}
-		if (_timer.action(e)) {
-			if (!_displayCompleted) {
-				if (_indexNext < _count - 1) {
-					this._indexNext++;
+		if (_timer.action(elapsedTime)) {
+			if (_reversePlay) {
+				if (_indexNext > 0) {
+					_indexNext--;
 				} else {
-					this._displayCompleted = true;
+					_displayCompleted = true;
+				}
+			} else {
+				if (!_displayCompleted) {
+					_indexNext = MathUtils.min(_indexNext + 1, _count - 1);
+					if (_indexNext >= _count - 1) {
+						_displayCompleted = true;
+					}
 				}
 			}
-			if (_displayCompleted && _afterObjects.size > 1) {
-				this._afterObjects.shift();
-				this._indexNext = _afterObjects.size;
+			if (_displayCompleted && _afterObjects.size > 1 && !_reversePlay) {
+				_afterObjects.shift();
+				_indexNext = _afterObjects.size;
 			} else if (_afterObjects.size == 1) {
-				final AfterObject o = this._afterObjects.last();
+				final AfterObject o = _afterObjects.last();
 				if (o != null) {
 					o.alpha = 1f;
-					this._indexNext = 1;
+					_indexNext = 1;
 					if (!_looping) {
-						this._completed = true;
-						this._playing = false;
+						_completed = true;
+						_playing = false;
 					} else {
-						this._playing = false;
+						_playing = false;
 						if (_makeAutoEffect) {
-							this._moveDir = Side.getOppositeSide(_moveDir);
-							this._moveOrbitReverse = !_moveOrbitReverse;
-							this.setStartX(_startX + o.x);
-							this.setStartY(_startY + o.y);
+							_moveDir = Side.getOppositeSide(_moveDir);
+							_moveOrbitReverse = !_moveOrbitReverse;
+							setStartX(_startX + o.x);
+							setStartY(_startY + o.y);
 						}
-						this.restart();
+						restart();
 					}
 				}
 			}
@@ -627,39 +636,27 @@ public class AfterImageEffect extends BaseAbstractEffect {
 	}
 
 	public int getAfterObjectIndex() {
-		return MathUtils.min(_indexNext, _afterObjects.size) - 1;
+		return MathUtils.min(_indexNext, _afterObjects.size - 1);
 	}
 
 	public float getAfterObjectX() {
 		final AfterObject o = _afterObjects.get(getAfterObjectIndex());
-		if (o != null) {
-			return drawX(o.x);
-		}
-		return 0f;
+		return o != null ? drawX(o.x) : 0f;
 	}
 
 	public float getAfterObjectY() {
 		final AfterObject o = _afterObjects.get(getAfterObjectIndex());
-		if (o != null) {
-			return drawY(o.y);
-		}
-		return 0f;
+		return o != null ? drawY(o.y) : 0f;
 	}
 
 	public float getAfterObjectWidth() {
 		final AfterObject o = _afterObjects.get(getAfterObjectIndex());
-		if (o != null) {
-			return o.width;
-		}
-		return 0f;
+		return o != null ? o.width : 0f;
 	}
 
 	public float getAfterObjectHeight() {
 		final AfterObject o = _afterObjects.get(getAfterObjectIndex());
-		if (o != null) {
-			return o.height;
-		}
-		return 0f;
+		return o != null ? o.height : 0f;
 	}
 
 	public boolean containsAfterObject(float x, float y) {
@@ -754,7 +751,7 @@ public class AfterImageEffect extends BaseAbstractEffect {
 	}
 
 	public AfterImageEffect setOrbitValue(float o) {
-		this._orbitValue = o;
+		this._orbitValue = MathUtils.max(o, 0f);
 		return this;
 	}
 
@@ -781,6 +778,67 @@ public class AfterImageEffect extends BaseAbstractEffect {
 		return this;
 	}
 
+	private float getEaseProgress(float progress) {
+		progress = MathUtils.clamp(progress, 0f, 1f);
+		return _easeType.apply(progress);
+	}
+
+	public AfterImageEffect setScaleDecreasing(boolean enable) {
+		this._scaleDecreasing = enable;
+		return this;
+	}
+
+	public AfterImageEffect setScaleStep(float step) {
+		this._scaleStep = MathUtils.clamp(step, 0f, 0.2f);
+		return this;
+	}
+
+	/**
+	 * 设置是否开启旋转残影效果
+	 * 
+	 * @param enable
+	 * @return
+	 */
+	public AfterImageEffect setRotationEnabled(boolean enable) {
+		this._rotationEnabled = enable;
+		return this;
+	}
+
+	/**
+	 * 设置旋转步长
+	 * 
+	 * @param step
+	 * @return
+	 */
+	public AfterImageEffect setRotationStep(float step) {
+		this._rotationStep = step;
+		return this;
+	}
+
+	/**
+	 * 设置缓动类型
+	 * 
+	 * @param easeType
+	 * @return
+	 */
+	public AfterImageEffect setEaseType(Easing easeType) {
+		this._easeType = easeType;
+		return this;
+	}
+
+	/**
+	 * 设置反向播放
+	 * 
+	 * @param reverse
+	 * @return
+	 */
+	public AfterImageEffect setReversePlay(boolean reverse) {
+		this._reversePlay = reverse;
+		this._displayCompleted = false;
+		this._indexNext = reverse ? _count - 1 : 0;
+		return this;
+	}
+
 	@Override
 	protected void _onDestroy() {
 		super._onDestroy();
@@ -790,4 +848,5 @@ public class AfterImageEffect extends BaseAbstractEffect {
 			_afterTexture = null;
 		}
 	}
+
 }
