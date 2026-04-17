@@ -52,7 +52,7 @@ public final class LColorList implements LRelease {
 	private boolean _dirty;
 
 	LColorList() {
-		this._colorList = new ListMap<>();
+		this._colorList = new ListMap<String, LColor>();
 		_dirty = true;
 	}
 

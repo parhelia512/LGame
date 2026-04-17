@@ -24,6 +24,7 @@ import loon.canvas.LColor;
 import loon.geom.Affine2f;
 import loon.geom.Matrix4;
 import loon.utils.GLUtils;
+import loon.utils.IntFloatMap;
 import loon.utils.MathUtils;
 import loon.utils.NumberUtils;
 import loon.LSystem;
@@ -58,6 +59,7 @@ public final class TrilateralBatch extends BaseBatch {
 	private final float[] _vertCache = new float[VERT_SIZE];
 
 	private final Affine2f _affineCache = new Affine2f();
+	private final IntFloatMap colorCache = new IntFloatMap(256);
 
 	public TrilateralBatch(GL20 gl) {
 		this(gl, LSystem.DEF_SOURCE);
@@ -79,21 +81,53 @@ public final class TrilateralBatch extends BaseBatch {
 	public void init() {
 		this._currentSubmit = Submit.create();
 		this._currentFloatColor = LColor.white.toFloatBits();
+		preloadPalette();
 		reset();
+	}
+
+	private void preloadPalette() {
+		colorCache.put(0x00000000, NumberUtils.intBitsToFloat(0x00000000));
+		colorCache.put(0xFFFFFFFF, NumberUtils.intBitsToFloat(0xFFFFFFFF));
+		colorCache.put(0xFF000000, NumberUtils.intBitsToFloat(0xFF000000));
+		colorCache.put(0xFFFF0000, NumberUtils.intBitsToFloat(0xFFFF0000));
+		colorCache.put(0xFF00FF00, NumberUtils.intBitsToFloat(0xFF00FF00));
+		colorCache.put(0xFF0000FF, NumberUtils.intBitsToFloat(0xFF0000FF));
+		colorCache.put(0xFF808080, NumberUtils.intBitsToFloat(0xFF808080));
+		colorCache.put(0xFFFFFF00, NumberUtils.intBitsToFloat(0xFFFFFF00));
+		colorCache.put(0xFF800080, NumberUtils.intBitsToFloat(0xFF800080));
+		colorCache.put(0xFFFFA500, NumberUtils.intBitsToFloat(0xFFFFA500));
+		colorCache.put(0xFFFF6666, NumberUtils.intBitsToFloat(0xFFFF6666));
+		colorCache.put(0xFF66FF66, NumberUtils.intBitsToFloat(0xFF66FF66));
+		colorCache.put(0xFF6666FF, NumberUtils.intBitsToFloat(0xFF6666FF));
+		colorCache.put(0xFFFFFF66, NumberUtils.intBitsToFloat(0xFFFFFF66));
+		colorCache.put(0xFFAA66FF, NumberUtils.intBitsToFloat(0xFFAA66FF));
+		colorCache.put(0xFFFFCC66, NumberUtils.intBitsToFloat(0xFFFFCC66));
+		colorCache.put(0xFF800000, NumberUtils.intBitsToFloat(0xFF800000));
+		colorCache.put(0xFF006400, NumberUtils.intBitsToFloat(0xFF006400));
+		colorCache.put(0xFF000080, NumberUtils.intBitsToFloat(0xFF000080));
+		colorCache.put(0xFF808000, NumberUtils.intBitsToFloat(0xFF808000));
+		colorCache.put(0xFF4B0082, NumberUtils.intBitsToFloat(0xFF4B0082));
+		colorCache.put(0xFF8B4500, NumberUtils.intBitsToFloat(0xFF8B4500));
+		colorCache.put(0xFF123456, NumberUtils.intBitsToFloat(0xFF123456));
+		colorCache.put(0xFF654321, NumberUtils.intBitsToFloat(0xFF654321));
 	}
 
 	private final float toFloatColor(int tint) {
 		if (_currentIntColor != tint || _currentIntColor == -1) {
-			final int r = (tint & 0x00FF0000) >> 16;
-			final int g = (tint & 0x0000FF00) >> 8;
-			final int b = (tint & 0x000000FF);
-			_currentAlpha = (tint & 0xFF000000) >> 24;
-			if (_currentAlpha < 0) {
-				_currentAlpha += 256;
-			}
-			_currentIntColor = (_currentAlpha << 24) | (b << 16) | (g << 8) | r;
-			_currentFloatColor = NumberUtils.intBitsToFloat(_currentIntColor & 0xfeffffff);
 			_currentIntColor = tint;
+			_currentAlpha = (tint >>> 24) & 0xFF;
+			float cached = colorCache.get(tint);
+			if (!MathUtils.isNan(cached)) {
+				_currentFloatColor = cached;
+			} else {
+				int a = _currentAlpha;
+				int r = (tint >>> 16) & 0xFF;
+				int g = (tint >>> 8) & 0xFF;
+				int b = tint & 0xFF;
+				int abgr = (a << 24) | (b << 16) | (g << 8) | r;
+				_currentFloatColor = NumberUtils.intBitsToFloat(abgr);
+				colorCache.put(tint, _currentFloatColor);
+			}
 		}
 		return _currentFloatColor;
 	}

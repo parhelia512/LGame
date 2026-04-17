@@ -103,7 +103,7 @@ public class BattleAI {
 	private boolean isInStrategicPoint;
 	private BattleMapObject primaryFocusTarget;
 	private float threatCache = -1;
-	private boolean canAntiBreak = true;
+	private boolean canAntiBreak = false;
 	// 难度系数
 	private float difficultyAggression = 1.0f;
 	private float difficultyDamage = 1.0f;
@@ -113,11 +113,11 @@ public class BattleAI {
 	private int cachedDistanceToEnemy = -1;
 
 	private PointI predictedEnemyNextPos;
-	private boolean enablePlayerPositionPredict = true;
+	private boolean enablePlayerPositionPredict = false;
 	// 范围是否误伤友军
 	public static boolean AOE_HIT_FRIENDLY = false;
 	// 技能是否判定敌我
-	public static boolean AOE_SKILL_NEED_FRIENDLY_CHECK = true;
+	public static boolean AOE_SKILL_NEED_FRIENDLY_CHECK = false;
 	private static final float WEIGHT_THREAT = 80.0f;
 	private static final float WEIGHT_CONTROL_SKILL = 120.0f;
 	// 集火目标
@@ -127,12 +127,39 @@ public class BattleAI {
 	// 统一集火誓死强攻目标
 	private static BattleMapObject globalFocusTarget;
 	// 是否启用群体指挥（开启后所有AI优先执行全局指令）
-	public static boolean enableGlobalCommand = true;
+	public static boolean enableGlobalCommand = false;
+	// 巡逻固定点
+	private PointI[] patrolPoints;
+	private int currentPatrolIndex = 0;
+	// 缓存控制/免疫状态
+	private boolean isUnitControlled = false;
+	private boolean isUnitImmune = false;
+	// 技能能量/冷却缓存
+	private float cachedEnergy = -1;
+	// 安全区域缓存
+	private BattleTile nearestSafeTile;
+	// 士气阈值
+	private static final float MORALE_RETREAT = 0.3f;
+	private static final float MORALE_AGGRESSIVE = 1.5f;
+	// 仇恨衰减系数（难度适配）
+	private float hatredDecayRate = 0.8f;
+	// 阵型保持距离
+	private static final int FORMATION_DISTANCE = 2;
 
 	public BattleAI(BattleMap map, BattleMapObject controlledUnit) {
 		this.battleMap = map;
 		this.controlledUnit = controlledUnit;
+		initPatrolPoints();
 		refreshDifficultyParams();
+	}
+
+	private void initPatrolPoints() {
+		if (controlledUnit == null) {
+			return;
+		}
+		PointI start = controlledUnit.currentMapTile;
+		patrolPoints = new PointI[] { new PointI(start.x, start.y), new PointI(start.x + 2, start.y),
+				new PointI(start.x + 2, start.y + 2), new PointI(start.x, start.y + 2) };
 	}
 
 	public void refreshDifficultyParams() {
@@ -142,18 +169,21 @@ public class BattleAI {
 			difficultyDamage = 0.6f;
 			difficultyHeal = 0.5f;
 			enablePlayerPositionPredict = false;
+			hatredDecayRate = 0.5f;
 			break;
 		case NORMAL:
 			difficultyAggression = 1.0f;
 			difficultyDamage = 1.0f;
 			difficultyHeal = 1.0f;
 			enablePlayerPositionPredict = true;
+			hatredDecayRate = 0.8f;
 			break;
 		case HARD:
 			difficultyAggression = 1.6f;
 			difficultyDamage = 1.4f;
 			difficultyHeal = 1.5f;
 			enablePlayerPositionPredict = true;
+			hatredDecayRate = 0.9f;
 			break;
 		case HELL:
 			difficultyAggression = 2.5f;
@@ -161,6 +191,7 @@ public class BattleAI {
 			difficultyHeal = 2.0f;
 			enablePlayerPositionPredict = true;
 			canAntiBreak = true;
+			hatredDecayRate = 1f;
 			break;
 		}
 	}
@@ -170,9 +201,13 @@ public class BattleAI {
 		if (controlledUnit == null || controlledUnit.isDead() || controlledUnit.isAllDoneAction()) {
 			return;
 		}
-		if (controlledUnit.isDisabled()) {
+		isUnitControlled = controlledUnit.isDisabled();
+		isUnitImmune = controlledUnit.isInvincible();
+		if (controlledUnit.isDisabled() || isUnitControlled) {
 			return;
 		}
+
+		cachedEnergy = controlledUnit.getMana();
 		cachedHpRate = controlledUnit.getHpRate();
 		cachedDistanceToEnemy = targetEnemy != null
 				? controlledUnit.currentMapTile.distanceTo(targetEnemy.currentMapTile)
@@ -188,6 +223,7 @@ public class BattleAI {
 		}
 		coordinateWithAllies();
 		captureStrategicPoint();
+		nearestSafeTile = findNearestStrategicPoint();
 		makeDecision();
 	}
 
@@ -195,7 +231,7 @@ public class BattleAI {
 		ObjectMap.Entries<BattleMapObject, Float> entries = hatredMap.entries();
 		for (ObjectMap.Entries<BattleMapObject, Float> it = entries.iterator(); it.hasNext();) {
 			ObjectMap.Entry<BattleMapObject, Float> entry = it.next();
-			float val = entry.getValue() * 0.8f;
+			float val = entry.getValue() * hatredDecayRate;
 			if (val < 10f) {
 				it.remove();
 			} else {
@@ -218,6 +254,9 @@ public class BattleAI {
 		Float old = hatredMap.get(attacker);
 		if (old == null) {
 			old = 0f;
+		}
+		if (tauntTarget == attacker) {
+			value *= 2;
 		}
 		hatredMap.put(attacker, old + value);
 	}
@@ -260,6 +299,7 @@ public class BattleAI {
 		applyTacticalCommand();
 		autoAdjustAIStyleByHealth();
 		autoAntiBreakBehavior();
+		adjustBehaviorByMorale();
 
 		if (ENABLE_FORMATION_AI) {
 			switch (currentState) {
@@ -280,6 +320,7 @@ public class BattleAI {
 				break;
 
 			case MOVING_TO_ENEMY:
+				maintainFormation();
 				if (predictedEnemyNextPos != null) {
 					moveToPredictPos(predictedEnemyNextPos);
 				}
@@ -350,6 +391,13 @@ public class BattleAI {
 			case PATROLLING:
 				doPatrol();
 				break;
+			case CHASING:
+				if (targetEnemy != null && !targetEnemy.isDead()) {
+					moveToTarget(targetEnemy);
+				} else {
+					currentState = AIState.IDLE;
+				}
+				break;
 			default:
 				currentState = AIState.IDLE;
 			}
@@ -361,7 +409,6 @@ public class BattleAI {
 			return;
 		}
 		currentCommand = globalTacticalCommand;
-		// 全局誓死强攻
 		if ((globalTacticalCommand == TacticalCommand.FOCUS_FIRE
 				|| globalTacticalCommand == TacticalCommand.ALL_IN_FOCUS) && globalFocusTarget != null
 				&& !globalFocusTarget.isDead()) {
@@ -383,7 +430,9 @@ public class BattleAI {
 
 		case PROTECT_ALLY:
 			supportTarget = findWoundedTeammate(bestMax);
-			if (targetEnemy == null) {
+			if (supportTarget != null && supportTarget.getLastAttacker() != null) {
+				targetEnemy = supportTarget.getLastAttacker();
+			} else if (targetEnemy == null) {
 				targetEnemy = findBestEnemyTarget(bestMin);
 			}
 			break;
@@ -396,6 +445,7 @@ public class BattleAI {
 			}
 			targetEnemy = allInFocusTarget;
 			currentStyle = AIStyle.AGGRESSIVE;
+			morale = 2.0f;
 			break;
 		}
 	}
@@ -421,10 +471,13 @@ public class BattleAI {
 		} else if (cachedHpRate > 0.8f && currentStyle == AIStyle.DEFENSIVE) {
 			currentStyle = AIStyle.NORMAL;
 		}
+		if (morale > MORALE_AGGRESSIVE) {
+			currentStyle = AIStyle.AGGRESSIVE;
+		}
 	}
 
 	protected float rateTarget(BattleMapObject target) {
-		if (target == null) {
+		if (target == null || target.isDead() || !target.isEnemyOf(controlledUnit)) {
 			return bestMin;
 		}
 		float dist = controlledUnit.currentMapTile.distanceTo(target.currentMapTile);
@@ -432,18 +485,36 @@ public class BattleAI {
 		float threat = getUnitThreat(target);
 		float score = (100f / MathUtils.max(dist, 1)) * WEIGHT_DISTANCE + (1 - hp) * WEIGHT_HP_RATE
 				+ threat * WEIGHT_THREAT;
+
 		if (ENABLE_CLASS_ADVANTAGE && controlledUnit.hasAdvantageOver(target)) {
 			score += WEIGHT_CLASS_ADVANTAGE;
 		}
+		if (ENABLE_HATRED_SYSTEM && hatredMap.containsKey(target)) {
+			score += hatredMap.get(target) * WEIGHT_HATRED;
+		}
+		// 嘲讽强制优先
+		if (ENABLE_TAUNT_SYSTEM && tauntTarget == target) {
+			score += 9999f;
+		}
+		// 敌方被控单位优先攻击
+		if (target.isDisabled()) {
+			score += 200f;
+		}
+		// AI风格加成
 		if (currentStyle == AIStyle.BURST) {
 			score *= 1.5f;
 		}
+		if (currentStyle == AIStyle.CAUTIOUS) {
+			score *= 0.8f;
+		}
+		// 战术指令加成
 		if (currentCommand == TacticalCommand.FOCUS_FIRE) {
 			score *= 1.8f;
 		}
 		if (currentCommand == TacticalCommand.ALL_IN_FOCUS) {
 			score *= 99.0f;
 		}
+
 		return score * difficultyAggression;
 	}
 
@@ -456,7 +527,8 @@ public class BattleAI {
 		}
 		float atk = unit.getAttack();
 		float skillDmg = unit.getMaxSkillDamage();
-		threatCache = (atk + skillDmg * 0.7f) * 0.1f;
+		float controlBonus = unit.hasControlSkill() ? 1.5f : 1f;
+		threatCache = (atk + skillDmg * 0.7f) * 0.1f * controlBonus;
 		return threatCache;
 	}
 
@@ -484,10 +556,11 @@ public class BattleAI {
 		if (enemyKilled) {
 			morale += 0.1f;
 		}
-		if (morale < 0.3f && currentCommand != TacticalCommand.ALL_IN_FOCUS) {
+		morale = MathUtils.clamp(morale, 0.1f, 2.0f);
+		if (morale < MORALE_RETREAT && currentCommand != TacticalCommand.ALL_IN_FOCUS) {
 			currentState = AIState.RETREATING;
 		}
-		if (morale > 1.5f && currentState == AIState.IDLE) {
+		if (morale > MORALE_AGGRESSIVE && currentState == AIState.IDLE) {
 			currentState = AIState.MOVING_TO_ENEMY;
 		}
 	}
@@ -526,7 +599,10 @@ public class BattleAI {
 			return false;
 		}
 		for (BattleSkill s : heals) {
-			if (s == null) {
+			if (s == null || !s.isReady()) {
+				continue;
+			}
+			if (controlledUnit.getMana() < s.getMpCost()) {
 				continue;
 			}
 			if (controlledUnit.currentMapTile.distanceTo(target.currentMapTile) <= s.getRangeDistance()) {
@@ -539,7 +615,7 @@ public class BattleAI {
 	}
 
 	private float rateSkill(BattleSkill s) {
-		if (s == null) {
+		if (s == null || !s.isReady()) {
 			return 0;
 		}
 		float score = s.getDamage() * WEIGHT_SKILL_DMG;
@@ -548,6 +624,12 @@ public class BattleAI {
 		}
 		if (s.isBreakDefenseSkill()) {
 			score += 50f;
+		}
+		if (s.getMpCost() <= cachedEnergy * 0.5f) {
+			score += 30f;
+		}
+		if (s.canUltimateSkill()) {
+			score += 100f;
 		}
 		return score * difficultyDamage;
 	}
@@ -571,7 +653,7 @@ public class BattleAI {
 				int hit = countEnemiesInRange(cx, cy, d);
 				int allyHit = countAlliesInRange(cx, cy, d);
 				if (AOE_SKILL_NEED_FRIENDLY_CHECK) {
-					if (allyHit == 0 || hit > allyHit * 2) {
+					if (AOE_HIT_FRIENDLY || allyHit == 0) {
 						if (hit > maxHit) {
 							maxHit = hit;
 							best = new PointI(cx, cy);
@@ -589,7 +671,7 @@ public class BattleAI {
 	}
 
 	protected void moveToTarget(BattleMapObject target) {
-		if (target == null || controlledUnit.isMoved()) {
+		if (target == null || controlledUnit.isMoved() || isUnitImmune) {
 			return;
 		}
 		PointI me = controlledUnit.currentMapTile;
@@ -625,9 +707,6 @@ public class BattleAI {
 				continue;
 			}
 			float score = rateTarget(u);
-			if (hatredTarget == u) {
-				score += WEIGHT_HATRED;
-			}
 			if (score > max) {
 				max = score;
 				best = u;
@@ -637,7 +716,7 @@ public class BattleAI {
 	}
 
 	private void performAttack() {
-		if (targetEnemy == null) {
+		if (targetEnemy == null || isUnitImmune) {
 			return;
 		}
 		controlledUnit.castSkill(targetEnemy);
@@ -653,6 +732,12 @@ public class BattleAI {
 			return false;
 		}
 		for (BattleSkill s : buffs) {
+			if (s == null || !s.isReady()) {
+				continue;
+			}
+			if (controlledUnit.getMana() < s.getMpCost()) {
+				continue;
+			}
 			if (controlledUnit.currentMapTile.distanceTo(wounded.currentMapTile) <= s.getRangeDistance()) {
 				controlledUnit.setCurrentSkill(s);
 				controlledUnit.castSkill(wounded);
@@ -683,17 +768,20 @@ public class BattleAI {
 		int c = 0;
 		PointI p = new PointI(cx, cy);
 		for (BattleMapObject u : battleMap.getObjects()) {
-			if (u == null || !u.isAllyOf(controlledUnit) || u.isDead())
+			if (u == null || !u.isAllyOf(controlledUnit) || u.isDead()) {
 				continue;
-			if (p.distanceTo(u.currentMapTile) <= d)
+			}
+			if (p.distanceTo(u.currentMapTile) <= d) {
 				c++;
+			}
 		}
 		return c;
 	}
 
 	protected boolean isAllyOnTile(BattleTile tile) {
-		if (tile == null)
+		if (tile == null) {
 			return false;
+		}
 		for (BattleMapObject u : battleMap.getObjects()) {
 			if (u != null && u.currentMapTile.equals(tile.gridX, tile.gridY) && u.isAllyOf(controlledUnit)) {
 				return true;
@@ -703,28 +791,33 @@ public class BattleAI {
 	}
 
 	protected PointI predictEnemyNextPosition(BattleMapObject enemy) {
-		if (enemy == null) {
+		if (enemy == null || enemy.isDead()) {
 			return null;
 		}
 		PointI cur = enemy.currentMapTile;
-		BattleMapObject nearest = findNearestAlly(enemy);
-		if (nearest == null) {
+		BattleMapObject weakestAlly = findWoundedTeammate(bestMax);
+		if (weakestAlly == null) {
+			weakestAlly = findNearestAlly(enemy);
+		}
+		if (weakestAlly == null) {
 			return cur;
 		}
-		PointI tar = nearest.currentMapTile;
+		PointI tar = weakestAlly.currentMapTile;
 		int dx = MathUtils.compare(tar.x, cur.x);
 		int dy = MathUtils.compare(tar.y, cur.y);
 		return new PointI(cur.x + dx, cur.y + dy);
 	}
 
 	protected BattleMapObject findNearestAlly(BattleMapObject from) {
-		if (from == null)
+		if (from == null) {
 			return null;
+		}
 		BattleMapObject nearest = null;
 		int minDist = bestMax;
 		for (BattleMapObject u : battleMap.getObjects()) {
-			if (u == null || !u.isAllyOf(controlledUnit) || u.isDead())
+			if (u == null || !u.isAllyOf(controlledUnit) || u.isDead()) {
 				continue;
+			}
 			int dist = from.currentMapTile.distanceTo(u.currentMapTile);
 			if (dist < minDist) {
 				minDist = dist;
@@ -771,19 +864,19 @@ public class BattleAI {
 	}
 
 	private boolean castBestSkill() {
-		if (targetEnemy == null) {
+		if (targetEnemy == null || isUnitImmune || !ENABLE_SKILL_AI) {
 			return false;
 		}
-		TArray<BattleSkill> skills = controlledUnit.getUltimateSkills();
-		if (skills.isEmpty()) {
+		TArray<BattleSkill> allSkills = controlledUnit.getAllSkills();
+		if (allSkills.isEmpty()) {
 			return false;
 		}
 		BattleSkill best = null;
-		float min = bestMin;
-		for (BattleSkill s : skills) {
+		float maxScore = bestMin;
+		for (BattleSkill s : allSkills) {
 			float score = rateSkill(s);
-			if (score > min) {
-				min = score;
+			if (score > maxScore) {
+				maxScore = score;
 				best = s;
 			}
 		}
@@ -805,11 +898,11 @@ public class BattleAI {
 	}
 
 	private boolean castUltimate() {
-		if (!controlledUnit.canUltimateSkill()) {
+		if (!controlledUnit.canUltimateSkill() || isUnitImmune || !ENABLE_ULTIMATE_AI) {
 			return false;
 		}
 		BattleSkill skill = controlledUnit.getCurrentSkill();
-		if (skill == null) {
+		if (skill == null || !skill.isReady()) {
 			return false;
 		}
 		if (skill.canRange()) {
@@ -836,7 +929,7 @@ public class BattleAI {
 	private boolean isInSkillRange(BattleMapObject target) {
 		int attackRange = controlledUnit.currentMapTile.distanceTo(target.currentMapTile);
 		boolean result = attackRange <= controlledUnit.getBaseSkillRange();
-		return result && controlledUnit.getUltimateSkills().size > 0;
+		return result && !controlledUnit.getUltimateSkills().isEmpty();
 	}
 
 	private boolean isEnemyInAmbushRange(BattleMapObject target) {
@@ -848,7 +941,14 @@ public class BattleAI {
 	}
 
 	private boolean needRetreat() {
-		return controlledUnit.getHpRate() < 0.3f;
+		if (!ENABLE_RETREAT_SYSTEM) {
+			return false;
+		}
+		if (currentDifficulty == Difficulty.HELL) {
+			return false;
+		}
+		float hpThreshold = currentDifficulty == Difficulty.HARD ? 0.2f : 0.3f;
+		return controlledUnit.getHpRate() < hpThreshold || morale < MORALE_RETREAT;
 	}
 
 	private boolean isAmbushTerrain(BattleTileType type) {
@@ -856,14 +956,17 @@ public class BattleAI {
 	}
 
 	protected void moveToFlank(BattleMapObject target) {
-		PointI p = target.currentMapTile;
-		int fx = p.x + 2;
-		int fy = p.y;
-		if (!battleMap.isValidTile(fx, fy) || !battleMap.getMapTile(fx, fy).isPassable()) {
-			fx = p.x - 2;
+		if (target == null || controlledUnit.isMoved()) {
+			return;
 		}
-		if (battleMap.isValidTile(fx, fy)) {
-			controlledUnit.moveToGrid(fx, fy);
+		PointI p = target.currentMapTile;
+		PointI[] flankPositions = { new PointI(p.x + 2, p.y), new PointI(p.x - 2, p.y), new PointI(p.x, p.y + 2),
+				new PointI(p.x, p.y - 2) };
+		for (PointI pos : flankPositions) {
+			if (battleMap.isValidTile(pos.x, pos.y) && battleMap.getMapTile(pos.x, pos.y).isPassable()) {
+				controlledUnit.moveToGrid(pos.x, pos.y);
+				break;
+			}
 		}
 	}
 
@@ -880,23 +983,21 @@ public class BattleAI {
 	}
 
 	protected void moveToSafeTile() {
-		PointI me = controlledUnit.currentMapTile;
-		int dx = targetEnemy == null ? 1 : MathUtils.compare(me.x, targetEnemy.getGridX());
-		int dy = targetEnemy == null ? 1 : MathUtils.compare(me.y, targetEnemy.getGridY());
-		int nx = me.x + dx;
-		int ny = me.y + dy;
-		if (battleMap.isValidTile(nx, ny) && battleMap.getMapTile(nx, ny).isPassable()) {
-			controlledUnit.moveToGrid(nx, ny);
+		if (nearestSafeTile == null || controlledUnit.isMoved()) {
+			return;
 		}
+		controlledUnit.moveToGrid(nearestSafeTile.getX(), nearestSafeTile.getY());
 	}
 
 	protected void doPatrol() {
-		PointI me = controlledUnit.currentMapTile;
-		int nx = me.x + MathUtils.nextInt(3);
-		int ny = me.y + MathUtils.nextInt(3);
-		if (battleMap.isValidTile(nx, ny) && battleMap.getMapTile(nx, ny).isPassable()
-				&& !battleMap.getMapTile(nx, ny).hasUnit()) {
-			controlledUnit.moveToGrid(nx, ny);
+		if (patrolPoints == null || controlledUnit.isMoved()) {
+			return;
+		}
+		PointI targetPatrol = patrolPoints[currentPatrolIndex];
+		if (controlledUnit.currentMapTile.distanceTo(targetPatrol) <= 0) {
+			currentPatrolIndex = (currentPatrolIndex + 1) % patrolPoints.length;
+		} else {
+			moveToTargetPatrol(targetPatrol);
 		}
 	}
 
@@ -928,6 +1029,45 @@ public class BattleAI {
 			}
 		}
 		return worst;
+	}
+
+	/**
+	 * 士气影响行为
+	 */
+	private void adjustBehaviorByMorale() {
+		if (morale < MORALE_RETREAT) {
+			currentStyle = AIStyle.DEFENSIVE;
+		} else if (morale > MORALE_AGGRESSIVE) {
+			currentStyle = AIStyle.AGGRESSIVE;
+		}
+	}
+
+	/**
+	 * 阵型保持
+	 */
+	private void maintainFormation() {
+		if (!ENABLE_FORMATION_AI)
+			return;
+		BattleMapObject leader = findNearestAlly(controlledUnit);
+		if (leader == null)
+			return;
+		int dist = controlledUnit.currentMapTile.distanceTo(leader.currentMapTile);
+		if (dist > FORMATION_DISTANCE) {
+			moveToTarget(leader);
+		}
+	}
+
+	private BattleTile findNearestStrategicPoint() {
+		return battleMap.findNearestStrategicPoint(controlledUnit.currentMapTile);
+	}
+
+	private void moveToTargetPatrol(PointI point) {
+		if (point == null || controlledUnit.isMoved()) {
+			return;
+		}
+		if (battleMap.isValidTile(point.x, point.y)) {
+			controlledUnit.moveToGrid(point.x, point.y);
+		}
 	}
 
 	public BattleMapObject getControlledUnit() {
@@ -1045,5 +1185,4 @@ public class BattleAI {
 	public static void setEnableGlobalCommand(boolean enableGlobalCommand) {
 		BattleAI.enableGlobalCommand = enableGlobalCommand;
 	}
-
 }

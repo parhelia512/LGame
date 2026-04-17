@@ -23,15 +23,19 @@ package loon.action.sprite.effect;
 import loon.LSystem;
 import loon.LTexture;
 import loon.LTextures;
+import loon.Screen;
 import loon.action.collision.CollisionHelper;
 import loon.action.map.Config;
 import loon.action.map.Side;
+import loon.action.sprite.IEntity;
+import loon.action.sprite.ISprite;
 import loon.canvas.LColor;
 import loon.geom.Vector2f;
 import loon.opengl.GLEx;
 import loon.utils.Easing;
 import loon.utils.MathUtils;
 import loon.utils.TArray;
+import loon.utils.timer.Duration;
 
 /**
  * 残像效果构建用类(就是上古游戏梦幻模拟战里骑士冲锋那类效果)
@@ -44,8 +48,141 @@ import loon.utils.TArray;
  */
 public class AfterImageEffect extends BaseAbstractEffect {
 
+	/**
+	 * 残影类监听器
+	 */
+	public static interface AfterImageListener {
+
+		void onAfterImageStart(ISprite target);
+
+		void onAfterImageUpdate(ISprite target, AfterImageEffect.AfterObject obj);
+
+		void onAfterImageEnd(ISprite target);
+
+		void onSpriteToAfterImage(ISprite target, AfterImageEffect.AfterObject obj);
+
+		void onAfterImageToSprite(ISprite target, AfterImageEffect.AfterObject obj);
+	}
+
+	/**
+	 * 使用精灵快速生成残影效果
+	 * 
+	 * @param dir
+	 * @param sprite
+	 * @param interval
+	 * @param count
+	 * @return
+	 */
+	public static AfterImageEffect withSprite(int dir, ISprite sprite, int interval, int count) {
+		AfterImageEffect effect = new AfterImageEffect(dir, sprite, count);
+		effect.setInterval(interval);
+		return effect;
+	}
+
+	/**
+	 * 使用纹理快速生成残影效果
+	 * 
+	 * @param dir
+	 * @param tex
+	 * @param x
+	 * @param y
+	 * @param interval
+	 * @param count
+	 * @return
+	 */
+	public static AfterImageEffect withTexture(int dir, LTexture tex, float x, float y, int interval, int count) {
+		AfterImageEffect effect = new AfterImageEffect(dir, tex, x, y, count);
+		effect.setInterval(interval);
+		return effect;
+	}
+
+	/**
+	 * 使用图片路径快速生成残影效果
+	 * 
+	 * @param dir
+	 * @param path
+	 * @param x
+	 * @param y
+	 * @param interval
+	 * @param count
+	 * @return
+	 */
+	public static AfterImageEffect withTexturePath(int dir, String path, float x, float y, int interval, int count) {
+		return withTexture(dir, LTextures.loadTexture(path), x, y, interval, count);
+	}
+
+	/**
+	 * 使用精灵残影并直接添加到屏幕
+	 * 
+	 * @param dir
+	 * @param sprite
+	 * @param interval
+	 * @param count
+	 * @param scene
+	 * @return
+	 */
+	public static AfterImageEffect attachToScene(int dir, ISprite sprite, int interval, int count, Screen scene) {
+		AfterImageEffect effect = withSprite(dir, sprite, interval, count);
+		scene.add(effect);
+		return effect;
+	}
+
+	/**
+	 * 使用目标精灵的当前位置和纹理，快速生成残影
+	 * 
+	 * @param target
+	 * @param dir
+	 * @param count
+	 * @return
+	 */
+	public static AfterImageEffect ofSprite(int dir, ISprite target, int count) {
+		return new AfterImageEffect(dir, target, count);
+	}
+
+	/**
+	 * 使用纹理生成残影
+	 * 
+	 * @param dir
+	 * @param tex
+	 * @param x
+	 * @param y
+	 * @param w
+	 * @param h
+	 * @param count
+	 * @return
+	 */
+	public static AfterImageEffect ofTexture(int dir, LTexture tex, float x, float y, float w, float h, int count) {
+		return new AfterImageEffect(dir, null, tex, x, y, w, h, count);
+	}
+
+	/**
+	 * 使用地址生成残影
+	 * 
+	 * @param dir
+	 * @param path
+	 * @param x
+	 * @param y
+	 * @param count
+	 * @return
+	 */
+	public static AfterImageEffect ofPath(int dir, String path, float x, float y, int count) {
+		return new AfterImageEffect(dir, null, path, x, y, count);
+	}
+
+	// 移动轨迹类型
 	public final static int LINE = 0;
 	public final static int CURVE = 1;
+	public final static int SINE = 2;
+	public final static int PARABOLA = 3;
+	public final static int CIRCLE = 4;
+	public final static int SPIRAL = 5;
+	public final static int RANDOM = 6;
+	public final static int LISS = 7;
+	public final static int JUMP = 8;
+	public final static int WAVE = 9;
+	public final static int TRIANGLE = 10;
+	public final static int FALLING = 11;
+	public final static int METEOR = 12;
 
 	public final class AfterObject {
 
@@ -128,7 +265,7 @@ public class AfterImageEffect extends BaseAbstractEffect {
 		}
 	}
 
-	private final TArray<AfterImageEffect.AfterObject> _backAfters = new TArray<>();
+	private final TArray<AfterImageEffect.AfterObject> _backAfters = new TArray<AfterImageEffect.AfterObject>();
 	private final LColor _shadowColor = new LColor();
 	private final LColor _tempColor = new LColor();
 	private LTexture _afterTexture;
@@ -150,7 +287,6 @@ public class AfterImageEffect extends BaseAbstractEffect {
 	private float _startX, _startY, _startWidth, _startHeight;
 	private TArray<AfterImageEffect.AfterObject> _afterObjects;
 	private float _interval = 0f;
-	private int _count = 0;
 	// 残影缩放衰减
 	private boolean _scaleDecreasing = true;
 	// 残影旋转效果
@@ -162,34 +298,117 @@ public class AfterImageEffect extends BaseAbstractEffect {
 	private float _rotationStep = 5f;
 	// 缓动类型
 	private Easing _easeType = Easing.TIME_LINEAR;
+	// 残影数量
+	private int _count = 0;
 
-	public AfterImageEffect(String path, float startX, float startY, int count) {
-		this(Config.TRIGHT, path, startX, startY, count);
+	private float _fadeInTime = 0f;
+	private float _fadeOutTime = 0f;
+	private float _currentFadeAlpha = 1f;
+	private float _trajectorySpeed = 1f;
+	private float _parabolaHeight = 50f;
+	private float _sineAmplitude = 30f;
+	private float _randomAlphaRange = 0.1f;
+	private float _randomScaleRange = 0.1f;
+	private float _randomRotationRange = 5f;
+
+	private boolean _randomEnabled = false;
+
+	private boolean _paused = false;
+	// 需要绑定的精灵
+	private ISprite _targetSprite;
+	// 同步动态坐标到精灵上去
+	private boolean _syncToSprite;
+	// 残影同步监听
+	private AfterImageListener _listener;
+	// 自动切换残影特效与精灵的显示关系
+	private boolean _autoSyncSpriteSwitch = true;
+	// 移动目标坐标(也就是最终显示位置，到哪里停止。这个参数需要会结合移动方向生效。
+	// 若设定了此参数，但目的坐标是移动的不同方向，则会产生瞬移，而没有动画，因为loon
+	// 中移动轨迹残影是按照移动方向设置预生成的)
+	private float _targetX = -1f;
+	private float _targetY = -1f;
+	// 是否开启强制坐标限制
+	private boolean _useTarget = false;
+
+	public AfterImageEffect(ISprite target, String path, float startX, float startY, int count) {
+		this(Config.TRIGHT, target, path, startX, startY, count);
+	}
+
+	public AfterImageEffect(ISprite target, LTexture tex, float startX, float startY, int count) {
+		this(Config.TRIGHT, target, tex, startX, startY, count);
+	}
+
+	public AfterImageEffect(ISprite target, float startX, float startY, int count) {
+		this(Config.TRIGHT, target, target != null ? target.getBitmap() : null, startX, startY,
+				target != null ? target.getWidth() : 0f, target != null ? target.getHeight() : 0f, count);
+	}
+
+	public AfterImageEffect(int dir, ISprite target, float startX, float startY, int count) {
+		this(dir, target, target != null ? target.getBitmap() : null, startX, startY,
+				target != null ? target.getWidth() : 0f, target != null ? target.getHeight() : 0f, count);
 	}
 
 	public AfterImageEffect(LTexture tex, float startX, float startY, int count) {
-		this(Config.TRIGHT, tex, startX, startY, count);
-	}
-
-	public AfterImageEffect(int dir, String path, float startX, float startY, int count) {
-		this(dir, LTextures.loadTexture(path), startX, startY, count);
-	}
-
-	public AfterImageEffect(int dir, String path, float startX, float startY, float startW, float startH, int count) {
-		this(dir, LTextures.loadTexture(path), startX, startY, startW, startH, count);
+		this(Config.TRIGHT, null, tex, startX, startY, tex != null ? tex.getWidth() : 0f,
+				tex != null ? tex.getHeight() : 0f, count);
 	}
 
 	public AfterImageEffect(int dir, LTexture tex, float startX, float startY, int count) {
-		this(dir, tex, startX, startY, tex.getWidth(), tex.getHeight(), count);
+		this(dir, null, tex, startX, startY, tex != null ? tex.getWidth() : 0f, tex != null ? tex.getHeight() : 0f,
+				count);
 	}
 
-	public AfterImageEffect(int dir, LTexture tex, float startX, float startY, float startW, float startH, int count) {
-		this(dir, tex, 0f, 0f, LSystem.viewSize.getWidth(), LSystem.viewSize.getHeight(), startX, startY, startW,
-				startH, count);
+	public AfterImageEffect(ISprite target, int count) {
+		this(Config.TRIGHT, target, target != null ? target.getBitmap() : null, target != null ? target.getX() : 0f,
+				target != null ? target.getY() : 0f, target != null ? target.getWidth() : 0f,
+				target != null ? target.getHeight() : 0f, count);
 	}
 
-	public AfterImageEffect(int dir, LTexture tex, float displayX, float displayY, float displayW, float displayH,
-			float startX, float startY, float startW, float startH, int count) {
+	public AfterImageEffect(int dir, ISprite target, int count) {
+		this(dir, target, target != null ? target.getBitmap() : null, target != null ? target.getX() : 0f,
+				target != null ? target.getY() : 0f, target != null ? target.getWidth() : 0f,
+				target != null ? target.getHeight() : 0f, count);
+	}
+
+	public AfterImageEffect(int dir, String path, float startX, float startY, float startW, float startH, int count) {
+		this(dir, null, LTextures.loadTexture(path), startX, startY, startW, startH, count);
+	}
+
+	public AfterImageEffect(String path, float startX, float startY, int count) {
+		this(Config.TRIGHT, null, path, startX, startY, count);
+	}
+
+	public AfterImageEffect(int dir, String path, float startX, float startY, int count) {
+		this(dir, null, path, startX, startY, count);
+	}
+
+	public AfterImageEffect(int dir, ISprite target, String path, float startX, float startY, int count) {
+		this(dir, target, LTextures.loadTexture(path), startX, startY, count);
+	}
+
+	public AfterImageEffect(int dir, ISprite target, String path, float startX, float startY, float startW,
+			float startH, int count) {
+		this(dir, target, LTextures.loadTexture(path), startX, startY, startW, startH, count);
+	}
+
+	public AfterImageEffect(int dir, ISprite target, LTexture tex, float startX, float startY, int count) {
+		this(dir, target, tex, startX, startY, tex.getWidth(), tex.getHeight(), count);
+	}
+
+	public AfterImageEffect(int dir, ISprite target, LTexture tex, float startX, float startY, float startW,
+			float startH, int count) {
+		this(dir, target, tex, 0f, 0f, LSystem.viewSize.getWidth(), LSystem.viewSize.getHeight(), startX, startY,
+				startW, startH, count);
+	}
+
+	public AfterImageEffect(int dir, ISprite target, float startX, float startY, float startW, float startH,
+			int count) {
+		this(dir, target, target != null ? target.getBitmap() : null, 0f, 0f, LSystem.viewSize.getWidth(),
+				LSystem.viewSize.getHeight(), startX, startY, startW, startH, count);
+	}
+
+	public AfterImageEffect(int dir, ISprite target, LTexture tex, float displayX, float displayY, float displayW,
+			float displayH, float startX, float startY, float startW, float startH, int count) {
 		this.setRepaint(true);
 		this.setLocation(displayX, displayY);
 		this.setSize(displayW, displayH);
@@ -197,13 +416,105 @@ public class AfterImageEffect extends BaseAbstractEffect {
 		this.setInterval(0f);
 		this.setCount(count);
 		this.setStartLocation(startX, startY);
+		this.setStartSize(startW, startH);
 		this.setOrbitValue(MathUtils.min(startW, startH) / 6f);
 		this.setColor(LColor.white);
+		this.bindTargetSprite(target);
 		this._moveDir = dir;
-		this._startWidth = startW;
-		this._startHeight = startH;
 		this._makeAutoEffect = true;
 		this._hideFirstObject = true;
+	}
+
+	/**
+	 * 角色最多移动到
+	 * 
+	 * @param x
+	 * @param y
+	 * @return
+	 */
+	public AfterImageEffect setTarget(float x, float y) {
+		this._targetX = x;
+		this._targetY = y;
+		this._useTarget = true;
+		return this;
+	}
+
+	/**
+	 * 清空限制坐标
+	 * 
+	 * @return
+	 */
+	public AfterImageEffect clearTarget() {
+		this._useTarget = false;
+		this._targetX = -1f;
+		this._targetY = -1f;
+		return this;
+	}
+
+	/**
+	 * 如果启用同步，则把残影位置写回目标精灵
+	 * 
+	 * @param obj
+	 * @param idx
+	 */
+	public void updateOrbitAndSync(AfterObject obj) {
+		if (_syncToSprite && _targetSprite != null && obj != null) {
+			_targetSprite.setLocation(_startX + obj.getX(), _startY + obj.getY());
+			_targetSprite.setRotation(obj.getRotation());
+		}
+	}
+
+	/**
+	 * 绑定精灵位置与图像到残像特效
+	 * 
+	 * @param spr
+	 */
+	public void bindTargetSprite(ISprite spr) {
+		if (spr != null) {
+			setStartLocation(spr.getX(), spr.getY());
+			setStartSize(spr.getWidth(), spr.getHeight());
+			if (spr instanceof IEntity) {
+				setPivot(((IEntity) spr).getPivotX(), ((IEntity) spr).getPivotY());
+			}
+			setRotation(spr.getRotation());
+			setScale(spr.getScaleX(), spr.getScaleX());
+			setOffset(spr.getOffsetX(), spr.getOffsetY());
+			_targetSprite = spr;
+			if (_targetSprite.getBitmap() != null) {
+				setTexture(_targetSprite.getBitmap());
+			}
+			_syncToSprite = true;
+		}
+	}
+
+	public boolean isSyncToSprite() {
+		return _syncToSprite;
+	}
+
+	public AfterImageEffect setSyncToSprite(boolean ss) {
+		_syncToSprite = ss;
+		return this;
+	}
+
+	public AfterImageEffect setAutoSyncSpriteSwitch(boolean auto) {
+		this._autoSyncSpriteSwitch = auto;
+		return this;
+	}
+
+	public boolean isAutoSyncSpriteSwitch() {
+		return _autoSyncSpriteSwitch;
+	}
+
+	public ISprite getTargetSprite() {
+		return _targetSprite;
+	}
+
+	public void setAfterImageListener(AfterImageListener l) {
+		_listener = l;
+	}
+
+	public AfterImageListener getAfterImageListener() {
+		return _listener;
 	}
 
 	public boolean isMakeAutoEffect() {
@@ -218,6 +529,12 @@ public class AfterImageEffect extends BaseAbstractEffect {
 	public AfterImageEffect setStartLocation(float x, float y) {
 		setStartX(x);
 		setStartY(y);
+		return this;
+	}
+
+	public AfterImageEffect setStartSize(float w, float h) {
+		setStartWidth(w);
+		setStartHeight(h);
 		return this;
 	}
 
@@ -267,7 +584,7 @@ public class AfterImageEffect extends BaseAbstractEffect {
 
 	private void initAfterObjects() {
 		if (_afterObjects == null) {
-			_afterObjects = new TArray<>(_count);
+			_afterObjects = new TArray<AfterImageEffect.AfterObject>(_count);
 			_inited = false;
 		}
 	}
@@ -316,76 +633,156 @@ public class AfterImageEffect extends BaseAbstractEffect {
 		return this;
 	}
 
+	/**
+	 * 创建一组对象，用于显示不同的残影形态
+	 * 
+	 * @param x
+	 * @param y
+	 * @param w
+	 * @param h
+	 * @return
+	 */
 	public AfterImageEffect createAfterObjects(float x, float y, float w, float h) {
 		initAfterObjects();
 		if (_afterObjects.size > 0) {
 			clearAfterObjects();
 		}
+		// 计算最大可生成数量
+		int maxCount = _count;
+		// 若设定了移动目标，则强制限制步长
+		if (_useTarget && (_targetX != -1f || _targetY != -1f)) {
+			float dx = MathUtils.abs(_targetX - x);
+			float dy = MathUtils.abs(_targetY - y);
+			float stepX = (w + _interval) * _trajectorySpeed;
+			float stepY = (h + _interval) * _trajectorySpeed;
 
-		final float totalCount = _count;
+			int maxX = stepX > 0 ? (int) (dx / stepX) + 1 : _count;
+			int maxY = stepY > 0 ? (int) (dy / stepY) + 1 : _count;
+			maxCount = MathUtils.min(_count, MathUtils.max(maxX, maxY));
+		}
 
-		for (int i = 0; i < _count; i++) {
+		final int actualCount = maxCount;
+
+		for (int i = 0; i < actualCount; i++) {
 			final AfterObject after = new AfterObject();
 			after.width = w;
 			after.height = h;
-			float alphaProgress = getEaseProgress((float) i / totalCount);
-			if (_alphaDecreasing) {
-				after.alpha = MathUtils.clamp(1f - alphaProgress, _scaleStep, 1f);
-			} else {
-				after.alpha = MathUtils.clamp(alphaProgress, _scaleStep, 1f);
-			}
 
+			// 使用实际数量计算透明度进度
+			float alphaProgress = getEaseProgress((float) i / actualCount);
+			float baseAlpha = _alphaDecreasing ? (1f - alphaProgress) : alphaProgress;
+			if (_randomEnabled) {
+				baseAlpha += MathUtils.random(-_randomAlphaRange, _randomAlphaRange);
+			}
+			after.alpha = MathUtils.clamp(baseAlpha, 0.05f, 1f);
 			if (_scaleDecreasing) {
-				float progress = (float) i / (_count - 1);
-				float scale = 0.5f + progress * 0.5f;
-				after.setScale(scale);
+				float scaleProgress = getEaseProgress(1f - (float) i / (actualCount - 1));
+				float baseScale = 1f - scaleProgress * _scaleStep * 10;
+				if (_randomEnabled) {
+					baseScale += MathUtils.random(-_randomScaleRange, _randomScaleRange);
+				}
+				after.setScale(baseScale);
+			} else {
+				float scaleProgress = getEaseProgress((float) i / (actualCount - 1));
+				float baseScale = 1f + scaleProgress * _scaleStep * 10;
+				if (_randomEnabled) {
+					baseScale += MathUtils.random(-_randomScaleRange, _randomScaleRange);
+				}
+				after.setScale(baseScale);
 			}
-
 			if (_rotationEnabled) {
-				after.setRotation(i * _rotationStep);
+				float baseRot = i * _rotationStep;
+				if (_randomEnabled) {
+					baseRot += MathUtils.random(-_randomRotationRange, _randomRotationRange);
+				}
+				after.setRotation(baseRot);
 			}
-
-			float stepX = i * (w + _interval);
-			float stepY = i * (h + _interval);
-
+			float stepX = i * (w + _interval) * _trajectorySpeed;
+			float stepY = i * (h + _interval) * _trajectorySpeed;
+			// 根据方向设置坐标
 			switch (_moveDir) {
 			case Config.UP:
 				after.x = stepX;
 				after.y = -stepY;
-				updateOrbit(after, i, true, true);
 				break;
 			case Config.LEFT:
 				after.x = -stepX;
 				after.y = -stepY;
-				updateOrbit(after, i, false, true);
 				break;
-			default:
 			case Config.RIGHT:
 				after.x = stepX;
 				after.y = stepY;
-				updateOrbit(after, i, false, true);
 				break;
 			case Config.DOWN:
 				after.x = -stepX;
 				after.y = stepY;
-				updateOrbit(after, i, true, true);
 				break;
 			case Config.TUP:
 				after.y = -stepY;
-				updateOrbit(after, i, true, false);
 				break;
 			case Config.TLEFT:
 				after.x = -stepX;
-				updateOrbit(after, i, false, true);
 				break;
 			case Config.TRIGHT:
 				after.x = stepX;
-				updateOrbit(after, i, false, true);
 				break;
 			case Config.TDOWN:
 				after.y = stepY;
-				updateOrbit(after, i, true, false);
 				break;
+			}
+			updateOrbit(after, i, true, true);
+			if (_useTarget && (_targetX != -1f || _targetY != -1f)) {
+				float curX = x + after.x;
+				float curY = y + after.y;
+				boolean reached = false;
+				switch (_moveDir) {
+				case Config.TRIGHT:
+					if (curX >= _targetX) {
+						reached = true;
+					}
+					break;
+				case Config.TLEFT:
+					if (curX <= _targetX) {
+						reached = true;
+					}
+					break;
+				case Config.TDOWN:
+					if (curY >= _targetY) {
+						reached = true;
+					}
+					break;
+				case Config.TUP:
+					if (curY <= _targetY) {
+						reached = true;
+					}
+					break;
+				case Config.RIGHT:
+					if (curX >= _targetX && curY >= _targetY) {
+						reached = true;
+					}
+					break;
+				case Config.UP:
+					if (curX >= _targetX && curY <= _targetY) {
+						reached = true;
+					}
+					break;
+				case Config.DOWN:
+					if (curX <= _targetX && curY >= _targetY) {
+						reached = true;
+					}
+					break;
+				case Config.LEFT:
+					if (curX <= _targetX && curY <= _targetY) {
+						reached = true;
+					}
+					break;
+				}
+				if (reached) {
+					after.setPos(_targetX - x, _targetY - y);
+					_afterObjects.add(after);
+					// 停止生成超越目标坐标的残像对象
+					break;
+				}
 			}
 			_afterObjects.add(after);
 		}
@@ -393,23 +790,22 @@ public class AfterImageEffect extends BaseAbstractEffect {
 	}
 
 	private void updateOrbit(AfterObject o, int idx, boolean c, boolean r) {
+		final float progress = (float) idx / _count;
 		switch (_moveOrbit) {
 		case LINE:
 			break;
 		case CURVE:
-			if (c) {
-				if (!_moveOrbitReverse) {
-					if (idx % 2 == 0) {
-						o.x += _orbitValue;
-					} else {
-						o.x -= _orbitValue;
-					}
+			if (!_moveOrbitReverse) {
+				if (idx % 2 == 0) {
+					o.x += _orbitValue;
 				} else {
-					if (idx % 2 != 0) {
-						o.x += _orbitValue;
-					} else {
-						o.x -= _orbitValue;
-					}
+					o.x -= _orbitValue;
+				}
+			} else {
+				if (idx % 2 != 0) {
+					o.x += _orbitValue;
+				} else {
+					o.x -= _orbitValue;
 				}
 			}
 			if (r) {
@@ -426,6 +822,111 @@ public class AfterImageEffect extends BaseAbstractEffect {
 						o.y -= _orbitValue;
 					}
 				}
+			}
+			break;
+		case SINE:
+			float sine = MathUtils.sin(progress * MathUtils.TWO_PI) * _sineAmplitude;
+			if (c) {
+				o.x += sine;
+			}
+			if (r) {
+				o.y += sine;
+			}
+			break;
+		case PARABOLA:
+			float parabola = (progress - 0.5f) * (progress - 0.5f) * _parabolaHeight * 4;
+			parabola *= _moveOrbitReverse ? -1 : 1;
+			if (c) {
+				o.x += parabola;
+			}
+			if (r) {
+				o.y += parabola;
+			}
+			break;
+		case CIRCLE:
+			float angle = progress * MathUtils.TWO_PI;
+			float radius = _orbitValue;
+			if (c) {
+				o.x += MathUtils.cos(angle) * radius;
+			}
+			if (r) {
+				o.y += MathUtils.sin(angle) * radius;
+			}
+			break;
+		case SPIRAL:
+			float spiralAngle = progress * MathUtils.PI_4;
+			float spiralRadius = progress * _orbitValue * 2;
+			if (c) {
+				o.x += MathUtils.cos(spiralAngle) * spiralRadius;
+			}
+			if (r) {
+				o.y += MathUtils.sin(spiralAngle) * spiralRadius;
+			}
+			break;
+		case RANDOM:
+			if (c) {
+				o.x += (MathUtils.random() - 0.5f) * _orbitValue * 2;
+			}
+			if (r) {
+				o.y += (MathUtils.random() - 0.5f) * _orbitValue * 2;
+			}
+			break;
+		case LISS:
+			float lissX = MathUtils.sin(progress * MathUtils.PI * 2 * 3);
+			float lissY = MathUtils.sin(progress * MathUtils.PI * 2 * 2 + MathUtils.PI / 2);
+			if (c) {
+				o.x += lissX * _orbitValue;
+			}
+			if (r) {
+				o.y += lissY * _orbitValue;
+			}
+			break;
+		case JUMP:
+			float jump = (idx % 2 == 0 ? 1 : -1) * _orbitValue * 5;
+			if (c) {
+				o.x += jump;
+			}
+			if (r) {
+				o.y += jump;
+			}
+			break;
+		case WAVE:
+			float wave = MathUtils.sin(progress * MathUtils.PI * 6) * _orbitValue * 3;
+			if (c) {
+				o.x += wave;
+			}
+			if (r) {
+				o.y += wave;
+			}
+			break;
+		case TRIANGLE:
+			float triangle = (progress % 0.5f < 0.25f ? 1 : -1) * _orbitValue * 4;
+			if (c) {
+				o.x += triangle;
+			}
+			if (r) {
+				o.y += triangle;
+			}
+			break;
+		case FALLING:
+			if (progress > 0.5f) {
+				float burst = (progress - 0.5f) * _orbitValue * 10;
+				if (c) {
+					o.x += burst;
+				}
+				if (r) {
+					o.y += burst;
+				}
+			}
+			break;
+		case METEOR:
+			int step = idx / (_count / 5);
+			float stairOffset = step * _orbitValue * 6;
+			if (c) {
+				o.x += stairOffset;
+			}
+			if (r) {
+				o.y += stairOffset;
 			}
 			break;
 		}
@@ -496,7 +997,7 @@ public class AfterImageEffect extends BaseAbstractEffect {
 			}
 			if (size > _count) {
 				final float skip = (float) size / _count;
-				final TArray<AfterImageEffect.AfterObject> temp = new TArray<>();
+				final TArray<AfterImageEffect.AfterObject> temp = new TArray<AfterImageEffect.AfterObject>();
 				int counter = 0;
 				for (float i = 0; i < size; i += skip) {
 					int idx = MathUtils.iceil(i);
@@ -524,22 +1025,80 @@ public class AfterImageEffect extends BaseAbstractEffect {
 			_inited = true;
 		}
 		_playing = true;
+		_currentFadeAlpha = 1f;
+		// 开始播放时暂停目标精灵渲染
+		if (_syncToSprite && _targetSprite != null) {
+			if (_afterObjects.size > 0 && _listener != null) {
+				_listener.onSpriteToAfterImage(_targetSprite, _afterObjects.first());
+			}
+			if (_autoSyncSpriteSwitch) {
+				// 实际精灵与残像精灵显示逻辑正相反
+				_targetSprite.setVisible(false);
+				setVisible(true);
+			}
+		}
+		// 监听残影播放开始事件
+		if (_listener != null) {
+			_listener.onAfterImageStart(_targetSprite);
+		}
 		return this;
 	}
 
 	public AfterImageEffect restart() {
 		if (!_playing) {
-			clearData();
+			if (_inited) {
+				clearData();
+				bindTargetSprite(_targetSprite);
+			}
 			start();
 		}
 		return this;
 	}
 
 	@Override
-	public void onUpdate(long elapsedTime) {
-		if (checkAutoRemove() || !_inited) {
+	public void repaint(GLEx g, float sx, float sy) {
+		if (completedAfterBlackScreen(g, sx, sy)) {
 			return;
 		}
+		if (!_inited) {
+			return;
+		}
+		final float newX = drawX(sx);
+		final float newY = drawY(sy);
+		if (!_completed) {
+
+			for (int i = 0; i < _indexNext && i < _afterObjects.size; i++) {
+				final AfterObject o = _afterObjects.get(i);
+				if (o != null) {
+					final LTexture shadowTexture = o.texture == null ? _afterTexture : o.texture;
+					if (_indexNext <= 1 && !_hideFirstObject) {
+						g.draw(shadowTexture, newX + (_startX + o.x), newY + (_startY + o.y), o.width, o.height,
+								this._baseColor, this._scaleX, this._scaleY, this._flipX, this._flipY,
+								this._objectRotation);
+					} else {
+						g.draw(shadowTexture, newX + (_startX + o.x), newY + (_startY + o.y), o.width, o.height,
+								_tempColor.setColor(LColor.combine(_shadowColor.setAlpha(o.alpha * _currentFadeAlpha),
+										this._baseColor)),
+								this._scaleX, this._scaleY, this._flipX, this._flipY, this._objectRotation);
+					}
+				}
+			}
+		} else {
+			final AfterObject o = _afterObjects.last();
+			if (o != null && !_alphaDecreasing) {
+				final LTexture shadowTexture = o.texture == null ? _afterTexture : o.texture;
+				g.draw(shadowTexture, newX + (_startX + o.x), newY + (_startY + o.y), o.width, o.height,
+						this._baseColor, this._scaleX, this._scaleY, this._flipX, this._flipY, this._objectRotation);
+			}
+		}
+	}
+
+	@Override
+	public void onUpdate(long elapsedTime) {
+		if (checkAutoRemove() || !_inited || _paused) {
+			return;
+		}
+		updateFadeAlpha(elapsedTime);
 		if (_timer.action(elapsedTime)) {
 			if (_reversePlay) {
 				if (_indexNext > 0) {
@@ -555,17 +1114,34 @@ public class AfterImageEffect extends BaseAbstractEffect {
 					}
 				}
 			}
+			AfterObject o = null;
 			if (_displayCompleted && _afterObjects.size > 1 && !_reversePlay) {
-				_afterObjects.shift();
+				o = _afterObjects.shift();
 				_indexNext = _afterObjects.size;
 			} else if (_afterObjects.size == 1) {
-				final AfterObject o = _afterObjects.last();
+				o = _afterObjects.last();
 				if (o != null) {
 					o.alpha = 1f;
 					_indexNext = 1;
 					if (!_looping) {
 						_completed = true;
 						_playing = false;
+						// 残影结束时恢复目标精灵渲染并停止同步
+						if (_syncToSprite && _targetSprite != null) {
+							updateOrbitAndSync(o);
+							if (_listener != null) {
+								_listener.onAfterImageToSprite(_targetSprite, o);
+							}
+							if (_autoSyncSpriteSwitch) {
+								// 实际精灵与残像精灵显示逻辑取反
+								setVisible(false);
+								_targetSprite.setVisible(true);
+							}
+						}
+						_syncToSprite = false;
+						if (_listener != null) {
+							_listener.onAfterImageEnd(_targetSprite);
+						}
 					} else {
 						_playing = false;
 						if (_makeAutoEffect) {
@@ -578,42 +1154,23 @@ public class AfterImageEffect extends BaseAbstractEffect {
 					}
 				}
 			}
+			if (o != null)
+				if (_syncToSprite) {
+					updateOrbitAndSync(o);
+					if (_listener != null) {
+						_listener.onAfterImageUpdate(_targetSprite, o);
+					}
+				}
 		}
 	}
 
-	@Override
-	public void repaint(GLEx g, float sx, float sy) {
-		if (completedAfterBlackScreen(g, sx, sy)) {
-			return;
+	private void updateFadeAlpha(long elapsedTime) {
+		float delta = Duration.toS(elapsedTime);
+		if (_currentFadeAlpha < 1f && _fadeInTime > 0) {
+			_currentFadeAlpha = MathUtils.clamp(_currentFadeAlpha + delta / _fadeInTime, 0f, 1f);
 		}
-		if (!_inited) {
-			return;
-		}
-		final float newX = drawX(sx);
-		final float newY = drawY(sy);
-		if (!_completed) {
-			for (int i = 0; i < _indexNext; i++) {
-				final AfterObject o = _afterObjects.get(i);
-				if (o != null) {
-					final LTexture shadowTexture = o.texture == null ? _afterTexture : o.texture;
-					if (_indexNext <= 1 && !_hideFirstObject) {
-						g.draw(shadowTexture, newX + (_startX + o.x), newY + (_startY + o.y), o.width, o.height,
-								this._baseColor, this._scaleX, this._scaleY, this._flipX, this._flipY,
-								this._objectRotation);
-					} else {
-						g.draw(shadowTexture, newX + (_startX + o.x), newY + (_startY + o.y), o.width, o.height,
-								_tempColor.setColor(LColor.combine(_shadowColor.setAlpha(o.alpha), this._baseColor)),
-								this._scaleX, this._scaleY, this._flipX, this._flipY, this._objectRotation);
-					}
-				}
-			}
-		} else {
-			final AfterObject o = _afterObjects.last();
-			if (o != null && !_alphaDecreasing) {
-				final LTexture shadowTexture = o.texture == null ? _afterTexture : o.texture;
-				g.draw(shadowTexture, newX + (_startX + o.x), newY + (_startY + o.y), o.width, o.height,
-						this._baseColor, this._scaleX, this._scaleY, this._flipX, this._flipY, this._objectRotation);
-			}
+		if (_completed && _fadeOutTime > 0) {
+			_currentFadeAlpha = MathUtils.clamp(_currentFadeAlpha - delta / _fadeOutTime, 0f, 1f);
 		}
 	}
 
@@ -743,6 +1300,7 @@ public class AfterImageEffect extends BaseAbstractEffect {
 		this._completed = false;
 		this._displayCompleted = false;
 		this._inited = _playing = false;
+		this._currentFadeAlpha = 1f;
 		return this;
 	}
 
@@ -839,13 +1397,52 @@ public class AfterImageEffect extends BaseAbstractEffect {
 		return this;
 	}
 
+	public AfterImageEffect setRandomEnabled(boolean enable) {
+		this._randomEnabled = enable;
+		return this;
+	}
+
+	public AfterImageEffect setFadeTime(float fadeIn, float fadeOut) {
+		this._fadeInTime = fadeIn;
+		this._fadeOutTime = fadeOut;
+		return this;
+	}
+
+	@Override
+	public AfterImageEffect pause() {
+		super.pause();
+		this._paused = true;
+		return this;
+	}
+
+	@Override
+	public AfterImageEffect resume() {
+		super.resume();
+		this._paused = false;
+		return this;
+	}
+
+	public AfterImageEffect setTrajectorySpeed(float speed) {
+		this._trajectorySpeed = MathUtils.max(speed, 0.1f);
+		return this;
+	}
+
+	public AfterImageEffect setRandomRange(float alpha, float scale, float rotation) {
+		this._randomAlphaRange = alpha;
+		this._randomScaleRange = scale;
+		this._randomRotationRange = rotation;
+		return this;
+	}
+
 	@Override
 	protected void _onDestroy() {
 		super._onDestroy();
 		_backAfters.clear();
-		if (_afterTexture != null) {
-			_afterTexture.close();
-			_afterTexture = null;
+		if (!_syncToSprite) {
+			if (_afterTexture != null) {
+				_afterTexture.close();
+				_afterTexture = null;
+			}
 		}
 	}
 

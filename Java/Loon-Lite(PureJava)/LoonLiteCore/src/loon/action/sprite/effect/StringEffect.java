@@ -60,6 +60,8 @@ public class StringEffect extends BaseAbstractEffect {
 
 	private Text _font;
 
+	private boolean _isCrit;
+
 	/**
 	 * not Move
 	 * 
@@ -318,13 +320,22 @@ public class StringEffect extends BaseAbstractEffect {
 		this._updatePos = update;
 		this._objectAlpha = this._scaleX = this._scaleY = 1f;
 		this._objectRotation = 0f;
-		this._model = StringEffectModel.BASE;
+		this._model = model;
 		this._completed = false;
 		this.setLocation(pos);
 		this.setColor(color);
 		this.setSize(_font.getWidth(), _font.getHeight());
 		this.setLocation(pos.x, pos.y);
 		this.setRepaint(true);
+	}
+
+	public StringEffect setCrit(boolean crit) {
+		this._isCrit = crit;
+		if (crit) {
+			setScaleUpdateValue(_scaleUpdate * 2);
+			setAlphaUpdateValue(_alphaUpdate * 0.8f);
+		}
+		return this;
 	}
 
 	public StringEffectModel getEffectModel() {
@@ -391,6 +402,10 @@ public class StringEffect extends BaseAbstractEffect {
 
 	public Text getText() {
 		return _font;
+	}
+
+	public boolean isCrit() {
+		return _isCrit;
 	}
 
 	protected void onAwayEffect() {

@@ -28,6 +28,69 @@ import loon.utils.TArray;
 
 public class Direction {
 
+	/**
+	 * 将Config的方向常量转换为Direction对象
+	 *
+	 * @param configDir
+	 * @return 对应的 Direction
+	 */
+	public static Direction fromConfig(int configDir) {
+		switch (configDir) {
+		case Config.TUP:
+			return UP;
+		case Config.TDOWN:
+			return DOWN;
+		case Config.TLEFT:
+			return LEFT;
+		case Config.TRIGHT:
+			return RIGHT;
+		case Config.UP_LEFT:
+			return UP_LEFT;
+		case Config.UP_RIGHT:
+			return UP_RIGHT;
+		case Config.DOWN_LEFT:
+			return DOWN_LEFT;
+		case Config.DOWN_RIGHT:
+			return DOWN_RIGHT;
+		default:
+			return NONE;
+		}
+	}
+
+	/**
+	 * 将Direction的方向常量转换为Config对象
+	 * 
+	 * @param dir
+	 * @return
+	 */
+	public static int toConfig(Direction dir) {
+		if (dir == UP) {
+			return Config.TUP;
+		}
+		if (dir == DOWN) {
+			return Config.TDOWN;
+		}
+		if (dir == LEFT) {
+			return Config.TLEFT;
+		}
+		if (dir == RIGHT) {
+			return Config.TRIGHT;
+		}
+		if (dir == UP_LEFT) {
+			return Config.UP_LEFT;
+		}
+		if (dir == UP_RIGHT) {
+			return Config.UP_RIGHT;
+		}
+		if (dir == DOWN_LEFT) {
+			return Config.DOWN_LEFT;
+		}
+		if (dir == DOWN_RIGHT) {
+			return Config.DOWN_RIGHT;
+		}
+		return Config.EMPTY;
+	}
+
 	public final static TArray<Direction> values() {
 		return ALL_DIRECTIONS;
 	}

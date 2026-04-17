@@ -382,7 +382,7 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 		}
 		Path path = new Path();
 		path.cost = found.g;
-		SortedList<int[]> positions = new SortedList<>();
+		SortedList<int[]> positions = new SortedList<int[]>();
 		while (found != null) {
 			positions.addFirst(CollectionUtils.copyOf(found.position));
 			found = found.parent;
@@ -720,7 +720,7 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 			}
 			return positions;
 		}
-		return new SortedList<>();
+		return new SortedList<int[]>();
 	}
 
 	public TArray<Vector2f> circleRegion(Vector2f center, int radius) {

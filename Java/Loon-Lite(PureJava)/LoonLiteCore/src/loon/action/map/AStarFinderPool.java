@@ -117,7 +117,7 @@ public class AStarFinderPool {
 
 	static class TaskQueue {
 
-		private SortedList<AStarFinder> queue = new SortedList<>();
+		private SortedList<AStarFinder> queue = new SortedList<AStarFinder>();
 
 		public synchronized AStarFinder contains(AStarFinder element) {
 			for (LIterator<AStarFinder> it = queue.listIterator(); it.hasNext();) {

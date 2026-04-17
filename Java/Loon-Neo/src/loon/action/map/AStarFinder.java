@@ -299,7 +299,7 @@ public class AStarFinder implements Updateable, LRelease {
 
 	private TArray<Vector2f> calc(Field2D m, Vector2f start, Vector2f goal, boolean bevel, boolean diagonal) {
 		if (start.equals(goal)) {
-			TArray<Vector2f> v = new TArray<>();
+			TArray<Vector2f> v = new TArray<Vector2f>();
 			v.add(start);
 			return v;
 		}
@@ -314,7 +314,7 @@ public class AStarFinder implements Updateable, LRelease {
 	}
 
 	private TArray<Vector2f> reconstructPath(Node node) {
-		TArray<Vector2f> path = new TArray<>();
+		TArray<Vector2f> path = new TArray<Vector2f>();
 		while (node != null) {
 			path.add(node.pos);
 			node = node.parent;

@@ -55,7 +55,7 @@ public abstract class LObject<T> extends BlendMethod implements Comparator<T>, X
 	}
 
 	public static enum State {
-		UNKNOWN, REMOVED, ADDED, DISPOSED
+		UNKNOWN, REMOVED, ADDED, DISPOSED, HIDDEN, SHOWED
 	}
 
 	protected final VarView<State> _objectState = Var.create(State.UNKNOWN);

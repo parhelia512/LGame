@@ -19,20 +19,27 @@
  * @version 0.5
  */
 package loon.action.map;
+
 /**
- * <p>默认的方向键与真实方向对应关系如下</p>
+ * <p>
+ * 默认的方向键与真实方向对应关系如下
+ * </p>
  *
  * <pre>
  *          n
- *      wn     ne
- *    w           e
- *      sw     es
+ *    UP_LEFT     UP_RIGHT
+ *      wn           ne
+ *   w                 e
+ *      sw           es
+ *    DOWN_LEFT   DOWN_RIGHT
  *          s
  *
  *          TUP
- *     LEFT     UP
- *   TLEFT       TRIGHT
- *     DOWN     RIGHT
+ *   UP_LEFT     UP_RIGHT
+ *     LEFT         UP
+ *   TLEFT           TRIGHT
+ *     DOWN         RIGHT
+ *   DOWN_LEFT   DOWN_RIGHT
  *         TDOWN
  * </pre>
  */
@@ -41,34 +48,27 @@ public interface Config {
 	public static final int EMPTY = -1;
 
 	public static final int LEFT = 0;
-
 	public static final int RIGHT = 1;
-
 	public static final int UP = 2;
-
 	public static final int DOWN = 3;
 
 	public static final int TLEFT = 4;
-
 	public static final int TRIGHT = 5;
-
 	public static final int TUP = 6;
-
 	public static final int TDOWN = 7;
 
 	public static final int WN = LEFT;
-
 	public static final int ES = RIGHT;
-
 	public static final int NE = UP;
-
 	public static final int SW = DOWN;
 
 	public static final int N = TUP;
-
 	public static final int S = TDOWN;
-
 	public static final int W = TLEFT;
-
 	public static final int E = TRIGHT;
+
+	public static final int UP_LEFT = LEFT;
+	public static final int UP_RIGHT = UP;
+	public static final int DOWN_LEFT = DOWN;
+	public static final int DOWN_RIGHT = RIGHT;
 }

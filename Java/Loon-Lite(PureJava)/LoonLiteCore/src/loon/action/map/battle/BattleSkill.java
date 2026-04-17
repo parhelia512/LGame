@@ -1739,6 +1739,13 @@ public class BattleSkill implements LRelease {
 		return false;
 	}
 
+	public boolean canDebuffSkill() {
+		if (battleType != null && (battleType == BattleType.DEBUFF)) {
+			return true;
+		}
+		return false;
+	}
+
 	public boolean canRange() {
 		return (rangeType != null && (rangeType != RangeType.SINGLE));
 	}

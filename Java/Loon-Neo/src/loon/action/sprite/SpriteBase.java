@@ -1575,6 +1575,7 @@ public abstract class SpriteBase<T extends ISprite> extends LObject<T> implement
 	@Override
 	public void setVisible(final boolean v) {
 		this._visible = v;
+		setState(_visible ? State.SHOWED : State.HIDDEN);
 	}
 
 	public SpriteBase<T> setActiveX(boolean a) {

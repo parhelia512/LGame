@@ -34,7 +34,7 @@ public class Signal<T> {
 		boolean onSignal(T param1T);
 	}
 
-	private final SortedList<Listener<T>> _listeners = new SortedList<>();
+	private final SortedList<Listener<T>> _listeners = new SortedList<Listener<T>>();
 
 	private boolean _stackMode;
 

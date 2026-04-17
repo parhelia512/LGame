@@ -31,7 +31,7 @@ public class ActorTreeSet {
 
 	protected boolean isDirty;
 
-	private final SortedList<ActorSet> _subSets = new SortedList<>();
+	private final SortedList<ActorSet> _subSets = new SortedList<ActorSet>();
 
 	private final ActorSet _generalSet = new ActorSet();
 

@@ -538,7 +538,7 @@ public final class ISOUtils {
 	 * @return
 	 */
 	public static ObjectMap<String, Vector2f> getIsoMapCorners(int mapWidth, int mapHeight, IsoConfig config) {
-		ObjectMap<String, Vector2f> cornersMap = new ObjectMap<>();
+		ObjectMap<String, Vector2f> cornersMap = new ObjectMap<String, Vector2f>();
 		IsoResult lt = isoTransform(0, 0, config.tileWidth, config.tileHeight, config, null, null);
 		cornersMap.put("leftTop", lt.screenPos);
 		IsoResult lb = isoTransform(0, mapHeight, config.tileWidth, config.tileHeight, config, null, null);

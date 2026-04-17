@@ -172,6 +172,9 @@ public class Entity extends SpriteBase<IEntity> implements IEntity {
 	}
 
 	public IEntity setTexture(LTexture tex) {
+		if (tex == null) {
+			return this;
+		}
 		this._image = tex;
 		if (_width <= 0) {
 			_width = _image.width();
@@ -600,7 +603,7 @@ public class Entity extends SpriteBase<IEntity> implements IEntity {
 		}
 		for (int i = this._childrens.size - 1; i >= 0; i--) {
 			final IEntity child = this._childrens.get(i);
-			if (child.getIndexTag() == idx) {
+			if (child != null && child.getIndexTag() == idx) {
 				return child;
 			}
 		}
@@ -1493,6 +1496,50 @@ public class Entity extends SpriteBase<IEntity> implements IEntity {
 				this.setY(this.getY() + dy);
 			}
 		}
+		return this;
+	}
+
+	public IEntity hideChildren() {
+		if (_childrens != null) {
+			for (int i = this._childrens.size - 1; i >= 0; i--) {
+				final IEntity child = this._childrens.get(i);
+				if (child != null) {
+					child.setVisible(false);
+				}
+			}
+		}
+		return this;
+	}
+
+	public IEntity showChildren() {
+		if (_childrens != null) {
+			for (int i = this._childrens.size - 1; i >= 0; i--) {
+				final IEntity child = this._childrens.get(i);
+				if (child != null) {
+					child.setVisible(true);
+				}
+			}
+		}
+		return this;
+	}
+
+	public boolean intersects(Entity other) {
+		return this.getRectBox().intersects(other.getRectBox());
+	}
+
+	public IEntity blink(float time, float interval) {
+		this.selfAction().alphaTo(0f, interval).alphaTo(1f, interval).repeat(time).start();
+		return this;
+	}
+
+	public IEntity shake(float strength, int count, int times) {
+		this.selfAction().moveBy(MathUtils.random(-strength, strength), MathUtils.random(-strength, strength), 5)
+				.repeat(count, times).start();
+		return this;
+	}
+
+	public IEntity gradientColor(LColor start, LColor end, float delay) {
+		this.selfAction().colorTo(start, end, delay).start();
 		return this;
 	}
 

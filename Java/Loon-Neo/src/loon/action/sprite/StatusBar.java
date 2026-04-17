@@ -46,7 +46,7 @@ public class StatusBar extends Entity {
 
 	private int _speed;
 
-	private LColor _fontColor = new LColor(LColor.white);
+	private final LColor _fontColor = new LColor();
 
 	private String _numberString;
 
@@ -305,7 +305,7 @@ public class StatusBar extends Entity {
 	}
 
 	public StatusBar setFontColor(LColor c) {
-		this._fontColor = c;
+		this._fontColor.setColor(c);
 		return this;
 	}
 

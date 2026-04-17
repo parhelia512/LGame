@@ -202,7 +202,7 @@ public class LSpiralMenu extends LContainer {
 		void onSkillClicked(int index);
 	}
 
-	private final TArray<SpiralButton> _skillButtons = new TArray<>();
+	private final TArray<SpiralButton> _skillButtons = new TArray<SpiralButton>();
 	private final LClickButton _mainButton;
 
 	private float _childButtonWidth;

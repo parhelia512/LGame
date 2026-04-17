@@ -984,6 +984,7 @@ public final class LSTRFont extends FontTrans implements IFont, LRelease {
 		this.charCurrent = 0;
 		this.totalWidth = 0;
 		this.totalHeight = 0;
+		boolean updateColor = (c != null);
 		final int old = gl.color();
 		boolean childDraw = false;
 		final boolean anchor = ax != 0 || ay != 0;
@@ -991,8 +992,14 @@ public final class LSTRFont extends FontTrans implements IFont, LRelease {
 		final boolean update = angle || anchor;
 		final int blend = gl.getBlendMode();
 		try {
+			final float alpha = gl.alpha();
+			if (updateColor && alpha != 1f && c.a != alpha) {
+				gl.flush();
+			}
 			gl.setBlendMode(BlendMethod.MODE_NORMAL);
-			gl.setColor(c);
+			if (updateColor) {
+				gl.setTint(c);
+			}
 			if (update) {
 				gl.saveTx();
 				final Affine2f xf = gl.tx();
@@ -1049,7 +1056,9 @@ public final class LSTRFont extends FontTrans implements IFont, LRelease {
 			}
 		} finally {
 			gl.setBlendMode(blend);
-			gl.setColor(old);
+			if (updateColor) {
+				gl.setTint(old);
+			}
 			if (update) {
 				gl.restoreTx();
 			}
@@ -1080,7 +1089,7 @@ public final class LSTRFont extends FontTrans implements IFont, LRelease {
 		final int blend = gl.getBlendMode();
 		try {
 			gl.setBlendMode(BlendMethod.MODE_NORMAL);
-			gl.setColor(c);
+			gl.setTint(c);
 			if (update) {
 				gl.saveTx();
 				Affine2f xf = gl.tx();
@@ -1112,7 +1121,7 @@ public final class LSTRFont extends FontTrans implements IFont, LRelease {
 			}
 		} finally {
 			gl.setBlendMode(blend);
-			gl.setColor(old);
+			gl.setTint(old);
 			if (update) {
 				gl.restoreTx();
 			}

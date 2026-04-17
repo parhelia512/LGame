@@ -135,17 +135,17 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 
 	private LColor fontColor = LColor.black.cpy();
 
-	private TArray<TileImpl> tileBinds = new TArray<>(12);
+	private TArray<TileImpl> tileBinds = new TArray<TileImpl>(12);
 
 	private boolean playAnimation;
 
-	private IntMap<LTexture> textureCaches = new IntMap<>();
+	private IntMap<LTexture> textureCaches = new IntMap<LTexture>();
 
 	private boolean roll;
 
 	private boolean dirty;
 
-	private TArray<Animation> animations = new TArray<>();
+	private TArray<Animation> animations = new TArray<Animation>();
 
 	private IFont displayFont;
 
@@ -256,7 +256,7 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 
 		@Override
 		public TileVisit<TileImpl> next() {
-			TileVisit<TileImpl> tileVisit = new TileVisit<>();
+			TileVisit<TileImpl> tileVisit = new TileVisit<TileImpl>();
 			tileVisit.tile = map.tiles[i + m][j + n];
 			tileVisit.position[0] = i + m - k;
 			tileVisit.position[1] = j + n;
@@ -379,7 +379,7 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 		}
 		Path path = new Path();
 		path.cost = found.g;
-		SortedList<int[]> positions = new SortedList<>();
+		SortedList<int[]> positions = new SortedList<int[]>();
 		while (found != null) {
 			positions.addFirst(CollectionUtils.copyOf(found.position));
 			found = found.parent;
@@ -717,7 +717,7 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 			}
 			return positions;
 		}
-		return new SortedList<>();
+		return new SortedList<int[]>();
 	}
 
 	public TArray<Vector2f> circleRegion(Vector2f center, int radius) {
@@ -837,7 +837,7 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 			Path path = findPath(this, Vector2f.at(startX, startY).toInt(), position);
 			if (path != null) {
 				focuses = path.positions;
-				return new SortedList<>(focuses);
+				return new SortedList<int[]>(focuses);
 			}
 		}
 		return null;

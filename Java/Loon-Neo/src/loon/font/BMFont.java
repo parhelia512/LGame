@@ -543,7 +543,7 @@ public final class BMFont extends FontTrans implements IFont {
 		final int blend = g.getBlendMode();
 		try {
 			g.setBlendMode(BlendMethod.MODE_NORMAL);
-			g.setColor(c);
+			g.setTint(c);
 			int x = 0, y = 0;
 			CharDef lastCharDef = null;
 			for (int i = startIndex; i < endIndex; i++) {
@@ -584,7 +584,7 @@ public final class BMFont extends FontTrans implements IFont {
 			e.printStackTrace();
 		} finally {
 			g.setBlendMode(blend);
-			g.setColor(old);
+			g.setTint(old);
 		}
 	}
 

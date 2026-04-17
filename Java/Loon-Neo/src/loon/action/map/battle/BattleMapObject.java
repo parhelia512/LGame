@@ -1705,6 +1705,15 @@ public class BattleMapObject extends Role implements LRelease {
 		lastAttacker = o;
 	}
 
+	public boolean hasControlSkill() {
+		for (BattleSkill s : skills) {
+			if (s != null && s.canDebuffSkill()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public TArray<BattleSkill> getAllSkills() {
 		return new TArray<BattleSkill>(skills);
 	}

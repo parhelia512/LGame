@@ -55,7 +55,7 @@ public final class AVGDialog {
 
 	public final LTexture getRMXPDialog(String fileName, int width, int height) {
 		if (_dialogCache == null) {
-			_dialogCache = new ObjectMap<>(10);
+			_dialogCache = new ObjectMap<String, LTexture>(10);
 		}
 		Image dialog = BaseIO.loadImage(fileName);
 		int w = dialog.getWidth();
@@ -89,7 +89,7 @@ public final class AVGDialog {
 
 	public final LTexture getRMXPloadBuoyage(Image rmxpImage, int width, int height) {
 		if (_dialogCache == null) {
-			_dialogCache = new ObjectMap<>(10);
+			_dialogCache = new ObjectMap<String, LTexture>(10);
 		}
 		String keyName = "buoyage" + width + "|" + height + "|" + rmxpImage.getSource();
 		LTexture lazy = _dialogCache.get(keyName);
@@ -141,7 +141,7 @@ public final class AVGDialog {
 
 	private final LTexture getRMXPDialog(Image rmxpImage, int width, int height, int size, int offset) {
 		if (_dialogCache == null) {
-			_dialogCache = new ObjectMap<>(10);
+			_dialogCache = new ObjectMap<String, LTexture>(10);
 		}
 		String keyName = "dialog" + width + "|" + height + "|" + rmxpImage.getSource();
 		LTexture lazy = _dialogCache.get(keyName);

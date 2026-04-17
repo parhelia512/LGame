@@ -2629,7 +2629,7 @@ final public class StringUtils extends CharUtils {
 	 * @return
 	 */
 	public static TArray<String> getDelimiterStrings(String line, char delimiter) {
-		TArray<String> tokens = new TArray<>();
+		TArray<String> tokens = new TArray<String>();
 		boolean precedingBackslash = false;
 		boolean isToken = false;
 		int startIndex = 0;

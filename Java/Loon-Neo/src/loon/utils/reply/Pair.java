@@ -75,7 +75,7 @@ public class Pair<T1, T2> implements IValueKey<T1>, IValueValue<T2> {
 	}
 
 	public final static <T1, T2> Pair<T1, T2> get(final T1 o1, final T2 o2) {
-		return new Pair<>(o1, o2);
+		return new Pair<T1, T2>(o1, o2);
 	}
 
 	@Override

@@ -27,25 +27,31 @@ import loon.opengl.GLEx;
 import loon.utils.MathUtils;
 
 /**
- * 工具用组件类,用于把一组注入此类的组件按照卡片方式展示并进行集合操作
+ * 卡牌组管理组件,用于把一组注入此类的组件按照卡片方式展示并进行集合操作
  */
 public class LCardGroup extends LContainer {
 
 	private LComponent _lastClickedCard;
 	private HorizontalAlign _alignment;
-
 	private int _defaultSortOrder;
-
 	private float _cardRotation;
 	private float _heightOffset;
 	private float _verticalOffsetY;
-
 	private boolean _clickCardToMoveUp;
 	private boolean _forceFitContainer;
 	private boolean _updateCards;
 	private boolean _middleProtrusion;
-
 	private LColor _selectedColor;
+	private float _baseScale = 1.0f;
+	private float _baseAlpha = 1.0f;
+	private float _clickedScale = 1.2f;
+	private float _clickedAlpha = 0.8f;
+	private LComponent _hoveredCard;
+	private LColor _disabledColor = LColor.darkGray;
+	// 卡牌间距
+	private float _cardSpacing = 0f;
+	// 自动更新布局
+	private boolean _autoUpdateLayout = true;
 
 	public LCardGroup() {
 		this(-25f);
@@ -63,13 +69,17 @@ public class LCardGroup extends LContainer {
 		super(x, y, w, h);
 		setCardRotation(rotation);
 		setHeightOffset(heightOffset);
-		setSelectedColor(LColor.red);
+		setSelectedColor(LColor.darkRed);
 		setAlignment(HorizontalAlign.CENTER);
 		setClickCardToMoveUp(true);
 		setForceFitContainer(true);
 		setMiddleProtrusionCard(true);
 		setElastic(false);
-		setLocked(false);
+		setLocked(true);
+		focusIn();
+		_verticalOffsetY = -1;
+		_cardSpacing = 0f;
+		_autoUpdateLayout = true;
 	}
 
 	public boolean isMiddleProtrusionCard() {
@@ -78,10 +88,14 @@ public class LCardGroup extends LContainer {
 
 	public LCardGroup setMiddleProtrusionCard(boolean m) {
 		this._middleProtrusion = m;
+		_updateCards = false;
 		return this;
 	}
 
 	public LCardGroup addCard(LComponent... cs) {
+		if (cs == null) {
+			return this;
+		}
 		add(cs);
 		setCardUpdate(false);
 		return this;
@@ -92,6 +106,9 @@ public class LCardGroup extends LContainer {
 	}
 
 	public LCardGroup removeCard(LComponent c) {
+		if (c == null) {
+			return this;
+		}
 		remove(c);
 		setCardUpdate(false);
 		return this;
@@ -135,21 +152,27 @@ public class LCardGroup extends LContainer {
 	}
 
 	public LCardGroup setSelectedColor(LColor c) {
+		if (c == null) {
+			return this;
+		}
 		this._selectedColor = c;
 		return this;
 	}
 
 	public LCardGroup setHeightOffset(float o) {
 		this._heightOffset = o;
+		_updateCards = false;
+		_verticalOffsetY = -1;
 		return this;
 	}
 
 	public float getHeightOffset() {
-		return this._heightOffset;
+		return _heightOffset;
 	}
 
 	public LCardGroup setCardRotation(float r) {
-		this._cardRotation = r;
+		_cardRotation = r;
+		_updateCards = false;
 		return this;
 	}
 
@@ -164,6 +187,15 @@ public class LCardGroup extends LContainer {
 		return this;
 	}
 
+	private void resetCard(LComponent comp) {
+		if (comp == null) {
+			return;
+		}
+		comp.setScale(_baseScale);
+		comp.setAlpha(_baseAlpha);
+		comp.setZOrder(_defaultSortOrder);
+	}
+
 	public void endClickedCard() {
 		if (_lastClickedCard != null && _lastClickedCard.isClickUp()) {
 			_lastClickedCard.setColor(LColor.white);
@@ -172,20 +204,46 @@ public class LCardGroup extends LContainer {
 			} else {
 				_lastClickedCard.setY(_lastClickedCard.getY() - _heightOffset);
 			}
+			resetCard(_lastClickedCard);
+		}
+	}
+
+	public void selectedCard(LComponent card) {
+		if (card != null) {
+			card.setScale(_clickedScale);
+			card.setColor(_selectedColor);
+			card.setAlpha(_clickedAlpha);
+			card.setLayer(card.getLayer() + 10);
+		}
+	}
+
+	public void stackCards(float offsetX, float offsetY) {
+		if (_childs == null) {
+			return;
+		}
+		float baseX = getX();
+		float baseY = getY();
+		for (LComponent comp : _childs) {
+			if (comp != null) {
+				comp.setLocation(baseX, baseY);
+				baseX += offsetX;
+				baseY += offsetY;
+			}
 		}
 	}
 
 	public void startClickCard() {
 		final LComponent curClicked = getClickedChild();
 		if (curClicked != null && curClicked.isClickUp()) {
-			curClicked.setColor(_selectedColor);
 			if (_clickCardToMoveUp) {
 				curClicked.setY(curClicked.getY() - _heightOffset);
 			} else {
 				curClicked.setY(curClicked.getY() + _heightOffset);
 			}
+			selectedCard(curClicked);
 			_lastClickedCard = curClicked;
-		} else {
+		} else if (_lastClickedCard != null) {
+			resetCard(_lastClickedCard);
 			_lastClickedCard = null;
 		}
 	}
@@ -194,18 +252,56 @@ public class LCardGroup extends LContainer {
 		return this._lastClickedCard;
 	}
 
+	public void updateClickCard() {
+		final LComponent curHovered = getClickedCard();
+		if (curHovered != null) {
+			_hoveredCard = curHovered;
+			_hoveredCard.setScale(_clickedScale);
+		} else if (_hoveredCard != null) {
+			_hoveredCard.setScale(_baseScale);
+			_hoveredCard = null;
+		}
+	}
+
+	public void setClickedAlpha(float ha) {
+		_clickedAlpha = ha;
+	}
+
+	public float getClickedAlpha() {
+		return _clickedAlpha;
+	}
+
+	public void setClickedScale(float hs) {
+		_clickedScale = hs;
+	}
+
+	public float getClickedScale() {
+		return _clickedScale;
+	}
+
+	public void setBaseScale(float hs) {
+		_baseScale = hs;
+		_updateCards = false;
+	}
+
+	public float getBaseScale() {
+		return _baseScale;
+	}
+
+	public void setBaseAlpha(float ba) {
+		_baseAlpha = ba;
+	}
+
+	public float getBaseAlpha() {
+		return _baseAlpha;
+	}
+
 	@Override
 	public void process(long elapsedTime) {
-		if (!_component_visible) {
+		if (!_component_visible || _destroyed || _childs == null) {
 			return;
 		}
-		if (_destroyed) {
-			return;
-		}
-		if (_childs == null) {
-			return;
-		}
-		if (!_updateCards) {
+		if (_autoUpdateLayout && !_updateCards) {
 			updateCards();
 		}
 		if (isPointInUI() && isClickUp()) {
@@ -224,11 +320,16 @@ public class LCardGroup extends LContainer {
 
 	public LCardGroup setForceFitContainer(boolean f) {
 		this._forceFitContainer = f;
+		_updateCards = false;
 		return this;
 	}
 
 	public LCardGroup setAlignment(HorizontalAlign h) {
+		if (h == null) {
+			return this;
+		}
 		this._alignment = h;
+		_updateCards = false;
 		return this;
 	}
 
@@ -245,6 +346,7 @@ public class LCardGroup extends LContainer {
 		setCardsRotation();
 		setChildZOrders(_defaultSortOrder);
 		_updateCards = true;
+		_verticalOffsetY = -1;
 		return this;
 	}
 
@@ -265,16 +367,15 @@ public class LCardGroup extends LContainer {
 		for (int i = 0; i < size; i++) {
 			final LComponent comp = _childs[i];
 			if (comp != null) {
-				final int idx = i;
-				final float angle = getCardRotation(idx);
+				final float angle = getCardRotation(i);
 				comp.setRotation(angle);
-				comp.setLocation(comp.getX(), comp.getY() + getCardVerticalOffset(idx));
+				comp.setLocation(comp.getX(), comp.getY() + getCardVerticalOffset(i));
 			}
 		}
 	}
 
 	private void setCardsPosition() {
-		final float cardsTotalWidth = getChildTotalWidth();
+		final float cardsTotalWidth = getChildTotalWidth() + (_childs.length - 1) * _cardSpacing;
 		final float containerWidth = getWidth();
 		if (_forceFitContainer && cardsTotalWidth >= containerWidth) {
 			matchChildrenToFitContainer(cardsTotalWidth);
@@ -302,24 +403,19 @@ public class LCardGroup extends LContainer {
 
 	private float getCardRotation(int index) {
 		final int count = getChildCount();
-		if (count < 3) {
-			return 0;
-		}
-		return -(_cardRotation * (index - (count - 1f) / 2f) / ((count - 1f) / 2f));
+		return (count < 3) ? 0 : -(_cardRotation * (index - (count - 1f) / 2f) / ((count - 1f) / 2f));
 	}
 
 	private float getCardVerticalOffset(int index) {
 		if (!_updateCards || _verticalOffsetY == -1) {
 			final int count = getChildCount();
 			if (count < 3) {
+				_verticalOffsetY = 0;
 				return 0;
 			}
 			final float result = MathUtils.abs(_heightOffset
 					* (1f - MathUtils.pow(index - (count - 1f) / 2f, 2f) / MathUtils.pow((count - 1f) / 2f, 2f)));
-			float off = 0f;
-			if (_childs != null && _childs.length > 0) {
-				off = getChildTotalHeight() / count / 3f;
-			}
+			float off = (_childs != null && _childs.length > 0) ? getChildTotalHeight() / count / 3f : 0f;
 			_verticalOffsetY = (_middleProtrusion ? -result : result) + off;
 		}
 		return _verticalOffsetY;
@@ -330,18 +426,14 @@ public class LCardGroup extends LContainer {
 			return;
 		}
 		final float width = getWidth();
-		final float distanceBetweenChildren = (width - childrenTotalWidth) / (getChildCount() - 1);
+		final float distanceBetweenChildren = (width - childrenTotalWidth) / (getChildCount() - 1) + _cardSpacing;
 		float currentX = getX();
-		int size = _childs.length;
-		for (int i = 0; i < size; i++) {
-			LComponent comp = _childs[i];
+		for (LComponent comp : _childs) {
 			if (comp != null) {
-				float adjustedChildWidth = comp.getWidth();
 				comp.setLocation(currentX, getY());
-				currentX += adjustedChildWidth + distanceBetweenChildren;
+				currentX += comp.getWidth() + distanceBetweenChildren;
 			}
 		}
-
 	}
 
 	private void matchChildrenWithoutOverlap(float childrenTotalWidth) {
@@ -349,22 +441,248 @@ public class LCardGroup extends LContainer {
 			return;
 		}
 		float currentPosition = getAnchorPositionByAlignment(childrenTotalWidth);
-		int size = _childs.length;
-		for (int i = 0; i < size; i++) {
-			LComponent comp = _childs[i];
+		for (LComponent comp : _childs) {
 			if (comp != null) {
-				float adjustedChildWidth = comp.getWidth();
-				float newX = currentPosition;
-				comp.setLocation(newX, getY());
-				currentPosition += adjustedChildWidth;
+				comp.setLocation(currentPosition, getY());
+				currentPosition += comp.getWidth() + _cardSpacing;
 			}
-
 		}
+	}
+
+	public void resetAllCards() {
+		if (_childs == null) {
+			return;
+		}
+		final LComponent[] childs = this._childs;
+		final int size = getChildCount();
+		for (int i = size - 1; i > -1; i--) {
+			LComponent card = childs[i];
+			if (card != null) {
+				resetCard(card);
+			}
+		}
+		_lastClickedCard = null;
+		_hoveredCard = null;
+	}
+
+	public LCardGroup addCards(LComponent... cards) {
+		return addCard(cards);
+	}
+
+	public LCardGroup clearAllCards() {
+		removeChilds();
+		resetAllCards();
+		setCardUpdate(false);
+		return this;
+	}
+
+	public LCardGroup setCardDisabled(LComponent card, boolean disabled) {
+		if (card == null)
+			return this;
+		if (disabled) {
+			card.setColor(_disabledColor);
+			card.setEnabled(false);
+		} else {
+			card.setColor(LColor.white);
+			card.setEnabled(true);
+		}
+		return this;
+	}
+
+	public LCardGroup setCardSpacing(float spacing) {
+		this._cardSpacing = spacing;
+		_updateCards = false;
+		return this;
+	}
+
+	public float getCardSpacing() {
+		return _cardSpacing;
+	}
+
+	public LCardGroup setAutoUpdateLayout(boolean auto) {
+		this._autoUpdateLayout = auto;
+		return this;
+	}
+
+	public LComponent getCardAt(int index) {
+		return getChildByIndex(index);
+	}
+
+	public int getCardIndex(LComponent card) {
+		return getChildIndex(card);
+	}
+
+	/**
+	 * 获取所有卡牌数量
+	 */
+	public int getCardCount() {
+		return getChildCount();
+	}
+
+	/**
+	 * 判断是否包含指定卡牌
+	 * 
+	 * @param card
+	 * @return
+	 */
+	public boolean containsCard(LComponent card) {
+		return getCardIndex(card) != -1;
+	}
+
+	/**
+	 * 批量禁用/启用所有卡牌
+	 * 
+	 * @param disabled
+	 * @return
+	 */
+	public LCardGroup setAllCardsDisabled(boolean disabled) {
+		if (_childs == null) {
+			return this;
+		}
+		final LComponent[] childs = this._childs;
+		final int size = getChildCount();
+		for (int i = size - 1; i > -1; i--) {
+			LComponent card = childs[i];
+			if (card != null) {
+				setCardDisabled(card, disabled);
+			}
+		}
+		return this;
+	}
+
+	public LCardGroup setAllCardsVisible(boolean visible) {
+		if (_childs == null) {
+			return this;
+		}
+		final LComponent[] childs = this._childs;
+		final int size = getChildCount();
+		for (int i = size - 1; i > -1; i--) {
+			LComponent card = childs[i];
+			if (card != null) {
+				card.setVisible(visible);
+			}
+		}
+		return this;
+	}
+
+	public LCardGroup setAllCardsAlpha(float alpha) {
+		if (_childs == null) {
+			return this;
+		}
+		final LComponent[] childs = this._childs;
+		final int size = getChildCount();
+		for (int i = size - 1; i > -1; i--) {
+			LComponent card = childs[i];
+			if (card != null) {
+				card.setAlpha(alpha);
+			}
+		}
+		return this;
+	}
+
+	public LCardGroup setAllCardsScale(float scale) {
+		if (_childs == null) {
+			return this;
+		}
+		final LComponent[] childs = this._childs;
+		final int size = getChildCount();
+		for (int i = size - 1; i > -1; i--) {
+			LComponent card = childs[i];
+			if (card != null) {
+				card.setScale(scale);
+			}
+		}
+		return this;
+	}
+
+	/**
+	 * 取消当前选中的卡牌
+	 */
+	public LCardGroup deselectCurrentCard() {
+		endClickedCard();
+		_lastClickedCard = null;
+		return this;
+	}
+
+	/**
+	 * 判断是否有选中的卡牌
+	 */
+	public boolean hasSelectedCard() {
+		return _lastClickedCard != null;
+	}
+
+	/**
+	 * 交换两张卡牌的位置
+	 * 
+	 * @param index1
+	 * @param index2
+	 * @return
+	 */
+	public LCardGroup swapCards(int index1, int index2) {
+		if (_childs == null || index1 < 0 || index2 < 0 || index1 >= _childs.length || index2 >= _childs.length) {
+			return this;
+		}
+		swap(index1, index2);
+		_updateCards = false;
+		return this;
+	}
+
+	/**
+	 * 插入卡牌到指定索引位置
+	 * 
+	 * @param index
+	 * @param card
+	 * @return
+	 */
+	public LCardGroup insertCardAt(int index, LComponent card) {
+		if (card == null || index < 0 || _childs == null || index > _childs.length) {
+			return this;
+		}
+		addCard(card);
+		_updateCards = false;
+		return this;
+	}
+
+	/**
+	 * 水平堆叠卡牌
+	 * 
+	 * @param spacing
+	 * @return
+	 */
+	public LCardGroup stackCardsHorizontal(float spacing) {
+		stackCards(spacing, 0);
+		return this;
+	}
+
+	/**
+	 * 垂直堆叠卡牌
+	 * 
+	 * @param spacing
+	 * @return
+	 */
+	public LCardGroup stackCardsVertical(float spacing) {
+		stackCards(0, spacing);
+		return this;
+	}
+
+	/**
+	 * 判断卡牌组是否为空
+	 */
+	public boolean isCardGroupEmpty() {
+		return getCardCount() == 0;
+	}
+
+	/**
+	 * 刷新卡牌布局
+	 */
+	public LCardGroup refreshLayout() {
+		_updateCards = false;
+		updateCards();
+		return this;
 	}
 
 	@Override
 	public void createUI(GLEx g, int x, int y) {
-
 	}
 
 	@Override
@@ -374,6 +692,8 @@ public class LCardGroup extends LContainer {
 
 	@Override
 	public void destory() {
+		resetAllCards();
+		setCardUpdate(false);
 	}
 
 }
