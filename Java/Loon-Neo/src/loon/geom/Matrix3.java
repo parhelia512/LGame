@@ -38,6 +38,19 @@ public final class Matrix3 extends BaseBufferSupport implements Serializable, XY
 	 */
 	private static final long serialVersionUID = 3501619461925966551L;
 
+	public static Matrix3 setToCombineTransform(float cx, float cy, float scaleX, float scaleY, float degrees) {
+		return setToCombineTransformRad(cx, cy, scaleX, scaleY, MathUtils.toRadians(degrees));
+	}
+
+	public static Matrix3 setToCombineTransformRad(float cx, float cy, float scaleX, float scaleY, float radians) {
+		Matrix3 m = new Matrix3();
+		m.mul(Matrix3.createTranslateTransform(-cx, -cy));
+		m.mul(Matrix3.createScaleTransform(scaleX, scaleY));
+		m.mul(Matrix3.createRotateTransform(radians));
+		m.mul(Matrix3.createTranslateTransform(cx, cy));
+		return m;
+	}
+
 	public final static Matrix3 TMP() {
 		return new Matrix3();
 	}

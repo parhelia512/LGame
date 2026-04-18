@@ -38,6 +38,8 @@ public final class MathUtils {
 
 	public static final Random random = new Random();
 
+	private static final RectBox TEMP_RECT = new RectBox();
+
 	public static final float FLOAT_ROUNDING_ERROR = 0.000001f;
 
 	public static final float ZEROTOLERANCE = 1e-6f;
@@ -183,17 +185,11 @@ public final class MathUtils {
 			}
 			return result;
 		}
-		int[] rect = getLimit(x, y, width, height, rotate);
-		if (result == null) {
-			result = new RectBox(rect[0], rect[1], rect[2], rect[3]);
-		} else {
-			result.setBounds(rect[0], rect[1], rect[2], rect[3]);
-		}
-		return result;
+		return getLimit(x, y, width, height, rotate, result);
 	}
 
 	public static RectBox getBounds(float x, float y, float width, float height, float rotate) {
-		return getBounds(x, y, width, height, rotate, null);
+		return getBounds(x, y, width, height, rotate, TEMP_RECT);
 	}
 
 	public static boolean isZero(float value, float tolerance) {
@@ -278,22 +274,103 @@ public final class MathUtils {
 		return value + 1;
 	}
 
-	public static int[] getLimit(float x, float y, float width, float height, float rotate) {
-		final float angle = wrapCompare(rotate, 0, 360f);
-		final float rotation = MathUtils.toRadians(angle);
-		final float angSin = MathUtils.sin(rotation);
-		final float angCos = MathUtils.cos(rotation);
+	/**
+	 * 比较数值大小，将角度归一化到min, max区间
+	 * 
+	 * @param value
+	 * @param min
+	 * @param max
+	 * @return
+	 */
+	public static float wrapCompare(float value, float min, float max) {
+		float step = max - min;
+		float newValue = (value - min) % step;
+		if (newValue < 0) {
+			newValue += step;
+		}
+		return newValue + min;
+	}
 
-		final int newW = MathUtils.floor((width * MathUtils.abs(angCos)) + (height * MathUtils.abs(angSin)));
-		final int newH = MathUtils.floor((height * MathUtils.abs(angCos)) + (width * MathUtils.abs(angSin)));
+	/**
+	 * 计算旋转矩形的外接矩形边界
+	 * 
+	 * @param x
+	 * @param y
+	 * @param width
+	 * @param height
+	 * @param rotate
+	 * @return
+	 */
+	public static RectBox getLimit(float x, float y, float width, float height, float rotate) {
+		return getLimit(x, y, width, height, rotate, TEMP_RECT);
+	}
 
-		final int centerX = MathUtils.floor(x + (width / 2));
-		final int centerY = MathUtils.floor(y + (height / 2));
+	/**
+	 * 计算旋转矩形的外接矩形边界
+	 * 
+	 * @param x
+	 * @param y
+	 * @param width
+	 * @param height
+	 * @param rotate
+	 * @param result
+	 * @return
+	 */
+	public static RectBox getLimit(float x, float y, float width, float height, float rotate, RectBox result) {
+		if (result == null) {
+			result = new RectBox();
+		}
+		result.set(x, y, width, height);
+		result.setRotation(rotate);
+		return result;
+	}
 
-		final int newX = (centerX - (newW / 2));
-		final int newY = (centerY - (newH / 2));
+	/**
+	 * 计算旋转矩形的外接矩形边界
+	 *
+	 * @param x
+	 * @param y
+	 * @param width
+	 * @param height 矩形高度
+	 * @param rotate
+	 * @param pivotX
+	 * @param pivotY
+	 * @return [newX, newY, newW, newH]
+	 */
+	public static RectBox getLimit(float x, float y, float width, float height, float rotate, float pivotX,
+			float pivotY, RectBox result) {
+		if (result == null) {
+			result = new RectBox();
+		}
+		result.set(x, y, width, height);
+		result.setRotation(rotate, pivotX, pivotY);
+		return result;
+	}
 
-		return new int[] { newX, newY, newW, newH };
+	public static TArray<RectBox> getLimitsBatch(TArray<RectBox> rects, float pivotX, float pivotY) {
+		TArray<RectBox> results = new TArray<RectBox>();
+		for (RectBox rect : rects) {
+			float x = rect.x;
+			float y = rect.y;
+			float width = rect.width;
+			float height = rect.height;
+			float rotate = rect.getRotation();
+			results.add(getLimit(x, y, width, height, rotate, pivotX, pivotY, null));
+		}
+		return results;
+	}
+
+	public static TArray<RectBox> getLimitsBatchCentered(TArray<RectBox> rects) {
+		TArray<RectBox> results = new TArray<RectBox>();
+		for (RectBox rect : rects) {
+			float x = rect.x;
+			float y = rect.y;
+			float width = rect.width;
+			float height = rect.height;
+			float rotate = rect.getRotation();
+			results.add(getLimit(x, y, width, height, rotate, null));
+		}
+		return results;
 	}
 
 	public static int divTwoAbs(int v) {
@@ -3034,30 +3111,6 @@ public final class MathUtils {
 			v = min;
 		}
 		return v;
-	}
-
-	/**
-	 * 比较数值大小
-	 * 
-	 * @param value
-	 * @param min
-	 * @param max
-	 * @return
-	 */
-	public static float wrapCompare(float value, float min, float max) {
-		float newValue = value;
-		final float step = max - min;
-
-		if (compare(newValue, max) >= 0) {
-			for (; compare(newValue, max) >= 0;) {
-				newValue -= step;
-			}
-		} else if (newValue < min) {
-			for (; newValue < min;) {
-				newValue += step;
-			}
-		}
-		return newValue;
 	}
 
 	/**

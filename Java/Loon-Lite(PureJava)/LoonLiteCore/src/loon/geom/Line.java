@@ -655,17 +655,28 @@ public class Line extends Shape {
 	@Override
 	public Line setRotation(float degrees) {
 		checkPoints();
-		return this.setRotation(degrees, center[0], center[1]);
+		return this.setRotation(degrees, getMidPoint().x, getMidPoint().y);
 	}
 
 	@Override
 	public Line setRotation(float degrees, float cx, float cy) {
-		if (!MathUtils.equal(rotation, degrees)) {
-			this.rotation = degrees;
-			_currentStart.rotateSelf(cx, cy, degrees);
-			_currentEnd.rotateSelf(cx, cy, degrees);
-			pointsDirty = true;
+		if (MathUtils.equal(rotation, degrees)) {
+			return this;
 		}
+		if (!pointsDirty) {
+			float originalX1 = _currentStart.x;
+			float originalY1 = _currentStart.y;
+			float originalX2 = _currentEnd.x;
+			float originalY2 = _currentEnd.y;
+			_currentStart.set(originalX1, originalY1);
+			_currentEnd.set(originalX2, originalY2);
+		}
+		float radians = MathUtils.toRadians(degrees);
+		_currentStart.rotateSelf(cx, cy, radians);
+		_currentEnd.rotateSelf(cx, cy, radians);
+		this.rotation = degrees;
+		pointsDirty = true;
+		checkPoints();
 		return this;
 	}
 
@@ -952,6 +963,34 @@ public class Line extends Shape {
 		return super.equals(obj);
 	}
 
+	public static Vector2f intersect(Vector2f lineStart, Vector2f lineEnd, Vector2f segStart, Vector2f segEnd) {
+		final float x1 = lineStart.x;
+		final float y1 = lineStart.y;
+		final float x2 = lineEnd.x;
+		final float y2 = lineEnd.y;
+		final float x3 = segStart.x;
+		final float y3 = segStart.y;
+		final float x4 = segEnd.x;
+		final float y4 = segEnd.y;
+
+		final float denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+		if (MathUtils.abs(denom) < MathUtils.EPSILON) {
+			return null;
+		}
+
+		final float ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
+		final float ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
+
+		if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
+			return new Vector2f(x1 + ua * (x2 - x1), y1 + ua * (y2 - y1));
+		}
+		return null;
+	}
+
+	public float distance(float x, float y) {
+		return distance(new Vector2f(x, y));
+	}
+
 	public Line copy(Line e) {
 		if (e == null) {
 			return this;
@@ -1018,4 +1057,5 @@ public class Line extends Shape {
 	public final String toString() {
 		return "(" + getX1() + "," + getY1() + "," + getX2() + "," + getY2() + ")";
 	}
+
 }

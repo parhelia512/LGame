@@ -37,7 +37,6 @@ import loon.geom.Vector2f;
 import loon.geom.XY;
 import loon.geom.XYZ;
 import loon.geom.XYZW;
-import loon.utils.CollectionUtils;
 import loon.utils.MathUtils;
 import loon.utils.TArray;
 
@@ -72,6 +71,8 @@ public final class CollisionHelper extends ShapeUtils {
 	private final static RectF tmp_rect_f = new RectF();
 
 	private final static RectI tmp_rect_I = new RectI();
+
+	private static final float[] tmp_rect_Cache = new float[8];
 
 	private CollisionHelper() {
 	}
@@ -581,17 +582,6 @@ public final class CollisionHelper extends ShapeUtils {
 		return new PointF(rectangle.getCenterX(), rectangle.getCenterY());
 	}
 
-	private static boolean isPointToLine(XY point1, XY point2, XY middle, float radius) {
-		return isPointToLine(point1.getX(), point1.getY(), point2.getX(), point2.getY(), middle.getX(), middle.getY(),
-				radius);
-	}
-
-	private static boolean isPointToLine(float px1, float py1, float px2, float py2, float middleX, float middleY,
-			float radius) {
-		float distance = ptLineDist(px1, py1, px2, py2, middleX, middleY);
-		return distance < radius;
-	}
-
 	/**
 	 * 检查矩形与圆形是否发生了碰撞
 	 * 
@@ -603,27 +593,30 @@ public final class CollisionHelper extends ShapeUtils {
 		if (rect1 == null || rect2 == null) {
 			return false;
 		}
-		final float radius = rect2.getWidth() / 2;
-		final float minX = rect1.getX();
-		final float minY = rect1.getY();
-		final float maxX = rect1.getX() + rect1.getWidth();
-		final float maxY = rect1.getY() + rect1.getHeight();
-		final PointF middle = getMiddlePoint(rect2);
-		final PointF upperLeft = new PointF(minX, minY);
-		final PointF upperRight = new PointF(maxX, minY);
-		final PointF downLeft = new PointF(minX, maxY);
-		final PointF downRight = new PointF(maxX, maxY);
-		boolean collided = true;
-		if (!isPointToLine(upperLeft, upperRight, middle, radius)) {
-			if (!isPointToLine(upperRight, downRight, middle, radius)) {
-				if (!isPointToLine(upperLeft, downLeft, middle, radius)) {
-					if (!isPointToLine(downLeft, downRight, middle, radius)) {
-						collided = false;
-					}
-				}
-			}
+
+		float rectX = rect1.getX();
+		float rectY = rect1.getY();
+		float rectW = rect1.getWidth();
+		float rectH = rect1.getHeight();
+
+		float circX = rect2.getCenterX();
+		float circY = rect2.getCenterY();
+		float radius = rect2.getWidth() * 0.5f;
+
+		if (radius <= 0) {
+			return false;
 		}
-		return collided;
+
+		float closestX = MathUtils.clamp(circX, rectX, rectX + rectW);
+		float closestY = MathUtils.clamp(circY, rectY, rectY + rectH);
+
+		float distX = circX - closestX;
+		float distY = circY - closestY;
+		float distSquared = distX * distX + distY * distY;
+
+		float radiusSquared = radius * radius;
+
+		return distSquared <= radiusSquared + 1e-6f;
 	}
 
 	/**
@@ -1155,22 +1148,26 @@ public final class CollisionHelper extends ShapeUtils {
 
 	public static final boolean checkEllipsevsEllipse(float x0, float y0, float w0, float h0, float x1, float y1,
 			float w1, float h1) {
-		final float x = MathUtils.abs(x1 - x0) * h1;
-		final float y = MathUtils.abs(y1 - y0) * w1;
-		w0 *= h1;
-		h0 *= w1;
-		final float r = w1 * h1;
-		if (x * x + (h0 - y) * (h0 - y) <= r * r || (w0 - x) * (w0 - x) + y * y <= r * r || x * h0 + y * w0 <= w0 * h0
-				|| ((x * h0 + y * w0 - w0 * h0) * (x * h0 + y * w0 - w0 * h0) <= r * r * (w0 * w0 + h0 * h0)
-						&& x * w0 - y * h0 >= -h0 * h0 && x * w0 - y * h0 <= w0 * w0)) {
-			return true;
-		} else {
-			if ((x - w0) * (x - w0) + (y - h0) * (y - h0) <= r * r || (x <= w0 && y - r <= h0)
-					|| (y <= h0 && x - r <= w0)) {
-				return iterate(x, y, w0, 0, 0, h0, r * r);
-			}
+		if (w0 <= 0 || h0 <= 0 || w1 <= 0 || h1 <= 0) {
 			return false;
 		}
+		if (!checkAABBvsAABB(x0 - w0 / 2, y0 - h0 / 2, w0, h0, x1 - w1 / 2, y1 - h1 / 2, w1, h1)) {
+			return false;
+		}
+		float dx = x1 - x0;
+		float dy = y1 - y0;
+		float maxRadius1 = MathUtils.max(w0, h0) * 0.5f;
+		float maxRadius2 = MathUtils.max(w1, h1) * 0.5f;
+		float distCenterSq = dx * dx + dy * dy;
+		if (distCenterSq > (maxRadius1 + maxRadius2) * (maxRadius1 + maxRadius2)) {
+			return false;
+		}
+		float area1 = MathUtils.PI * (w0 * 0.5f) * (h0 * 0.5f);
+		float area2 = MathUtils.PI * (w1 * 0.5f) * (h1 * 0.5f);
+		float radius1 = MathUtils.sqrt(area1 / MathUtils.PI);
+		float radius2 = MathUtils.sqrt(area2 / MathUtils.PI);
+		float distance = MathUtils.sqrt(distCenterSq);
+		return distance < (radius1 + radius2);
 	}
 
 	public static final boolean checkEllipsevsCircle(XYZW e, XY pos, float r) {
@@ -1278,12 +1275,17 @@ public final class CollisionHelper extends ShapeUtils {
 
 	public static final boolean checkPointvsLine(float px, float py, float x1, float y1, float x2, float y2,
 			float size) {
-		final float mpx = px - x1;
-		final float mpy = py - y1;
-		final float d1 = MathUtils.dist(mpx, mpy, x1, y1);
-		final float d2 = MathUtils.dist(mpx, mpy, x2, y2);
-		final float lineLen = MathUtils.dist(x1, y1, x2, y2);
-		return d1 + d2 >= lineLen - size && d1 + d2 <= lineLen + size;
+		float dx = x2 - x1;
+		float dy = y2 - y1;
+		float lenSq = dx * dx + dy * dy;
+		if (lenSq == 0f) {
+			return MathUtils.dist(px, py, x1, y1) <= size;
+		}
+		float t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+		t = MathUtils.max(0, MathUtils.min(1, t));
+		float projX = x1 + t * dx;
+		float projY = y1 + t * dy;
+		return MathUtils.dist(px, py, projX, projY) <= size;
 	}
 
 	public static final boolean checkPointvsTriangle(XY pos, XY p1, XY p2, XY p3) {
@@ -1346,11 +1348,11 @@ public final class CollisionHelper extends ShapeUtils {
 	public static final boolean checkPointvsPolygon(float px, float py, float[] vertices, float size) {
 		final int length = vertices.length;
 		boolean collision = false;
-		int i, j;
-		for (i = 0, j = length - 2; i < length; i += 2) {
-			if (((vertices[i + 1] > py) != (vertices[j + 1] > py))
-					&& (px < (vertices[j] - vertices[i]) * (py - vertices[i + 1]) / (vertices[j + 1] - vertices[i + 1])
-							+ vertices[i])) {
+		for (int i = 0, j = length - 2; i < length; i += 2) {
+			float xi = vertices[i], yi = vertices[i + 1];
+			float xj = vertices[j], yj = vertices[j + 1];
+			boolean intersect = ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi + 1e-6f) + xi);
+			if (intersect) {
 				collision = !collision;
 			}
 			j = i;
@@ -1358,22 +1360,145 @@ public final class CollisionHelper extends ShapeUtils {
 		if (collision) {
 			return true;
 		}
-		for (i = 0; i < length; i += 2) {
-			float p1x = vertices[i];
-			float p1y = vertices[i + 1];
-			float p2x, p2y;
+		for (int i = 0; i < length; i += 2) {
+			float x1 = vertices[i];
+			float y1 = vertices[i + 1];
+			float x2, y2;
 			if (i == length - 2) {
-				p2x = vertices[0];
-				p2y = vertices[1];
+				x2 = vertices[0];
+				y2 = vertices[1];
 			} else {
-				p2x = vertices[i + 2];
-				p2y = vertices[i + 3];
+				x2 = vertices[i + 2];
+				y2 = vertices[i + 3];
 			}
-			if (checkPointvsLine(px, py, p1x, p1y, p2x, p2y, size)) {
+			if (checkPointvsLine(px, py, x1, y1, x2, y2, size)) {
 				return true;
 			}
 		}
 		return false;
+	}
+
+	public static boolean checkPointvsPolygon(float px, float py, float[] vertices, float w, float h) {
+		float polyMinX = Float.MAX_VALUE, polyMinY = Float.MAX_VALUE;
+		float polyMaxX = Float.MIN_VALUE, polyMaxY = Float.MIN_VALUE;
+		for (int i = 0; i < vertices.length; i += 2) {
+			float vx = vertices[i];
+			float vy = vertices[i + 1];
+			if (vx < polyMinX) {
+				polyMinX = vx;
+			}
+			if (vx > polyMaxX) {
+				polyMaxX = vx;
+			}
+			if (vy < polyMinY) {
+				polyMinY = vy;
+			}
+			if (vy > polyMaxY) {
+				polyMaxY = vy;
+			}
+		}
+		if (px + w < polyMinX || px > polyMaxX || py + h < polyMinY || py > polyMaxY) {
+			return false;
+		}
+		tmp_rect_Cache[0] = px;
+		tmp_rect_Cache[1] = py;
+		tmp_rect_Cache[2] = px + w;
+		tmp_rect_Cache[3] = py;
+		tmp_rect_Cache[4] = px + w;
+		tmp_rect_Cache[5] = py + h;
+		tmp_rect_Cache[6] = px;
+		tmp_rect_Cache[7] = py + h;
+
+		for (int i = 0; i < 8; i += 2) {
+			float p1x = tmp_rect_Cache[i];
+			float p1y = tmp_rect_Cache[i + 1];
+			float p2x = tmp_rect_Cache[(i + 2) % 8];
+			float p2y = tmp_rect_Cache[(i + 3) % 8];
+			for (int j = 0; j < vertices.length; j += 2) {
+				float x1 = vertices[j];
+				float y1 = vertices[j + 1];
+				float x2 = vertices[(j + 2) % vertices.length];
+				float y2 = vertices[(j + 3) % vertices.length];
+				if (segmentsIntersectFast(p1x, p1y, p2x, p2y, x1, y1, x2, y2)) {
+					return true;
+				}
+			}
+		}
+		if (pointInPolygon(px, py, vertices)) {
+			return true;
+		}
+		for (int i = 0; i < vertices.length; i += 2) {
+			float vx = vertices[i];
+			float vy = vertices[i + 1];
+			if (vx >= px && vx <= px + w && vy >= py && vy <= py + h) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	public static boolean containsPointvsPolygon(float px, float py, float[] vertices, float w, float h) {
+		tmp_rect_Cache[0] = px;
+		tmp_rect_Cache[1] = py;
+		tmp_rect_Cache[2] = px + w;
+		tmp_rect_Cache[3] = py;
+		tmp_rect_Cache[4] = px + w;
+		tmp_rect_Cache[5] = py + h;
+		tmp_rect_Cache[6] = px;
+		tmp_rect_Cache[7] = py + h;
+		for (int i = 0; i < 8; i += 2) {
+			if (!pointInPolygon(tmp_rect_Cache[i], tmp_rect_Cache[i + 1], vertices)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static boolean pointInPolygon(float x, float y, float[] vertices) {
+		boolean inside = false;
+		int n = vertices.length / 2;
+		if (n < 3) {
+			return false;
+		}
+		float x1, y1, x2, y2;
+		for (int i = 0, j = n - 1; i < n; j = i++) {
+			x1 = vertices[i * 2];
+			y1 = vertices[i * 2 + 1];
+			x2 = vertices[j * 2];
+			y2 = vertices[j * 2 + 1];
+			if (((y1 > y) != (y2 > y)) && (x < (x2 - x1) * (y - y1) / (y2 - y1) + x1)) {
+				inside = !inside;
+			}
+		}
+		return inside;
+	}
+
+	private static boolean segmentsIntersectFast(float x1, float y1, float x2, float y2, float x3, float y3, float x4,
+			float y4) {
+		if (MathUtils.max(x1, x2) < MathUtils.min(x3, x4) || MathUtils.max(x3, x4) < MathUtils.min(x1, x2)) {
+			return false;
+		}
+		if (MathUtils.max(y1, y2) < MathUtils.min(y3, y4) || MathUtils.max(y3, y4) < MathUtils.min(y1, y2)) {
+			return false;
+		}
+		float d1 = cross(x3, y3, x4, y4, x1, y1);
+		float d2 = cross(x3, y3, x4, y4, x2, y2);
+		float d3 = cross(x1, y1, x2, y2, x3, y3);
+		float d4 = cross(x1, y1, x2, y2, x4, y4);
+
+		final float EPSILON = 1e-6f;
+
+		if (MathUtils.abs(d1) < EPSILON || MathUtils.abs(d2) < EPSILON || MathUtils.abs(d3) < EPSILON
+				|| MathUtils.abs(d4) < EPSILON) {
+			return true;
+		}
+
+		return (d1 * d2 <= 0) && (d3 * d4 <= 0);
+	}
+
+	private static float cross(float x1, float y1, float x2, float y2, float x3, float y3) {
+		return (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
 	}
 
 	public static final boolean checkPointvsArc(float px, float py, float ax, float ay, float arcRadius,
@@ -1560,40 +1685,50 @@ public final class CollisionHelper extends ShapeUtils {
 	}
 
 	public static final boolean checkPolygonvsPolygon(final float[] points1, final float[] points2) {
-		final Vector2f normal = Vector2f.ZERO();
-		final float[] poly1 = CollectionUtils.copyOf(points1);
-		final float[] poly2 = CollectionUtils.copyOf(points2);
-		final float[][] polygons = { poly1, poly2 };
-		float minA, maxA, projected, minB, maxB;
-		int j;
-		for (int i = 0; i < polygons.length; i++) {
-			float[] polygon = polygons[i];
-			for (int i1 = 0; i1 < polygon.length; i1 += 2) {
-				int i2 = (i1 + 2) % polygon.length;
-				normal.set(polygon[i2 + 1] - polygon[i1 + 1], polygon[i1] - polygon[i2]);
-				minA = maxA = -1;
-				for (j = 0; j < poly1.length; j += 2) {
-					projected = normal.x * poly1[j] + normal.y * poly1[j + 1];
-					if (minA == -1 || projected < minA) {
-						minA = projected;
-					}
-					if (maxA == -1 || projected > maxA) {
-						maxA = projected;
-					}
-				}
-				minB = maxB = -1;
-				for (j = 0; j < poly2.length; j += 2) {
-					projected = normal.x * poly2[j] + normal.y * poly2[j + 1];
-					if (minB == -1 || projected < minB) {
-						minB = projected;
-					}
-					if (maxB == -1 || projected > maxB) {
-						maxB = projected;
-					}
-				}
-				if (maxA < minB || maxB < minA) {
-					return false;
-				}
+		if (points1.length < 6 || points2.length < 6) {
+			return false;
+		}
+		float[] axes = new float[(points1.length + points2.length) / 2 * 2];
+		int axisCount = 0;
+		for (int i = 0; i < points1.length; i += 2) {
+			int next = (i + 2) % points1.length;
+			float dx = points1[next] - points1[i];
+			float dy = points1[next + 1] - points1[i + 1];
+			axes[axisCount++] = -dy;
+			axes[axisCount++] = dx;
+		}
+		for (int i = 0; i < points2.length; i += 2) {
+			int next = (i + 2) % points2.length;
+			float dx = points2[next] - points2[i];
+			float dy = points2[next + 1] - points2[i + 1];
+			axes[axisCount++] = -dy;
+			axes[axisCount++] = dx;
+		}
+
+		for (int a = 0; a < axisCount; a += 2) {
+			float axisX = axes[a];
+			float axisY = axes[a + 1];
+
+			if (axisX * axisX + axisY * axisY < 1e-6f) {
+				continue;
+			}
+
+			float min1 = Float.MAX_VALUE, max1 = Float.MIN_VALUE;
+			float min2 = Float.MAX_VALUE, max2 = Float.MIN_VALUE;
+
+			for (int p = 0; p < points1.length; p += 2) {
+				float dot = points1[p] * axisX + points1[p + 1] * axisY;
+				min1 = MathUtils.min(min1, dot);
+				max1 = MathUtils.max(max1, dot);
+			}
+			for (int p = 0; p < points2.length; p += 2) {
+				float dot = points2[p] * axisX + points2[p + 1] * axisY;
+				min2 = MathUtils.min(min2, dot);
+				max2 = MathUtils.max(max2, dot);
+			}
+
+			if (max1 < min2 || max2 < min1) {
+				return false;
 			}
 		}
 		return true;
@@ -1618,10 +1753,18 @@ public final class CollisionHelper extends ShapeUtils {
 
 	public static final boolean checkSegmentOnOneSide(Vector2f axisPos, Vector2f axisDir, Vector2f segmentPos,
 			Vector2f segmentEnd) {
+		if (axisDir.len2() < 1e-6f) {
+			return true;
+		}
 		Vector2f d1 = segmentPos.sub(axisPos);
 		Vector2f d2 = segmentEnd.sub(axisPos);
 		Vector2f n = Vector2f.rotationLeft(axisDir);
-		return n.dot(d1) * n.dot(d2) > 0f;
+		float dot1 = n.dot(d1);
+		float dot2 = n.dot(d2);
+		if (MathUtils.isNan(dot1) || MathUtils.isNan(dot2)) {
+			return false;
+		}
+		return dot1 * dot2 > 0f;
 	}
 
 	public static final boolean checkSeperateAxisRect(Vector2f axisStart, Vector2f axisEnd, Vector2f rectPos,

@@ -225,7 +225,8 @@ public class LSpiralMenu extends LContainer {
 
 	public LSpiralMenu(final IFont font, final String text, final int btnW, final int btnH, final String[] texts, int x,
 			int y, int menuWidth, int menuHeight) {
-		this(font, text, DefUI.createDefaultButton(LColor.gray, btnW, btnH), btnW, btnH, texts, x, y, menuWidth, menuHeight);
+		this(font, text, DefUI.createDefaultButton(LColor.gray, btnW, btnH), btnW, btnH, texts, x, y, menuWidth,
+				menuHeight);
 	}
 
 	public LSpiralMenu(final IFont font, final String text, final LTexture image, final int btnW, final int btnH,

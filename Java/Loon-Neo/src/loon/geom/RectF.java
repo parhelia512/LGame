@@ -352,8 +352,8 @@ public class RectF implements XYZW, SetXY {
 	}
 
 	public RectF rotate(float rotate) {
-		final int[] rect = MathUtils.getLimit(x, y, width, height, rotate);
-		return set(rect[0], rect[1], rect[2], rect[3]);
+		final RectBox rect = MathUtils.getLimit(x, y, width, height, rotate);
+		return set(rect.x, rect.y, rect.width, rect.height);
 	}
 
 	public RectF set(RectF r) {

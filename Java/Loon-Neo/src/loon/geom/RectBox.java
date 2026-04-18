@@ -521,8 +521,7 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 	public RectBox setRotate(float r) {
 		if (!MathUtils.equal(r, this.rotation)) {
 			this.rotation = r;
-			int[] rect = MathUtils.getLimit(x, y, width, height, rotation);
-			return setBounds(rect[0], rect[1], rect[2], rect[3]);
+			return MathUtils.getLimit(x, y, width, height, rotation, this);
 		}
 		return this;
 	}
@@ -931,9 +930,17 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 	 * @param height
 	 * @return
 	 */
+	@Override
 	public boolean contains(float x, float y, float width, float height) {
-		return (x >= this.x && y >= this.y && ((x + width) <= (this.x + this.width))
-				&& ((y + height) <= (this.y + this.height)));
+		if (!isRotated()) {
+			return (x >= this.x && y >= this.y && (x + width) <= (this.x + this.width)
+					&& (y + height) <= (this.y + this.height));
+		}
+		if (width == height) {
+			return super.contains(x, y, (int) width);
+		} else {
+			return super.contains(x, y, width, height);
+		}
 	}
 
 	/**
@@ -1040,8 +1047,16 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 	 * @param height
 	 * @return
 	 */
+	@Override
 	public boolean intersects(float x, float y, float width, float height) {
-		return x + width > this.x && x < this.x + this.width && y + height > this.y && y < this.y + this.height;
+		if (!isRotated()) {
+			return (x < this.x + this.width && x + width > this.x && y < this.y + this.height && y + height > this.y);
+		}
+		if (width == height) {
+			return super.intersects(x, y, (int) width);
+		} else {
+			return super.intersects(x, y, width, height);
+		}
 	}
 
 	/**
@@ -1054,7 +1069,15 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 	 * @return
 	 */
 	public boolean intersectsWith(float x, float y, float width, float height) {
-		return (x < this.x + this.width) && (this.x < (x + width)) && (y < this.y + this.height)
+		boolean checkHit = false;
+		if (isRotated()) {
+			if (width == height) {
+				checkHit = super.intersects(x, y, (int) width);
+			} else {
+				checkHit = super.intersects(x, y, width, height);
+			}
+		}
+		return checkHit || (x < this.x + this.width) && (this.x < (x + width)) && (y < this.y + this.height)
 				&& (this.y < y + height);
 	}
 
