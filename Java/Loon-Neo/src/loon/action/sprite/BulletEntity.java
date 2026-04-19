@@ -2169,8 +2169,8 @@ public class BulletEntity extends Entity {
 				if (spriteList == null || spriteList.length == 0) {
 					continue;
 				}
-				float cx = bullet.getX() + bullet.getWidth() / 2f;
-				float cy = bullet.getY() + bullet.getHeight() / 2f;
+				float cx = bullet.getX();
+				float cy = bullet.getY();
 				float radius = MathUtils.min(bullet.getWidth(), bullet.getHeight()) / 2f;
 				boolean hasCollided = false;
 				for (int j = spriteList.length - 1; j >= 0; j--) {
@@ -2181,7 +2181,7 @@ public class BulletEntity extends Entity {
 					}
 					CollisionObject collTarget = (CollisionObject) target;
 					RectBox targetBox = collTarget.getRectBox();
-					if (circleIntersectsRect(cx, cy, radius, targetBox)) {
+					if (circleIntersectsRect(cx, cy, radius, targetBox) && bullet.isCollision(collTarget)) {
 						if (!hasCollided) {
 							onTriggerCollision(bullet, collTarget, _collisionActionListener);
 							bullet.checkCollision(collTarget);

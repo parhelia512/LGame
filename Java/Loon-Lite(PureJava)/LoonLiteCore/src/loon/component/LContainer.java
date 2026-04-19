@@ -46,6 +46,8 @@ import loon.utils.reply.Callback;
  */
 public abstract class LContainer extends LComponent implements IArray {
 
+	private final static int MAX_RECURSION_DEPTH = 64;
+
 	private final static LayerSorter<LComponent> componentSorter = new LayerSorter<LComponent>(false);
 
 	protected LComponent[] _childs = new LComponent[0];
@@ -1381,32 +1383,49 @@ public abstract class LContainer extends LComponent implements IArray {
 	}
 
 	public LComponent findComponent(float x1, float y1) {
-		if (_destroyed) {
+		return findComponentInternal(x1, y1, 0);
+	}
+
+	private LComponent findComponentInternal(float x1, float y1, int recursionDepth) {
+		if (recursionDepth > MAX_RECURSION_DEPTH) {
 			return null;
 		}
-		if (!this.intersects(x1, y1)) {
+		if (_destroyed || !this.intersects(x1, y1)) {
 			return null;
 		}
+		this.sortComponents();
 		final int size = this._childCount;
 		final LComponent[] childs = this._childs;
-		for (int i = 0; i < size; i++) {
+		for (int i = size - 1; i >= 0; i--) {
 			LComponent child = childs[i];
-			if (child != null && child.getSuper() != null && child.getSuper().isContainer()
-					&& (child.getSuper() instanceof LScrollContainer)) {
-				LScrollContainer scr = (LScrollContainer) child.getSuper();
-				final int nx = MathUtils.floor(x1 + scr.getBoxScrollX());
-				final int ny = MathUtils.floor(y1 + scr.getBoxScrollY());
-				if (child.intersects(nx, ny)) {
-					LComponent comp = (!child.isContainer()) ? child : ((LContainer) child).findComponent(nx, ny);
-					if (comp != null) {
-						return checkComponent(comp, nx, ny);
-					}
-				}
+			if (child == null || !child.isVisible()) {
+				continue;
 			}
-			if (child != null && child.intersects(x1, y1)) {
-				LComponent comp = (!child.isContainer()) ? child : ((LContainer) child).findComponent(x1, y1);
-				if (comp != null) {
-					return checkComponent(comp, x1, y1);
+			float checkX = x1;
+			float checkY = y1;
+			LComponent childParent = child.getSuper();
+			if (childParent instanceof LScrollContainer) {
+				LScrollContainer scroll = (LScrollContainer) childParent;
+				checkX = MathUtils.floor(x1 + scroll.getBoxScrollX());
+				checkY = MathUtils.floor(y1 + scroll.getBoxScrollY());
+			}
+			if (child.intersects(checkX, checkY)) {
+				LComponent target = child.isContainer()
+						? ((LContainer) child).findComponentInternal(checkX, checkY, recursionDepth + 1)
+						: child;
+				if (target != null && (!target.isContainer() || (target instanceof ActorLayer))) {
+					boolean nextChecked = true;
+					// ActorLayer是特殊组件，有特殊的下级对象Actor，不属于组件，但是可以进行鼠标与触屏操作，所以要单独处理
+					if (target instanceof ActorLayer) {
+						final int objectSize = ((ActorLayer) target).size();
+						if (objectSize == 0) {
+							nextChecked = false;
+							continue;
+						}
+					}
+					if (nextChecked) {
+						return checkComponent(target, checkX, checkY);
+					}
 				}
 			}
 		}

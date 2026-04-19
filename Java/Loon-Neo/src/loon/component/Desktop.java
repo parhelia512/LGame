@@ -183,6 +183,14 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 		LSystem.pushDesktopPool(this);
 	}
 
+	public boolean hasContentPane() {
+		return _contentPane != null && !_closed;
+	}
+
+	public boolean hasSysInput() {
+		return _sysInput != null && !_closed;
+	}
+
 	public Desktop setScreen(Screen screen) {
 		this._curScreen = screen;
 		this.setInput(screen);
@@ -355,11 +363,17 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 
 	private int removeComponent(LContainer container, LComponent comp) {
 		int removed = container.remove(comp);
+		if (removed != -1) {
+			return removed;
+		}
 		final LComponent[] components = container._childs;
 		int i = 0;
 		while (removed == -1 && i < components.length - 1) {
 			if (components[i].isContainer()) {
 				removed = this.removeComponent((LContainer) components[i], comp);
+				if (removed != -1) {
+					break;
+				}
 			}
 			i++;
 		}
@@ -370,18 +384,16 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 	/**
 	 * 刷新当前桌面
 	 * 
+	 * @param elapsedTime
 	 */
 	public void update(long elapsedTime) {
-		if (!this._visible) {
+		if (!_visible || !hasContentPane() || !_contentPane.isVisible()) {
 			return;
 		}
-		if (!this._contentPane.isVisible()) {
-			return;
-		}
-		this.processEvents();
+		processEvents();
 		try {
-			// 刷新桌面中子容器组件
-			this._contentPane.update(elapsedTime);
+			// 刷新子容器
+			_contentPane.update(elapsedTime);
 		} catch (Throwable cause) {
 			LSystem.error("Desktop update() exception", cause);
 		}
@@ -490,7 +502,7 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 	}
 
 	public Desktop doClick(int x, int y) {
-		if (!this._contentPane.isVisible()) {
+		if (!hasContentPane() || !_contentPane.isVisible()) {
 			return this;
 		}
 		final LComponent[] components = _contentPane._childs;
@@ -686,78 +698,71 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 	 * 
 	 */
 	private void processTouchMotionEvent() {
-		if (this._hoverComponent != null && _hoverComponent.isAllowTouch()
-				&& (this._sysInput != null && this._sysInput.isMoving())) {
-			if (this._sysInput.getTouchDX() != 0 || this._sysInput.getTouchDY() != 0 || SysTouch.getDX() != 0
+		if (_hoverComponent != null && _hoverComponent.isAllowTouch() && _sysInput != null && _sysInput.isMoving()) {
+			if (_sysInput.getTouchDX() != 0 || _sysInput.getTouchDY() != 0 || SysTouch.getDX() != 0
 					|| SysTouch.getDY() != 0) {
-				this._hoverComponent.validatePosition();
-				this._hoverComponent.processTouchDragged();
+				_hoverComponent.validatePosition();
+				_hoverComponent.processTouchDragged();
 			}
 		} else {
 			final int typeButton = SysTouch.getButton();
-			float touchX = _sysInput == null ? SysTouch.getX() : this._sysInput.getTouchX();
-			float touchY = _sysInput == null ? SysTouch.getY() : this._sysInput.getTouchY();
-			float touchDx = _sysInput == null ? SysTouch.getDX() : this._sysInput.getTouchDX();
-			float touchDy = _sysInput == null ? SysTouch.getDY() : this._sysInput.getTouchDY();
-			if (_sysInput != null) {
+			final boolean hasSysInput = _sysInput != null;
+			float touchX = hasSysInput ? _sysInput.getTouchX() : SysTouch.getX();
+			float touchY = hasSysInput ? _sysInput.getTouchY() : SysTouch.getY();
+			float touchDx = hasSysInput ? _sysInput.getTouchDX() : SysTouch.getDX();
+			float touchDy = hasSysInput ? _sysInput.getTouchDY() : SysTouch.getDY();
+			if (hasSysInput) {
 				final Vector2f touch = getUITouch(touchX, touchY, false);
-				touchX = touch.x();
-				touchY = touch.y();
-				final Vector2f touchDrag = getUITouch(touchDx, touchDy, false);
-				touchDx = touchDrag.x();
-				touchDy = touchDrag.y();
+				touchX = touch.x;
+				touchY = touch.y;
+				final Vector2f drag = getUITouch(touchDx, touchDy, false);
+				touchDx = drag.x;
+				touchDy = drag.y;
 			}
-			// 获得当前窗体下鼠标坐标
-			LComponent comp = null;
-			if (typeButton != -1) {
-				comp = this.findComponent(touchX, touchY);
-			}
+			LComponent comp = (typeButton != -1) ? findComponent(touchX, touchY) : null;
 			if (comp != null && comp.isAllowTouch()) {
 				comp.validatePosition();
 				if (touchDx != 0 || touchDy != 0 || SysTouch.getDX() != 0 || SysTouch.getDY() != 0) {
 					comp.processTouchMoved();
-					if (comp.isTooltip() && _tooltip != null) {
-						if (!this._tooltip._dismissing && comp.isPointInUI(touchX, touchY)) {
-							// 刷新提示
-							this._tooltip._dismiss = 0;
-							this._tooltip._dismissing = true;
-						}
+					if (comp.isTooltip() && _tooltip != null && !_tooltip._dismissing
+							&& comp.isPointInUI(touchX, touchY)) {
+						_tooltip._dismiss = 0;
+						_tooltip._dismissing = true;
 					}
 				}
-				if (this._hoverComponent == null) {
+				if (_hoverComponent == null) {
 					if (comp.isTooltip() && _tooltip != null) {
-						this._tooltip.setToolTipComponent(comp);
+						_tooltip.setToolTipComponent(comp);
 					}
 					if (typeButton != -1) {
 						comp.processTouchEntered();
 					}
-				} else if (comp != this._hoverComponent && this._hoverComponent.isAllowTouch()) {
+				} else if (comp != _hoverComponent && _hoverComponent.isAllowTouch()) {
 					if (comp.isTooltip() && _tooltip != null) {
-						this._tooltip.setToolTipComponent(comp);
+						_tooltip.setToolTipComponent(comp);
 					}
-					this._hoverComponent.processTouchExited();
+					_hoverComponent.processTouchExited();
 					if (typeButton != -1) {
 						comp.processTouchEntered();
 					}
 				}
 			} else {
-				// 如果没有对应的悬停提示数据
 				if (_tooltip != null) {
-					this._tooltip.setToolTipComponent(null);
+					_tooltip.setToolTipComponent(null);
 				}
-				if (this._hoverComponent != null && this._hoverComponent.isAllowTouch()) {
-					this._hoverComponent.validatePosition();
-					this._hoverComponent.processTouchExited();
+				if (_hoverComponent != null && _hoverComponent.isAllowTouch()) {
+					_hoverComponent.validatePosition();
+					_hoverComponent.processTouchExited();
 				}
 			}
-			if (this._hoverComponent != comp) {
-				if (this._hoverComponent != null && this._hoverComponent.isAllowTouch()
-						&& this._hoverComponent.isTouchDownClick() && !this._hoverComponent.isPointInUI()) {
-					this._hoverComponent.processTouchReleased();
-					this._hoverComponent.validatePosition();
-					this._hoverComponent.processTouchExited();
+			if (_hoverComponent != comp) {
+				if (_hoverComponent != null && _hoverComponent.isAllowTouch() && _hoverComponent.isTouchDownClick()
+						&& !_hoverComponent.isPointInUI()) {
+					_hoverComponent.processTouchReleased();
+					_hoverComponent.validatePosition();
+					_hoverComponent.processTouchExited();
 				}
-				this._hoverComponent = comp;
+				_hoverComponent = comp;
 			}
 		}
 	}
@@ -859,10 +864,83 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 		if (this._modal != null && !this._modal.isContainer()) {
 			return null;
 		}
-		// 返回子容器
 		final LContainer panel = (this._modal == null) ? this._contentPane : ((LContainer) this._modal);
 		final LComponent comp = panel.findComponent(x, y);
-		return comp;
+		return (comp == null || comp == panel) ? findDeepComponent(panel, x, y) : comp;
+	}
+
+	/**
+	 * 若组件查找时父容器目标坐标上层子组件不存在或等于自身，则继续深挖其它所有合规子组件
+	 * 
+	 * @param container
+	 * @param x
+	 * @param y
+	 * @return
+	 */
+	private LComponent findDeepComponent(LContainer container, float x, float y) {
+		if (container == null || !container.isVisible()) {
+			return null;
+		}
+		LComponent target = null;
+		final LComponent[] childs = container._childs;
+		if (childs == null) {
+			return null;
+		}
+		for (int i = childs.length - 1; i >= 0; i--) {
+			LComponent comp = childs[i];
+			if (comp == null || !comp.isVisible()) {
+				continue;
+			}
+			if (comp.intersects(x, y)) {
+				if (comp.isContainer()) {
+					LComponent childTarget = findDeepComponent((LContainer) comp, x, y);
+					if (childTarget != null) {
+						return childTarget;
+					}
+				}
+				if (target != null && target.getZ() == comp.getZ()) {
+					float ratioComp = calcHitRatio(comp, x, y);
+					float ratioTarget = calcHitRatio(target, x, y);
+					if (ratioComp > ratioTarget) {
+						final boolean circleRect = MathUtils.equal(target.getWidth(), target.getHeight());
+						if ((circleRect && ratioComp >= 0.5f) || (!circleRect && ratioComp >= 0.1f)) {
+							target = comp;
+						}
+					}
+				} else {
+					float ratioComp = calcHitRatio(comp, x, y);
+					final boolean ovalRect = MathUtils.equal(comp.getWidth(), comp.getHeight());
+					if ((ovalRect && ratioComp >= 0.5f) || (!ovalRect && ratioComp >= 0.1f)) {
+						target = comp;
+					}
+				}
+			}
+		}
+		return target;
+	}
+
+	/**
+	 * 根据点击点到组件中心的距离与组件半径估算是否有效命中
+	 * (去除UI图片大小的干扰因素，例如100x45的按钮里放了个实际像素80x20的按钮图，周围都是透明区域……)
+	 * 
+	 * @param comp
+	 * @param x
+	 * @param y
+	 * @return
+	 */
+	public float calcHitRatio(LComponent comp, float x, float y) {
+		if (comp == null) {
+			return 0f;
+		}
+		float centerX = comp.getX() + comp.getWidth() / 2f;
+		float centerY = comp.getY() + comp.getHeight() / 2f;
+		float dx = x - centerX;
+		float dy = y - centerY;
+		float distance = MathUtils.sqrt(dx * dx + dy * dy);
+		float maxRadius = MathUtils.sqrt(
+				(comp.getWidth() / 2f) * (comp.getWidth() / 2f) + (comp.getHeight() / 2f) * (comp.getHeight() / 2f));
+		float ratio = 1f - (distance / maxRadius);
+		return MathUtils.max(0f, ratio);
 	}
 
 	/**
@@ -1055,8 +1133,8 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 
 	public LLayer getBottomLayer() {
 		final LComponent[] components = _contentPane._childs;
-		final int size = components.length;
-		for (int i = size; i > 0; i--) {
+		final int size = components.length - 1;
+		for (int i = size; i > -1; i--) {
 			LComponent comp = components[i - 1];
 			if (comp instanceof LLayer) {
 				return (LLayer) comp;
@@ -1757,21 +1835,26 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 
 	@Override
 	public void close() {
-		this._visible = false;
+		if (_closed) {
+			return;
+		}
+		_visible = false;
+		_closed = true;
+		freeComponent();
 		if (_contentPane != null) {
 			_contentPane.close();
+			_contentPane = null;
 		}
-		this._closed = true;
-		this._resizeListener = null;
+		_resizeListener = null;
+		_useLight = false;
 		if (_light != null) {
-			this._light.close();
-			this._light = null;
+			_light.close();
+			_light = null;
 		}
-		this._useLight = false;
-		this.freeMask();
-		this.freeUVMask();
-		this.freeFrameBuffer();
-		this.freeFBOShaderMask();
+		freeMask();
+		freeUVMask();
+		freeFrameBuffer();
+		freeFBOShaderMask();
 		LSystem.popDesktopPool(this);
 	}
 

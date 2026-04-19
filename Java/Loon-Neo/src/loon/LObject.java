@@ -485,6 +485,7 @@ public abstract class LObject<T> extends BlendMethod implements Comparator<T>, X
 		} else {
 			_objectRect.setBounds(rect);
 		}
+		
 		return this._objectRect;
 	}
 

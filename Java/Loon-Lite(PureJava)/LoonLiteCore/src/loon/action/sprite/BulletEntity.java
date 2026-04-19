@@ -86,6 +86,8 @@ public class BulletEntity extends Entity {
 		return range;
 	}
 
+	private int _maxBulletCount = LSystem.DEFAULT_MAX_CACHE_SIZE * 4;
+
 	private IntArray _collisionIgnoreTypes;
 
 	private ObjectSet<String> _collisionIgnoreStrings;
@@ -205,7 +207,7 @@ public class BulletEntity extends Entity {
 		if (_limitRangeY == null) {
 			_limitRangeY = new RangeF(min, max);
 		} else {
-			_limitRangeX.set(min, max);
+			_limitRangeY.set(min, max);
 		}
 		_limitMovedOfBounds = true;
 		return this;
@@ -1930,21 +1932,16 @@ public class BulletEntity extends Entity {
 	}
 
 	protected void addWorld(Bullet bullet) {
-		if (_destroyed) {
+		if (_destroyed || bullet == null || bullets.contains(bullet)) {
 			return;
 		}
-		if (bullet == null) {
-			return;
-		}
-		if (!bullets.contains(bullet)) {
-			bullets.add(bullet);
-			_collisionWorld.add(bullet);
-			_collisionWorld.getCollisionManager().addObject(bullet);
-			bullet.setSuper(this);
-			bullet.onAttached();
-			if (_bulletListener != null) {
-				_bulletListener.attached(bullet);
-			}
+		bullets.add(bullet);
+		_collisionWorld.add(bullet);
+		_collisionWorld.getCollisionManager().addObject(bullet);
+		bullet.setSuper(this);
+		bullet.onAttached();
+		if (_bulletListener != null) {
+			_bulletListener.attached(bullet);
 		}
 	}
 
@@ -1958,8 +1955,10 @@ public class BulletEntity extends Entity {
 		bullets.remove(bullet);
 		_collisionWorld.remove(bullet);
 		_collisionWorld.getCollisionManager().removeObject(bullet);
-		if (!_bulletPool.contains(bullet)) {
-			_bulletPool.add(bullet);
+		if (canAddBullet()) {
+			if (!_bulletPool.contains(bullet)) {
+				_bulletPool.add(bullet);
+			}
 		}
 		bullet.setSuper(null);
 		bullet.onDetached();
@@ -2170,8 +2169,8 @@ public class BulletEntity extends Entity {
 				if (spriteList == null || spriteList.length == 0) {
 					continue;
 				}
-				float cx = bullet.getX() + bullet.getWidth() / 2f;
-				float cy = bullet.getY() + bullet.getHeight() / 2f;
+				float cx = bullet.getX();
+				float cy = bullet.getY();
 				float radius = MathUtils.min(bullet.getWidth(), bullet.getHeight()) / 2f;
 				boolean hasCollided = false;
 				for (int j = spriteList.length - 1; j >= 0; j--) {
@@ -2182,7 +2181,7 @@ public class BulletEntity extends Entity {
 					}
 					CollisionObject collTarget = (CollisionObject) target;
 					RectBox targetBox = collTarget.getRectBox();
-					if (circleIntersectsRect(cx, cy, radius, targetBox)) {
+					if (circleIntersectsRect(cx, cy, radius, targetBox) && bullet.isCollision(collTarget)) {
 						if (!hasCollided) {
 							onTriggerCollision(bullet, collTarget, _collisionActionListener);
 							bullet.checkCollision(collTarget);
@@ -2216,9 +2215,12 @@ public class BulletEntity extends Entity {
 				if (_bulletListener != null) {
 					_bulletListener.drawable(g, bullet);
 				}
-				fixMovePosition(bullet);
 			}
 		}
+	}
+
+	public void clearBulletPool() {
+		_bulletPool.clear();
 	}
 
 	public BulletEntity collidable() {
@@ -2473,6 +2475,26 @@ public class BulletEntity extends Entity {
 		return result;
 	}
 
+	public BulletEntity setBulletSpeedScale(float scale) {
+		for (int i = bullets.size - 1; i >= 0; i--) {
+			Bullet b = bullets.get(i);
+			if (b != null) {
+				b.setScaleSpeed(scale);
+			}
+		}
+		return this;
+	}
+
+	public BulletEntity setBulletHitRemove(boolean hitRemoved) {
+		for (int i = bullets.size - 1; i >= 0; i--) {
+			Bullet b = bullets.get(i);
+			if (b != null) {
+				b.setDestroyOnHit(hitRemoved);
+			}
+		}
+		return this;
+	}
+
 	public TArray<Bullet> getBullets() {
 		if (_destroyed) {
 			return null;
@@ -2529,6 +2551,7 @@ public class BulletEntity extends Entity {
 			}
 		}
 		bullets.clear();
+		clearBulletPool();
 		return this;
 	}
 
@@ -2844,6 +2867,59 @@ public class BulletEntity extends Entity {
 		}
 	}
 
+	public TArray<Bullet> getBulletsInScreen() {
+		TArray<Bullet> res = new TArray<Bullet>();
+		RectBox box = getCollisionBox();
+		for (Bullet b : bullets) {
+			if (b != null && box.intersects(b.getRectBox())) {
+				res.add(b);
+			}
+		}
+		return res;
+	}
+
+	public TArray<Bullet> getBulletsByInitSpeed(float minSpeed) {
+		TArray<Bullet> res = new TArray<Bullet>();
+		for (Bullet b : bullets) {
+			if (b != null && b.getInitSpeed() > minSpeed) {
+				res.add(b);
+			}
+		}
+		return res;
+	}
+
+	public BulletEntity clearBulletsByGroup(String group) {
+		for (int i = bullets.size - 1; i >= 0; i--) {
+			Bullet b = bullets.get(i);
+			if (b != null && group.equals(b.getGroup())) {
+				removeWorld(b);
+			}
+		}
+		return this;
+	}
+
+	public BulletEntity setBulletRotateSpeed(float speed) {
+		for (Bullet b : bullets) {
+			if (b != null) {
+				b.setSelfRotateSpeed(speed);
+			}
+		}
+		return this;
+	}
+
+	public BulletEntity setMaxBulletCount(int max) {
+		this._maxBulletCount = max;
+		return this;
+	}
+
+	public int getMaxBulletCount() {
+		return _maxBulletCount;
+	}
+
+	private boolean canAddBullet() {
+		return bullets.size < _maxBulletCount;
+	}
+
 	public boolean isAllowAutoFixMoved() {
 		return this._allowAutoFixMoved;
 	}
@@ -2900,6 +2976,7 @@ public class BulletEntity extends Entity {
 		_autoRemoveOfBounds = false;
 		_limitMovedOfBounds = false;
 		_checkCollision = false;
+		clearBulletPool();
 	}
 
 }

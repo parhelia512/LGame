@@ -70,12 +70,12 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 		return new RectBox(rect.x * tileWidth, rect.y * tileHeight, rect.width * tileWidth, rect.height * tileHeight);
 	}
 
-	public static RectBox toTitle(final RectBox rect, final XY point) {
+	public static RectBox toTile(final RectBox rect, final XY point) {
 		return new RectBox(rect.getX() / point.getX(), rect.getY() / point.getY(), rect.getWidth() / point.getX(),
 				rect.getHeight() / point.getY());
 	}
 
-	public static RectBox toTitle(final RectBox rect, int tileWidth, int tileHeight) {
+	public static RectBox toTile(final RectBox rect, int tileWidth, int tileHeight) {
 		return new RectBox(rect.x / tileWidth, rect.y / tileHeight, rect.width / tileWidth, rect.height / tileHeight);
 	}
 
@@ -242,9 +242,9 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 
 	public final static PointF[] getRectCorners(float x, float y, float width, float height) {
 		PointF a = new PointF(x, y);
-		PointF b = new PointF(x + height, y);
-		PointF c = new PointF(x, y + width);
-		PointF d = new PointF(x + height, y + width);
+		PointF b = new PointF(x + width, y);
+		PointF c = new PointF(x, y + height);
+		PointF d = new PointF(x + width, y + height);
 		return new PointF[] { a, b, c, d };
 	}
 
@@ -286,7 +286,7 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 	public int width;
 
 	public int height;
-	
+
 	public RectBox() {
 		setBounds(0, 0, 0, 0);
 	}
@@ -511,15 +511,19 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 
 	@Override
 	public void setScale(float sx, float sy) {
-		if (scaleX != sx || scaleY != sy) {
-			setSize(width * (scaleX = sx), height * (scaleY * sy));
+		if (scaleX == sx && scaleY == sy) {
+			return;
 		}
+		scaleX = sx;
+		scaleY = sy;
+		setSize(width * scaleX, height * scaleY);
 	}
 
 	public RectBox setRotate(float r) {
 		if (!MathUtils.equal(r, this.rotation)) {
 			this.rotation = r;
-			return MathUtils.getLimit(x, y, width, height, rotation, this);
+			this.pointsDirty = true;
+			this.checkPoints();
 		}
 		return this;
 	}
@@ -528,7 +532,9 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 	public Shape setRotation(float r, float x, float y) {
 		if (!MathUtils.equal(r, this.rotation)) {
 			super.setRotation(r, x, y);
-			setBounds(minX, minY, (maxX - minX), (maxY - minY));
+			this.rotation = r;
+			this.pointsDirty = true;
+			this.checkPoints();
 		}
 		return this;
 	}
@@ -768,6 +774,8 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 			r.height = MathUtils.abs(r.height);
 			r.y -= r.height;
 		}
+		r.pointsDirty = true;
+		r.checkPoints();
 		return this;
 	}
 
@@ -810,9 +818,11 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 		case 0:
 			x = MathUtils.clamp(x + MathUtils.random(-v, v), 0, x);
 			y = MathUtils.clamp(y + MathUtils.random(-v, v), 0, y);
+			break;
 		case 1:
 			width = MathUtils.clamp(width + MathUtils.random(-v, v), 0, width);
 			height = MathUtils.clamp(height + MathUtils.random(-v, v), 0, height);
+			break;
 		}
 		checkPoints();
 		return this;
@@ -1360,27 +1370,26 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 
 	@Override
 	protected void createPoints() {
-
 		float useWidth = width;
 		float useHeight = height;
 		points = new float[8];
-
-		points[0] = x;
-		points[1] = y;
-
-		points[2] = x + useWidth;
-		points[3] = y;
-
-		points[4] = x + useWidth;
-		points[5] = y + useHeight;
-
-		points[6] = x;
-		points[7] = y + useHeight;
-
-		maxX = points[2];
-		maxY = points[5];
-		minX = points[0];
-		minY = points[1];
+		float centerX = x + useWidth / 2f;
+		float centerY = y + useHeight / 2f;
+		float[] corners = { -useWidth / 2f, -useHeight / 2f, useWidth / 2f, -useHeight / 2f, useWidth / 2f,
+				useHeight / 2f, -useWidth / 2f, useHeight / 2f };
+		float rad = MathUtils.toRadians(rotation);
+		float cos = MathUtils.cos(rad);
+		float sin = MathUtils.sin(rad);
+		for (int i = 0; i < 8; i += 2) {
+			float px = corners[i];
+			float py = corners[i + 1];
+			points[i] = centerX + px * cos - py * sin;
+			points[i + 1] = centerY + px * sin + py * cos;
+		}
+		minX = MathUtils.min(MathUtils.min(points[0], points[2]), MathUtils.min(points[4], points[6]));
+		minY = MathUtils.min(MathUtils.min(points[1], points[3]), MathUtils.min(points[5], points[7]));
+		maxX = MathUtils.max(MathUtils.max(points[0], points[2]), MathUtils.max(points[4], points[6]));
+		maxY = MathUtils.max(MathUtils.max(points[1], points[3]), MathUtils.max(points[5], points[7]));
 		findCenter();
 		calculateRadius();
 	}
@@ -1785,12 +1794,12 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 		return toPixels(this, tileWidth, tileHeight);
 	}
 
-	public RectBox toTitle(final XY point) {
-		return toTitle(this, point);
+	public RectBox toTile(final XY point) {
+		return toTile(this, point);
 	}
 
-	public RectBox toTitle(int tileWidth, int tileHeight) {
-		return toTitle(this, tileWidth, tileHeight);
+	public RectBox toTile(int tileWidth, int tileHeight) {
+		return toTile(this, tileWidth, tileHeight);
 	}
 
 	public RectBox pad(float padding) {
@@ -1954,8 +1963,12 @@ public class RectBox extends Shape implements BoxSize, SetXYZW, XYZW {
 
 	public TArray<Vector2f> getAllPoints() {
 		TArray<Vector2f> points = new TArray<Vector2f>();
-		for (int i = MathUtils.ifloor(x); i <= MathUtils.ifloor(width); i++) {
-			for (int j = MathUtils.ifloor(y); j <= MathUtils.ifloor(height); j++) {
+		int startX = MathUtils.ifloor(x);
+		int endX = MathUtils.ifloor(x + width);
+		int startY = MathUtils.ifloor(y);
+		int endY = MathUtils.ifloor(y + height);
+		for (int i = startX; i <= endX; i++) {
+			for (int j = startY; j <= endY; j++) {
 				points.add(new Vector2f(i, j));
 			}
 		}

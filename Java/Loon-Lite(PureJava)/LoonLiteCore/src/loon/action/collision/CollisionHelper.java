@@ -1154,20 +1154,22 @@ public final class CollisionHelper extends ShapeUtils {
 		if (!checkAABBvsAABB(x0 - w0 / 2, y0 - h0 / 2, w0, h0, x1 - w1 / 2, y1 - h1 / 2, w1, h1)) {
 			return false;
 		}
-		float dx = x1 - x0;
-		float dy = y1 - y0;
-		float maxRadius1 = MathUtils.max(w0, h0) * 0.5f;
-		float maxRadius2 = MathUtils.max(w1, h1) * 0.5f;
-		float distCenterSq = dx * dx + dy * dy;
-		if (distCenterSq > (maxRadius1 + maxRadius2) * (maxRadius1 + maxRadius2)) {
+		final float x = MathUtils.abs(x1 - x0) * h1;
+		final float y = MathUtils.abs(y1 - y0) * w1;
+		w0 *= h1;
+		h0 *= w1;
+		final float r = w1 * h1;
+		if (x * x + (h0 - y) * (h0 - y) <= r * r || (w0 - x) * (w0 - x) + y * y <= r * r || x * h0 + y * w0 <= w0 * h0
+				|| ((x * h0 + y * w0 - w0 * h0) * (x * h0 + y * w0 - w0 * h0) <= r * r * (w0 * w0 + h0 * h0)
+						&& x * w0 - y * h0 >= -h0 * h0 && x * w0 - y * h0 <= w0 * w0)) {
+			return true;
+		} else {
+			if ((x - w0) * (x - w0) + (y - h0) * (y - h0) <= r * r || (x <= w0 && y - r <= h0)
+					|| (y <= h0 && x - r <= w0)) {
+				return iterate(x, y, w0, 0, 0, h0, r * r);
+			}
 			return false;
 		}
-		float area1 = MathUtils.PI * (w0 * 0.5f) * (h0 * 0.5f);
-		float area2 = MathUtils.PI * (w1 * 0.5f) * (h1 * 0.5f);
-		float radius1 = MathUtils.sqrt(area1 / MathUtils.PI);
-		float radius2 = MathUtils.sqrt(area2 / MathUtils.PI);
-		float distance = MathUtils.sqrt(distCenterSq);
-		return distance < (radius1 + radius2);
 	}
 
 	public static final boolean checkEllipsevsCircle(XYZW e, XY pos, float r) {
@@ -1275,17 +1277,12 @@ public final class CollisionHelper extends ShapeUtils {
 
 	public static final boolean checkPointvsLine(float px, float py, float x1, float y1, float x2, float y2,
 			float size) {
-		float dx = x2 - x1;
-		float dy = y2 - y1;
-		float lenSq = dx * dx + dy * dy;
-		if (lenSq == 0f) {
-			return MathUtils.dist(px, py, x1, y1) <= size;
-		}
-		float t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
-		t = MathUtils.max(0, MathUtils.min(1, t));
-		float projX = x1 + t * dx;
-		float projY = y1 + t * dy;
-		return MathUtils.dist(px, py, projX, projY) <= size;
+		final float mpx = px - x1;
+		final float mpy = py - y1;
+		final float d1 = MathUtils.dist(mpx, mpy, x1, y1);
+		final float d2 = MathUtils.dist(mpx, mpy, x2, y2);
+		final float lineLen = MathUtils.dist(x1, y1, x2, y2);
+		return d1 + d2 >= lineLen - size && d1 + d2 <= lineLen + size;
 	}
 
 	public static final boolean checkPointvsTriangle(XY pos, XY p1, XY p2, XY p3) {

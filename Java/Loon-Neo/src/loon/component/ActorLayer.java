@@ -830,6 +830,7 @@ public abstract class ActorLayer extends LContainer {
 	 * 
 	 * @return
 	 */
+	@Override
 	public int size() {
 		if (_destroyed) {
 			return 0;

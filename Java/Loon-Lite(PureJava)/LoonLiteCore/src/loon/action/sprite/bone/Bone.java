@@ -136,7 +136,7 @@ public class Bone implements Comparable<Bone> {
 			return this._posX + _originX;
 		}
 		float scaleX = getScaleX();
-		return ((scaleX == 1f) ? this._posX : (this._posX + (getScaleWidth() * 0.5f)));
+		return (MathUtils.equal(scaleX, 1f) ? this._posX : (this._posX + (getScaleWidth() * 0.5f)));
 	}
 
 	public float getScalePixelY() {
@@ -144,7 +144,7 @@ public class Bone implements Comparable<Bone> {
 			return this._posY + _originY;
 		}
 		float scaleY = getScaleY();
-		return ((scaleY == 1f) ? this._posY : (this._posY + (getScaleHeight() * 0.5f)));
+		return (MathUtils.equal(scaleY, 1f) ? this._posY : (this._posY + (getScaleHeight() * 0.5f)));
 	}
 
 	public float getScaleWidth() {

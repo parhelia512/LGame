@@ -43,6 +43,7 @@ import loon.geom.Vector2f;
 import loon.geom.XY;
 import loon.opengl.GLEx;
 import loon.utils.MathUtils;
+import loon.utils.TArray;
 
 /**
  * 游戏背包用组件类
@@ -51,20 +52,20 @@ public class LInventory extends LLayer {
 
 	public static class ItemUI extends Item<ItemInfo> implements LRelease {
 
-		protected boolean _saved;
-
 		protected LInventory _inventory;
-
 		protected Actor _actor;
-
 		protected int _itemId;
-
 		private ItemUI.ItemUIClose _released;
+		protected boolean _locked;
+		protected boolean _disabled;
+		protected boolean _saved;
+		protected int _stackCount;
+		protected int _maxStack = 99;
+		protected LTexture _itemTexture;
+		protected int _categoryId;
 
 		private class ItemUIClose implements LRelease {
-
 			private ItemUI _itemUI;
-
 			private boolean _closed;
 
 			public ItemUIClose(ItemUI ui) {
@@ -82,6 +83,14 @@ public class LInventory extends LLayer {
 				_itemUI.setItem(null);
 				_itemUI.setName(LSystem.UNKNOWN);
 				_itemUI.setDescription(LSystem.UNKNOWN);
+				if (_itemUI._actor != null) {
+					_itemUI._actor.setTag(null);
+				}
+				_itemUI._locked = false;
+				_itemUI._disabled = false;
+				_itemUI._stackCount = 0;
+				_itemUI._categoryId = 0;
+				_itemUI._itemTexture = null;
 				_itemUI.removeActor();
 				_closed = true;
 			}
@@ -91,10 +100,22 @@ public class LInventory extends LLayer {
 			super(name, x, y, w, h, item);
 			this._inventory = inv;
 			this._itemId = id;
+			this._stackCount = 1;
+			this._locked = false;
+			this._disabled = false;
+			this._categoryId = 0;
 		}
 
 		public int getItemId() {
 			return this._itemId;
+		}
+
+		public boolean isSameItem(ItemUI other) {
+			if (other == null) {
+				return false;
+			}
+			return this._itemTexture.equals(other._itemTexture) && this._item.equals(other._item)
+					&& this._categoryId == other._categoryId;
 		}
 
 		protected void setInventoryUI(LInventory ui) {
@@ -139,6 +160,9 @@ public class LInventory extends LLayer {
 		}
 
 		protected void free() {
+			if (isReleasing()) {
+				return;
+			}
 			if ((_released == null) || (_released != null && _released.isClosed())) {
 				_released = new ItemUI.ItemUIClose(this);
 				if (_actor != null && _inventory._actorFadeTime > 0f && _actor.isActionCompleted()) {
@@ -165,6 +189,7 @@ public class LInventory extends LLayer {
 		}
 
 		public ItemUI bindTexture(LTexture tex) {
+			this._itemTexture = tex;
 			if (_actor == null) {
 				_actor = new Actor(tex);
 			} else {
@@ -175,6 +200,7 @@ public class LInventory extends LLayer {
 		}
 
 		public ItemUI bindTexture(LTexture tex, float x, float y, float w, float h) {
+			this._itemTexture = tex;
 			if (_actor == null) {
 				_actor = new Actor(tex, x, y, w, h);
 			} else {
@@ -185,6 +211,9 @@ public class LInventory extends LLayer {
 		}
 
 		public ItemUI bind(Actor act) {
+			if (isReleasing() || isDisabled()) {
+				return this;
+			}
 			if (act == null) {
 				if (_actor != null) {
 					_actor.setTag(null);
@@ -201,21 +230,33 @@ public class LInventory extends LLayer {
 			boolean isDst = ((o != null) && (o instanceof ItemUI));
 			if (!_saved && isDst) {
 				final ItemUI item = ((ItemUI) o);
+				if (item.isReleasing() || item.isLocked()) {
+					return this;
+				}
 				final ItemInfo tmpInfo = _item.cpy();
 				final int tempId = _itemId;
 				final int tempType = _typeId;
 				final String tmpName = _name;
 				final String tempDes = _description;
+				final int tmpStack = _stackCount;
+				final int tmpCategory = _categoryId;
+
 				this._item = item._item;
 				this._itemId = item._itemId;
 				this._name = item._name;
 				this._description = item._description;
+				this._stackCount = item._stackCount;
+				this._categoryId = item._categoryId;
+				this._itemTexture = item._itemTexture;
 				this._saved = true;
+
 				item._item = tmpInfo;
 				item._itemId = tempId;
 				item._typeId = tempType;
 				item._name = tmpName;
 				item._description = tempDes;
+				item._stackCount = tmpStack;
+				item._categoryId = tmpCategory;
 				item._saved = false;
 			}
 			_actor = act;
@@ -244,13 +285,8 @@ public class LInventory extends LLayer {
 		}
 
 		public ItemUI swap(ItemUI item) {
-			if (item == this) {
-				return this;
-			}
-			if (item._itemId == _itemId) {
-				return this;
-			}
-			if (item._actor == _actor) {
+			if (item == this || item._itemId == _itemId || item._actor == _actor || isReleasing() || item.isReleasing()
+					|| isLocked() || item.isLocked() || isDisabled() || item.isDisabled()) {
 				return this;
 			}
 			final LTexture srcImg = item._image;
@@ -262,7 +298,10 @@ public class LInventory extends LLayer {
 			final int srcId = item._itemId;
 			final int srcType = item._typeId;
 			final String srcDes = item._description;
-
+			final int srcStack = item._stackCount;
+			final boolean srcLocked = item._locked;
+			final int srcCategory = item._categoryId;
+			final LTexture srcTex = item._itemTexture;
 			final LTexture dstImg = _image;
 			final Actor dstActor = _actor;
 			final boolean dstSaved = _saved;
@@ -272,40 +311,47 @@ public class LInventory extends LLayer {
 			final int dstId = _itemId;
 			final int dstType = _typeId;
 			final String dstDes = _description;
+			final int dstStack = _stackCount;
+			final boolean dstLocked = _locked;
+			final int dstCategory = _categoryId;
+			final LTexture dstTex = _itemTexture;
+			item._image = dstImg;
+			item._saved = dstSaved;
+			item._itemArea = dstArea;
+			item._itemId = dstId;
+			item._typeId = dstType;
+			item._name = dstName;
+			item._description = dstDes;
+			item._item = srcItem;
+			item._stackCount = dstStack;
+			item._locked = dstLocked;
+			item._categoryId = dstCategory;
+			item._itemTexture = dstTex;
 
-			item._image = srcImg;
-			item._saved = srcSaved;
-			item._itemArea = srcArea;
-			item._itemId = srcId;
-			item._typeId = srcType;
-			item._name = srcName;
-			item._description = srcDes;
-			item._item = dstItem;
+			this._image = srcImg;
+			this._saved = srcSaved;
+			this._itemArea = srcArea;
+			this._itemId = srcId;
+			this._typeId = srcType;
+			this._name = srcName;
+			this._description = srcDes;
+			this._item = dstItem;
+			this._stackCount = srcStack;
+			this._locked = srcLocked;
+			this._categoryId = srcCategory;
+			this._itemTexture = srcTex;
 
 			if (srcActor != null) {
 				updateActorPos(srcActor, dstArea);
-			}
-			this._image = dstImg;
-			this._saved = dstSaved;
-			this._itemArea = dstArea;
-			this._itemId = dstId;
-			this._typeId = dstType;
-			this._name = dstName;
-			this._description = dstDes;
-			this._item = srcItem;
-
-			if (dstActor != null) {
-				updateActorPos(dstActor, srcArea);
-			}
-			if (srcActor != null) {
-				bind(srcActor);
-			} else {
-				bind(null);
-			}
-			if (dstActor != null) {
-				item.bind(dstActor);
+				item.bind(srcActor);
 			} else {
 				item.bind(null);
+			}
+			if (dstActor != null) {
+				updateActorPos(dstActor, srcArea);
+				this.bind(dstActor);
+			} else {
+				this.bind(null);
 			}
 			return this;
 		}
@@ -319,73 +365,120 @@ public class LInventory extends LLayer {
 			free();
 		}
 
+		public boolean isLocked() {
+			return _locked;
+		}
+
+		public ItemUI setLocked(boolean locked) {
+			this._locked = locked;
+			return this;
+		}
+
+		public boolean isDisabled() {
+			return _disabled;
+		}
+
+		public ItemUI setDisabled(boolean disabled) {
+			this._disabled = disabled;
+			return this;
+		}
+
+		public int getStackCount() {
+			return _stackCount;
+		}
+
+		public ItemUI setStackCount(int count) {
+			this._stackCount = MathUtils.clamp(count, 1, _maxStack);
+			this._saved = this._stackCount > 0;
+			return this;
+		}
+
+		public ItemUI addStack(int count) {
+			return setStackCount(_stackCount + count);
+		}
+
+		public ItemUI subStack(int count) {
+			return setStackCount(_stackCount - count);
+		}
+
+		public boolean isStackable(ItemUI target) {
+			return isSameItem(target) && _stackCount < _maxStack;
+		}
+
+		public int getCategoryId() {
+			return _categoryId;
+		}
+
+		public ItemUI setCategoryId(int categoryId) {
+			this._categoryId = categoryId;
+			return this;
+		}
+
 	}
 
+	// 全部
+	public static final int CATEGORY_ALL = 0;
+	// 消耗品
+	public static final int CATEGORY_CONSUME = 1;
+	// 装备
+	public static final int CATEGORY_EQUIP = 2;
+	// 材料
+	public static final int CATEGORY_MATERIAL = 3;
+	// 任务物品
+	public static final int CATEGORY_QUEST = 4;
+
 	private LColor _gridColor;
-
 	private boolean _initialization;
-
 	private boolean _isCircleGrid;
-
 	private boolean _isDisplayBar;
-
 	private boolean _isAllowShowTip;
-
 	private boolean _selectedGridFlag;
-
 	private boolean _useKeyboard;
-
 	private int _currentRowTableSize;
-
 	private int _currentColTableSize;
-
 	private int _selectedGridFlagDashCount;
-
 	private float _selectedGridFlagSize;
-
 	private float _offsetGridActorX;
-
 	private float _offsetGridActorY;
-
 	private float _gridPaddingLeft, _gridPaddingTop;
-
 	private float _gridPaddingRight, _gridPaddingBottom;
-
 	private float _gridPaddingX, _gridPaddingY;
-
 	private float _gridTileWidth;
-
 	private float _gridTileHeight;
-
 	private float _actorFadeTime;
-
 	private boolean _displayDrawGrid;
-
 	private boolean _dirty;
-
 	private boolean _isMobile;
-
 	private LColor _selectedGridFlagColor;
-
 	private LColor _tipFontColor;
-
 	private IFont _tipFont;
-
 	private Text _tipText;
-
 	private LTexture _cacheGridTexture;
-
 	private LTexture _tipTexture;
-
 	private LTexture _barTexture;
-
 	private Inventory _inventory;
-
 	private Vector2f _titleSize;
-
 	private boolean _tipSelected;
-
 	private ItemUI _selectedItem;
+
+	private boolean _allowSwap = true;
+
+	private InventoryListener _listener;
+	private int _currentFilterCategory = CATEGORY_ALL;
+
+	public interface InventoryListener {
+		void onItemDragStart(ItemUI item);
+
+		void onItemSwap(ItemUI src, ItemUI dst);
+
+		void onItemAdd(ItemUI item);
+
+		void onItemRemove(ItemUI item);
+
+		void onItemClick(ItemUI item);
+
+		void onCategoryChanged(int newCategory);
+	}
 
 	public LInventory(float x, float y, float w, float h) {
 		this(SkinManager.get().getMessageSkin().getFont(), x, y, w, h, false);
@@ -583,31 +676,40 @@ public class LInventory extends LLayer {
 
 	public LInventory swap(ItemUI a, ItemUI b) {
 		_inventory.swap(a, b);
+		if (_listener != null) {
+			_listener.onItemSwap(a, b);
+		}
 		return this;
 	}
 
 	public LInventory putItem(String path) {
-		return putItem(LTextures.loadTexture(path), new ItemInfo());
+		return putItem(LTextures.loadTexture(path), new ItemInfo(), CATEGORY_ALL);
 	}
 
 	public LInventory putItem(String path, ItemInfo info) {
-		return putItem(LTextures.loadTexture(path), info);
+		return putItem(LTextures.loadTexture(path), info, CATEGORY_ALL);
 	}
 
 	public LInventory putItem(LTexture tex) {
-		return putItem(tex, new ItemInfo());
+		return putItem(tex, new ItemInfo(), CATEGORY_ALL);
 	}
 
-	public LInventory putItem(LTexture tex, ItemInfo info) {
+	public LInventory putItem(LTexture tex, ItemInfo info, int c) {
 		if (_initialization) {
 			final int size = _inventory.getItemCount();
 			for (int i = 0; i < size; i++) {
 				ItemUI item = (ItemUI) _inventory.getItem(i);
-				if (item != null && !item._saved && (item._actor == null)) {
+				if (item != null && !item._saved && (item._actor == null) && !item.isDisabled()) {
+					item.setArea(item.getArea().getX(), item.getArea().getY(), item.getArea().getWidth(),
+							item.getArea().getHeight());
 					item.bindTexture(tex);
+					item.updateActorSize(item.getActor());
 					item.updateActorPos();
 					item.setName(info.getName());
 					item.setItem(info);
+					item.setStackCount(1);
+					item._saved = true;
+					item.setCategoryId(c);
 					return this;
 				}
 			}
@@ -617,23 +719,35 @@ public class LInventory extends LLayer {
 			}
 			ItemUI item = new ItemUI(this, _inventory.getItemCount(), info.getName(), info, 0f, 0f, 0f, 0f);
 			item.bindTexture(tex, 0f, 0f, _titleSize.x, _titleSize.y);
+			item.updateActorSize(item.getActor());
+			item.updateActorPos();
+			item.setStackCount(1);
+			item.setCategoryId(c);
 			_inventory.addItem(item);
 		}
 		return this;
 	}
 
+	public LInventory putItem(LTexture tex, ItemInfo info) {
+		return putItem(tex, info, CATEGORY_ALL);
+	}
+
 	public ItemUI removeItemIndex(int idx) {
 		ItemUI item = getItem(idx);
-		if (item != null && item.isExist()) {
+		if (item != null && item.isExist() && !item.isLocked()) {
 			item.free();
+			if (_listener != null)
+				_listener.onItemRemove(item);
 		}
 		return item;
 	}
 
 	public boolean removeItem(float x, float y) {
 		ItemUI item = getItem(x, y);
-		if (item != null && item.isExist()) {
+		if (item != null && item.isExist() && !item.isLocked()) {
 			item.free();
+			if (_listener != null)
+				_listener.onItemRemove(item);
 		}
 		return item != null;
 	}
@@ -642,12 +756,14 @@ public class LInventory extends LLayer {
 		ItemUI item = null;
 		for (int i = _inventory.getItemCount() - 1; i > -1; i--) {
 			item = (ItemUI) _inventory.getItem(i);
-			if (item != null && item.isExist()) {
+			if (item != null && item.isExist() && !item.isLocked()) {
 				break;
 			}
 		}
 		if (item != null) {
 			item.free();
+			if (_listener != null)
+				_listener.onItemRemove(item);
 		}
 		return item;
 	}
@@ -746,7 +862,10 @@ public class LInventory extends LLayer {
 			if (iteminfo != null) {
 				final String name = iteminfo.getName();
 				final String des = iteminfo.getDescription();
-				final String context = name + LSystem.LF + des;
+				final String stack = _selectedItem.getStackCount() >= 1 ? " x:" + _selectedItem.getStackCount()
+						: " x:0";
+				final String category = getCategoryName(_selectedItem.getCategoryId());
+				final String context = name + stack + " | " + category + LSystem.LF + des;
 				setTipText(context);
 				_tipSelected = true;
 			}
@@ -800,7 +919,12 @@ public class LInventory extends LLayer {
 	}
 
 	public LInventory clearInventory() {
-		this._inventory.clear();
+		for (int i = 0; i < getItemCount(); i++) {
+			ItemUI item = getItem(i);
+			if (item != null && !item.isLocked()) {
+				item.free();
+			}
+		}
 		return this;
 	}
 
@@ -965,6 +1089,33 @@ public class LInventory extends LLayer {
 		drawTipToUI(g, x, y);
 	}
 
+	public String getCategoryName(int categoryId) {
+		switch (categoryId) {
+		case CATEGORY_CONSUME:
+			return "CONSUME";
+		case CATEGORY_EQUIP:
+			return "EQUIP";
+		case CATEGORY_MATERIAL:
+			return "MATERIAL";
+		case CATEGORY_QUEST:
+			return "QUEST";
+		default:
+			return "OTHER";
+		}
+	}
+
+	public LInventory switchCategory(int categoryId) {
+		this._currentFilterCategory = categoryId;
+		if (_listener != null) {
+			_listener.onCategoryChanged(categoryId);
+		}
+		return this;
+	}
+
+	public int getCurrentCategory() {
+		return _currentFilterCategory;
+	}
+
 	public LInventory setSelectedGridFlagColor(LColor c) {
 		this._selectedGridFlagColor = c;
 		return this;
@@ -980,7 +1131,7 @@ public class LInventory extends LLayer {
 	}
 
 	public float getSelectedGridFlagSize() {
-		return this._selectedGridFlagSize;
+		return _selectedGridFlagSize;
 	}
 
 	public LInventory setSelectedGridFlagDashCount(int s) {
@@ -989,7 +1140,7 @@ public class LInventory extends LLayer {
 	}
 
 	public int getSelectedGridFlagDashCount() {
-		return this._selectedGridFlagDashCount;
+		return _selectedGridFlagDashCount;
 	}
 
 	public LInventory freeTipSelected() {
@@ -1011,6 +1162,10 @@ public class LInventory extends LLayer {
 		super.downClick(dx, dy);
 		if (!_useKeyboard) {
 			freeTipSelected();
+			ItemUI item = getItem(dx, dy);
+			if (item != null && _listener != null) {
+				_listener.onItemClick(item);
+			}
 			if (_isMobile && isLongPressed()) {
 				checkTouchTip();
 			}
@@ -1034,23 +1189,49 @@ public class LInventory extends LLayer {
 		super.upClick(dx, dy);
 		if (!_useKeyboard) {
 			final Actor act = getClickActor();
-			if (act != null) {
-				final ItemUI itemDst = getItem(dx, dy);
-				if (itemDst != null) {
-					final Object o = act.getTag();
-					final ItemUI itemSrc = (o instanceof ItemUI) ? ((ItemUI) o) : null;
-					if (itemDst != itemSrc) {
-						final boolean srcNotDst = (itemSrc != null && itemDst._itemId != itemSrc._itemId);
-						if (!itemDst.isExist() && (srcNotDst || (itemSrc == null))) {
-							itemDst.bind(act);
-						} else if (srcNotDst && itemDst.isExist() && itemSrc.isExist()) {
-							itemDst.swap(itemSrc);
-						} else {
+			if (act == null) {
+				freeDragActor();
+				freeTipSelected();
+				return;
+			}
+			final Object o = act.getTag();
+			final ItemUI itemSrc = (o instanceof ItemUI) ? ((ItemUI) o) : null;
+			final ItemUI itemDst = getItem(dx, dy);
+			boolean needReset = true;
+			try {
+				if (_actorDrag && _allowSwap && itemSrc != null && !itemSrc.isLocked() && !itemSrc.isDisabled()) {
+					if (itemDst != null && !itemDst.isLocked() && !itemDst.isDisabled()) {
+						if (itemDst != itemSrc) {
+							final boolean srcNotDst = (itemSrc != null && itemDst._itemId != itemSrc._itemId);
+							if (!itemDst.isExist() && (srcNotDst || itemSrc == null)) {
+								itemDst.bind(act);
+								needReset = false;
+							} else if (srcNotDst && itemDst.isExist() && itemSrc.isExist()) {
+								itemDst.swap(itemSrc);
+								needReset = false;
+							}
+						}
+					}
+				}
+				if (needReset) {
+					if (itemSrc != null) {
+						itemSrc.updateActorPos(act, itemSrc.getArea());
+						itemSrc.bind(act);
+					} else {
+						act.setTag(null);
+						if (itemDst != null) {
 							itemDst.resetActor();
 						}
-					} else {
-						itemDst.resetActor();
 					}
+				}
+				if (itemSrc != null && _listener != null) {
+					_listener.onItemSwap(itemSrc, itemDst);
+				}
+			} catch (Exception e) {
+				if (itemSrc != null) {
+					itemSrc.bind(act);
+				} else {
+					act.setTag(null);
 				}
 			}
 			freeTipSelected();
@@ -1086,7 +1267,7 @@ public class LInventory extends LLayer {
 			if (itemXY != null) {
 				if (isKeyUp(SysKey.LEFT)) {
 					itemXY.move_left(1);
-				} else if (isKeyUp(SysKey.RIGHT)) {
+				} else if (isKeyUp(SysKey.LEFT)) {
 					itemXY.move_right(1);
 				} else if (isKeyUp(SysKey.UP)) {
 					itemXY.move_up(1);
@@ -1217,18 +1398,271 @@ public class LInventory extends LLayer {
 		return scroll;
 	}
 
-	/**
-	 * 变化当前背包为指定宽度的可滚动容器(大于背包大小则背包最大值的2/3)
-	 * 
-	 * @param x
-	 * @param y
-	 * @param w
-	 * @return
-	 */
 	public LScrollContainer toHorizontalScroll(float x, float y, float w) {
 		LScrollContainer scroll = LScrollContainer.createHorizontalScrollContainer(this, x, y, w);
 		scroll.add(this);
 		return scroll;
+	}
+
+	public boolean isAllowDrag() {
+		return isActorDrag();
+	}
+
+	public LInventory setAllowDrag(boolean allow) {
+		this.setActorDrag(allow);
+		return this;
+	}
+
+	public boolean isAllowSwap() {
+		return _allowSwap && _actorDrag;
+	}
+
+	public LInventory setAllowSwap(boolean allow) {
+		this._allowSwap = allow;
+		return this;
+	}
+
+	public LInventory setInventoryListener(InventoryListener listener) {
+		this._listener = listener;
+		return this;
+	}
+
+	public int getEmptySlotCount() {
+		int count = 0;
+		for (int i = 0; i < getItemCount(); i++) {
+			ItemUI item = getItem(i);
+			if (item != null && !item.isExist() && !item.isDisabled())
+				count++;
+		}
+		return count;
+	}
+
+	public boolean isFull() {
+		return getEmptySlotCount() == 0;
+	}
+
+	public int getFirstEmptySlotIndex() {
+		for (int i = 0; i < getItemCount(); i++) {
+			ItemUI item = getItem(i);
+			if (item != null && !item.isExist() && !item.isDisabled())
+				return i;
+		}
+		return -1;
+	}
+
+	public TArray<ItemUI> getNonNullItems() {
+		TArray<ItemUI> list = new TArray<ItemUI>();
+		for (int i = 0; i < getItemCount(); i++) {
+			ItemUI item = getItem(i);
+			if (item != null && item.isExist())
+				list.add(item);
+		}
+		return list;
+	}
+
+	/**
+	 * 按分类筛选物品
+	 * 
+	 * @param categoryId
+	 * @return
+	 */
+	public TArray<ItemUI> filterItemsByCategory(int categoryId) {
+		TArray<ItemUI> list = new TArray<ItemUI>();
+		for (int i = 0; i < getItemCount(); i++) {
+			ItemUI item = getItem(i);
+			if (item != null && item.isExist() && item.getCategoryId() == categoryId) {
+				list.add(item);
+			}
+		}
+		return list;
+	}
+
+	public ItemUI findItemById(int itemId) {
+		for (int i = 0; i < getItemCount(); i++) {
+			ItemUI item = getItem(i);
+			if (item != null && item.isExist() && item.getItemId() == itemId)
+				return item;
+		}
+		return null;
+	}
+
+	public TArray<ItemUI> filterItemsByName(String name) {
+		TArray<ItemUI> list = new TArray<ItemUI>();
+		for (int i = 0; i < getItemCount(); i++) {
+			ItemUI item = getItem(i);
+			if (item != null && item.isExist() && item.getName().contains(name)) {
+				list.add(item);
+			}
+		}
+		return list;
+	}
+
+	public LInventory unlockAllItems() {
+		for (int i = 0; i < getItemCount(); i++) {
+			ItemUI item = getItem(i);
+			if (item != null) {
+				item.setLocked(false);
+			}
+		}
+		return this;
+	}
+
+	public LInventory clearEmptySlots() {
+		for (int i = 0; i < getItemCount(); i++) {
+			ItemUI item = getItem(i);
+			if (item != null && !item.isExist() && !item.isLocked()) {
+				item.setStackCount(0);
+			}
+		}
+		return this;
+	}
+
+	public LInventory swapByIndex(int srcIndex, int dstIndex) {
+		ItemUI src = getItem(srcIndex);
+		ItemUI dst = getItem(dstIndex);
+		if (src != null && dst != null) {
+			swap(src, dst);
+		}
+		return this;
+	}
+
+	public LInventory setSlotDisabled(int index, boolean disabled) {
+		ItemUI item = getItem(index);
+		if (item != null) {
+			item.setDisabled(disabled);
+		}
+		return this;
+	}
+
+	/**
+	 * 自动统计同类物品数量
+	 * 
+	 * @param o
+	 * @return
+	 */
+	public LInventory autoStackItem(ItemUI o) {
+		if (o == null || !o.isExist() || !o.isStackable(o)) {
+			return this;
+		}
+		int maxStack = o._maxStack;
+		TArray<ItemUI> items = getNonNullItems();
+		for (int i = 0; i < items.size; i++) {
+			ItemUI target = items.get(i);
+			if (target == o || !target.isSameItem(o)) {
+				continue;
+			}
+			int newCount = o.getStackCount() + target.getStackCount();
+			if (newCount <= maxStack) {
+				target.setStackCount(newCount);
+				o.setStackCount(0);
+				break;
+			} else if (target.getStackCount() < maxStack) {
+				int needed = maxStack - target.getStackCount();
+				target.setStackCount(maxStack);
+				o.setStackCount(o.getStackCount() - needed);
+			}
+		}
+		return this;
+	}
+
+	/**
+	 * 整理背包，清除空位并堆叠物品
+	 * 
+	 * @return
+	 */
+	public LInventory tidy() {
+		TArray<ItemUI> items = getNonNullItems();
+		int count = items.size;
+		for (int i = 0; i < count; i++) {
+			ItemUI item = items.get(i);
+			ItemUI targetSlot = getItem(i);
+			if (item != targetSlot) {
+				this.swap(item, targetSlot);
+			}
+		}
+		TArray<ItemUI> currentItems = getNonNullItems();
+		for (int i = 0; i < currentItems.size; i++) {
+			final ItemUI target = currentItems.get(i);
+			if (!target.isExist()) {
+				continue;
+			}
+			for (int j = i + 1; j < currentItems.size; j++) {
+				final ItemUI source = currentItems.get(j);
+				if (!source.isExist()) {
+					continue;
+				}
+				if (target.isSameItem(source) && target.getStackCount() < target._maxStack) {
+					int space = target._maxStack - target.getStackCount();
+					int amount = Math.min(space, source.getStackCount());
+					target.addStack(amount);
+					source.subStack(amount);
+					if (source.getStackCount() <= 0) {
+						source.free();
+					}
+				}
+			}
+		}
+		TArray<ItemUI> finalItems = getNonNullItems();
+		for (int i = 0; i < finalItems.size; i++) {
+			ItemUI item = finalItems.get(i);
+			ItemUI targetSlot = getItem(i);
+			if (item != targetSlot) {
+				this.swap(item, targetSlot);
+			}
+		}
+		return this;
+	}
+
+	public LInventory resize(int newRows, int newCols) {
+		int newSize = newRows * newCols;
+		TArray<ItemUI> tempItems = new TArray<ItemUI>(getNonNullItems());
+		update(getPaddingLeft(), getPaddingTop(), getPaddingRight(), getPaddingBottom(), newRows, newCols,
+				getPaddingX(), getPaddingY());
+		for (int i = 0; i < newSize; i++) {
+			ItemUI slot = getItem(i);
+			if (slot != null) {
+				slot.setStackCount(0);
+			}
+		}
+		for (int n = 0; n < tempItems.size; n++) {
+			ItemUI item = tempItems.get(n);
+			for (int i = 0; i < newSize; i++) {
+				ItemUI slot = getItem(i);
+				if (slot != null && !slot.isExist()) {
+					slot.bind(item.getActor());
+					break;
+				}
+			}
+		}
+		return this;
+	}
+
+	public LInventory showOnlyCategory(int categoryId) {
+		int total = getItemCount();
+		for (int i = 0; i < total; i++) {
+			ItemUI item = getItem(i);
+			if (item == null) {
+				continue;
+			}
+			if (categoryId == CATEGORY_ALL || item.getCategoryId() == categoryId) {
+				item.setDisabled(false);
+			} else {
+				item.setDisabled(true);
+			}
+		}
+		return this;
+	}
+
+	public TArray<ItemUI> searchItems(String keyword) {
+		TArray<ItemUI> results = new TArray<>();
+		int total = getItemCount();
+		for (int i = 0; i < total; i++) {
+			ItemUI item = getItem(i);
+			if (item != null && item.isExist() && item.getName().toLowerCase().contains(keyword.toLowerCase())) {
+				results.add(item);
+			}
+		}
+		return results;
 	}
 
 	@Override

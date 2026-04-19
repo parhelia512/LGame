@@ -6647,14 +6647,14 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 		if (_pivotX != -1f) {
 			return getX() + _pivotX;
 		}
-		return ((_scaleX == 1f) ? getX() : (getX() + getScreenWidth() / 2));
+		return ((MathUtils.equal(_scaleX, 1f)) ? getX() : (getX() + getScreenWidth() / 2));
 	}
 
 	public float getScalePixelY() {
 		if (_pivotY != -1f) {
 			return getY() + _pivotY;
 		}
-		return ((_scaleY == 1f) ? getY() : (getY() + getScreenHeight() / 2));
+		return ((MathUtils.equal(_scaleY, 1f)) ? getY() : (getY() + getScreenHeight() / 2));
 	}
 
 	public synchronized ScreenAction getScreenAction() {

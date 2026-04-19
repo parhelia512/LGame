@@ -788,11 +788,11 @@ public class Actor extends LObject<Actor>
 	}
 
 	public float getScalePixelX() {
-		return ((scaleX == 1f) ? getX() : getCenterX());
+		return (MathUtils.equal(scaleX, 1f) ? getX() : getCenterX());
 	}
 
 	public float getScalePixelY() {
-		return ((scaleY == 1f) ? getY() : getCenterY());
+		return (MathUtils.equal(scaleY, 1f) ? getY() : getCenterY());
 	}
 
 	/**

@@ -46,7 +46,7 @@ public final class Matrix3 extends BaseBufferSupport implements Serializable, XY
 		Matrix3 m = new Matrix3();
 		m.mul(Matrix3.createTranslateTransform(-cx, -cy));
 		m.mul(Matrix3.createScaleTransform(scaleX, scaleY));
-		m.mul(Matrix3.createRotateTransform(radians));
+		m.mul(Matrix3.createRotateTransform(radians, cx, cy));
 		m.mul(Matrix3.createTranslateTransform(cx, cy));
 		return m;
 	}

@@ -176,7 +176,6 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 
 	public Bullet(int bulletType, EasingMode easingMode, Animation ani, float x, float y, float w, float h, int dir,
 			int bulletInitSpeed, float duration) {
-		setLocation(x, y);
 		setObjectFlag(BUTTLE_DEFAULT_NAME);
 		_easeTimer = new EaseTimer(duration, easingMode);
 		_waveType = WaveType.None;
@@ -212,7 +211,15 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 		_selfRotateSpeed = 0f;
 		_isHoming = false;
 		_homingRotateSpeed = 90f;
-		_lastPos.set(x, y);
+		if (ani != null) {
+			final int width = (int) (ani.getWidth() / 2f);
+			final int height = (int) (ani.getHeight() / 2f);
+			setLocation(x - width / 2, y - height / 2);
+			_lastPos.set(x - width / 2, y - height / 2);
+		} else {
+			setLocation(x, y);
+			_lastPos.set(x, y);
+		}
 		setDirection(dir);
 	}
 
@@ -779,11 +786,11 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	}
 
 	public float getScalePixelX() {
-		return _scaleX == 1 ? getX() : getX() + getWidth() / 2;
+		return MathUtils.equal(_scaleX, 1) ? getX() : getX() + getWidth() / 2;
 	}
 
 	public float getScalePixelY() {
-		return _scaleY == 1 ? getY() : getY() + getHeight() / 2;
+		return MathUtils.equal(_scaleY, 1) ? getY() : getY() + getHeight() / 2;
 	}
 
 	@Override
@@ -974,8 +981,16 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 		_easeTimer.reset();
 		_easeTimer.setEasingMode(easingMode);
 		_animation = ani;
-		setLocation(x, y);
-		_lastPos.set(x, y);
+		if (ani != null) {
+			final int w = (int) (ani.getWidth() / 2f);
+			final int h = (int) (ani.getHeight() / 2f);
+			setLocation(x - w / 2, y - h / 2);
+			_lastPos.set(x - w / 2, y - h / 2);
+		} else {
+			setLocation(x, y);
+			_lastPos.set(x, y);
+		}
+
 		clearSpeed();
 		_direction = -1;
 		_lifeCounter = 0;

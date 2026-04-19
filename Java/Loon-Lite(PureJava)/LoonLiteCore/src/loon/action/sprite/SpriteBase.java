@@ -1215,8 +1215,10 @@ public abstract class SpriteBase<T extends ISprite> extends LObject<T> implement
 		final float newY = getScreenScalePixelY() + screenY;
 		final float newW = getWidth() - newX;
 		final float newH = getHeight() - newY;
-		return setRect(MathUtils.getBounds(newX + offsetX, newY + offsetY, newW - offsetX * 2f, newH - offsetY * 2f,
-				_objectRotation, _objectRect));
+		final float width = newW - offsetX * 2f;
+		final float height = newH - offsetY * 2f;
+		return setRect(MathUtils.getBounds(newX + offsetX, newY + offsetY, width, height, _objectRotation,
+				_origin.ox(width), _origin.oy(height), _objectRect));
 	}
 
 	public boolean containsInScreen(XY xy) {
@@ -1311,7 +1313,7 @@ public abstract class SpriteBase<T extends ISprite> extends LObject<T> implement
 
 	public RectBox getCollisionBox() {
 		return setRect(MathUtils.getBounds(getScreenScalePixelX(), getScreenScalePixelY(), getWidth(), getHeight(),
-				_objectRotation, _objectRect));
+				_objectRotation, _origin.ox(getWidth()), _origin.oy(getHeight()), _objectRect));
 	}
 
 	/**
@@ -1373,28 +1375,28 @@ public abstract class SpriteBase<T extends ISprite> extends LObject<T> implement
 		if (_scaleCenterX != -1f) {
 			return getX() + _scaleCenterX;
 		}
-		return ((_scaleX == 1f) ? getX() : (getX() + _origin.ox(getWidth())));
+		return (MathUtils.equal(_scaleX, 1f) ? getX() : (getX() + _origin.ox(getWidth())));
 	}
 
 	public float getScalePixelY() {
 		if (_scaleCenterY != -1f) {
 			return getY() + _scaleCenterY;
 		}
-		return ((_scaleY == 1f) ? getY() : (getY() + _origin.oy(getHeight())));
+		return (MathUtils.equal(_scaleY, 1f) ? getY() : (getY() + _origin.oy(getHeight())));
 	}
 
 	public float getScreenScalePixelX() {
 		if (_scaleCenterX != -1f) {
 			return getScreenX() + _scaleCenterX;
 		}
-		return ((_scaleX == 1f) ? getScreenX() : (getScreenX() + _origin.ox(getWidth())));
+		return (MathUtils.equal(_scaleX, 1f) ? getScreenX() : (getScreenX() + _origin.ox(getWidth())));
 	}
 
 	public float getScreenScalePixelY() {
 		if (_scaleCenterY != -1f) {
 			return getScreenY() + _scaleCenterY;
 		}
-		return ((_scaleY == 1f) ? getScreenY() : (getScreenY() + _origin.oy(getHeight())));
+		return (MathUtils.equal(_scaleY, 1f) ? getScreenY() : (getScreenY() + _origin.oy(getHeight())));
 	}
 
 	public void placeToCenter(ActionBind ab) {

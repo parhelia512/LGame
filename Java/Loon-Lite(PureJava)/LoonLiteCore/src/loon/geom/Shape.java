@@ -424,7 +424,7 @@ public abstract class Shape implements Serializable, IArray, XY, SetXY {
 	}
 
 	public TArray<HitResult> raycastAll(Line ray, Shape[] obstacles) {
-		TArray<HitResult> hits = new TArray<>();
+		TArray<HitResult> hits = new TArray<HitResult>();
 		for (Shape obs : obstacles) {
 			if (!isCollidableWith(obs)) {
 				continue;
@@ -834,13 +834,13 @@ public abstract class Shape implements Serializable, IArray, XY, SetXY {
 	protected abstract void createPoints();
 
 	public Shape translate(float deltaX, float deltaY) {
-		if (MathUtils.equal(deltaX, 0) && MathUtils.equal(deltaY, 0)) {
-			return this;
-		}
-		this.pointsDirty = true;
-		setX(x + deltaX);
-		setY(y + deltaY);
-		return this;
+	    if (MathUtils.equal(deltaX, 0) && MathUtils.equal(deltaY, 0)) {
+	        return this;
+	    }
+	    this.pointsDirty = true;
+	    setX(x + deltaX);
+	    setY(y + deltaY);
+	    return this;
 	}
 
 	public int vertexCount() {
@@ -911,52 +911,21 @@ public abstract class Shape implements Serializable, IArray, XY, SetXY {
 
 	@Override
 	public void setX(float x) {
-		if (MathUtils.equal(this.x, x)) {
-			return;
-		}
-		this.pointsDirty = true;
-		float dx = x - this.x;
-		this.x = x;
-		if (points == null || points.length == 0 || center == null || center.length == 0) {
-			return;
-		}
-		int count = getCachedVertexCount();
-		for (int i = 0; i < count; i++) {
-			int idx = i * 2;
-			if (idx >= points.length) {
-				break;
-			}
-			points[idx] += dx;
-		}
-		center[0] += dx;
-		maxX += dx;
-		minX += dx;
-		trianglesDirty = true;
+	    if (MathUtils.equal(this.x, x)) {
+	        return;
+	    }
+	    this.pointsDirty = true;
+	    this.x = x;
+	    trianglesDirty = true;
 	}
-
 	@Override
 	public void setY(float y) {
-		if (MathUtils.equal(this.y, y)) {
-			return;
-		}
-		this.pointsDirty = true;
-		float dy = y - this.y;
-		this.y = y;
-		if (points == null || points.length == 0 || center == null || center.length == 0) {
-			return;
-		}
-		int count = getCachedVertexCount();
-		for (int i = 0; i < count; i++) {
-			int idx = i * 2 + 1;
-			if (idx >= points.length) {
-				break;
-			}
-			points[idx] += dy;
-		}
-		center[1] += dy;
-		maxY += dy;
-		minY += dy;
-		trianglesDirty = true;
+	    if (MathUtils.equal(this.y, y)) {
+	        return;
+	    }
+	    this.pointsDirty = true;
+	    this.y = y;
+	    trianglesDirty = true;
 	}
 
 	@Override
@@ -1484,13 +1453,14 @@ public abstract class Shape implements Serializable, IArray, XY, SetXY {
 	}
 
 	public Shape setRotation(float r, float cx, float cy) {
-		if (MathUtils.equal(this.rotation, r)) {
-			return this;
-		}
-		this.rotation = r;
-		applyCombinedTransform(cx, cy);
-		this.updatePoints();
-		return this;
+	    if (MathUtils.equal(this.rotation, r)) {
+	        return this;
+	    }
+	    this.rotation = r;
+	    this.pointsDirty = true;
+	    applyCombinedTransform(cx, cy);
+	    this.updatePoints();
+	    return this;
 	}
 
 	public void increaseTriangulation() {

@@ -1094,8 +1094,10 @@ public abstract class LComponent extends LObject<LContainer>
 		final float newY = getScalePixelY() + screenY;
 		final float newW = getWidth() - newX;
 		final float newH = getHeight() - newY;
-		return setRect(MathUtils.getBounds(newX + offsetX, newY + offsetY, newW - offsetX * 2f, newH - offsetY * 2f,
-				_objectRotation, _objectRect));
+		final float width = newW - offsetX * 2f;
+		final float height = newH - offsetY * 2f;
+		return setRect(MathUtils.getBounds(newX + offsetX, newY + offsetY, width, height, _objectRotation,
+				_origin.ox(width), _origin.oy(height), _objectRect));
 	}
 
 	public boolean containsInScreen(final XY xy) {
@@ -1161,21 +1163,21 @@ public abstract class LComponent extends LObject<LContainer>
 	public RectBox getCollisionBox() {
 		validatePosition();
 		return setRect(MathUtils.getBounds(getScalePixelX(), getScalePixelY(), getWidth(), getHeight(), _objectRotation,
-				_objectRect));
+				_origin.ox(getWidth()), _origin.oy(getHeight()), _objectRect));
 	}
 
 	public float getScalePixelX() {
 		if (_pivotX != -1f) {
 			return getDrawScrollX() + _pivotX;
 		}
-		return ((_scaleX == 1f) ? getDrawScrollX() : (getDrawScrollX() + _origin.ox(getWidth())));
+		return ((MathUtils.equal(1f, _scaleX)) ? getDrawScrollX() : (getDrawScrollX() + _scaleX * getWidth()));
 	}
 
 	public float getScalePixelY() {
 		if (_pivotY != -1f) {
 			return getDrawScrollY() + _pivotY;
 		}
-		return ((_scaleY == 1f) ? getDrawScrollY() : (getDrawScrollY() + _origin.oy(getHeight())));
+		return ((MathUtils.equal(1f, _scaleY)) ? getDrawScrollY() : (getDrawScrollY() + _scaleY * getHeight()));
 	}
 
 	public LComponent getToolTipParent() {

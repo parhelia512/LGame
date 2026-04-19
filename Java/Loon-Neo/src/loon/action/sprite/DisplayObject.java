@@ -261,19 +261,19 @@ public abstract class DisplayObject extends EventDispatcher implements Collision
 	}
 
 	public float getScalePixelX() {
-		return ((_scaleX == 1f) ? getX() : getCenterY());
+		return (MathUtils.equal(_scaleX, 1f) ? getX() : getCenterY());
 	}
 
 	public float getScalePixelY() {
-		return ((_scaleY == 1f) ? getY() : getCenterY());
+		return (MathUtils.equal(_scaleY, 1f) ? getY() : getCenterY());
 	}
 
 	public float getScreenScalePixelX() {
-		return ((_scaleX == 1f) ? getScreenX() : (getScreenX() + getWidth() / 2f));
+		return (MathUtils.equal(_scaleX, 1f) ? getScreenX() : (getScreenX() + getWidth() / 2f));
 	}
 
 	public float getScreenScalePixelY() {
-		return ((_scaleY == 1f) ? getScreenY() : (getScreenY() + getHeight() / 2f));
+		return (MathUtils.equal(_scaleY, 1f) ? getScreenY() : (getScreenY() + getHeight() / 2f));
 	}
 
 	public DisplayObject placeToCenter(ActionBind ab) {
