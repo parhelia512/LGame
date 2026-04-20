@@ -302,7 +302,8 @@ public class TileIsoRectGrid extends LObject<ISprite> implements Sized, ISprite 
 		if (!_visible || _destroyed) {
 			return;
 		}
-		final boolean update = (_objectRotation != 0) || !(_scaleX == 1f && _scaleY == 1f);
+		final boolean update = (_objectRotation != 0)
+				|| !(MathUtils.equal(_scaleX, 1f) && MathUtils.equal(_scaleY, 1f));
 		final int tmp = g.color();
 		try {
 			g.setAlpha(_objectAlpha);

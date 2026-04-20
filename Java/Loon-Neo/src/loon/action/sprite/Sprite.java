@@ -550,7 +550,8 @@ public class Sprite extends SpriteBase<ISprite> implements Flip<Sprite>, ISprite
 		final float width = notImg ? getContainerWidth() : _image.getWidth();
 		final float height = notImg ? getContainerHeight() : _image.getHeight();
 
-		final boolean update = (_objectRotation != 0) || !(_scaleX == 1f && _scaleY == 1f) || _flipX || _flipY;
+		final boolean update = (_objectRotation != 0) || !(MathUtils.equal(_scaleX, 1f) && MathUtils.equal(_scaleY, 1f))
+				|| _flipX || _flipY;
 		final int tmp = g.color();
 		final int blend = g.getBlendMode();
 		try {

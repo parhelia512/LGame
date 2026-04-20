@@ -1051,7 +1051,7 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 		if (!_visible) {
 			return;
 		}
-		boolean update = (_objectRotation != 0) || !(_scaleX == 1f && _scaleY == 1f);
+		boolean update = (_objectRotation != 0) || !(MathUtils.equal(_scaleX, 1f) && MathUtils.equal(_scaleY, 1f));
 		int blend = g.getBlendMode();
 		int tmp = g.color();
 		try {

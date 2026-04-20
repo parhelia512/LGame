@@ -782,7 +782,7 @@ public class Actor extends LObject<Actor>
 	 */
 	public RectBox getRectBox() {
 		return setRect(MathUtils.getBounds(getScalePixelX(), getScalePixelY(), getWidth(), getHeight(), _objectRotation,
-				_objectRect));
+				scaleX, scaleY, _objectRect));
 	}
 
 	public float getScalePixelX() {

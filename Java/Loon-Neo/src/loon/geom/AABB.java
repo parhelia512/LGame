@@ -431,7 +431,7 @@ public class AABB implements XY, XYZW, BoxSize, LRelease {
 	}
 
 	public AABB rotate(float rotate) {
-		final RectBox rect = MathUtils.getLimit(this.minX, this.minY, this.maxX, this.maxY, rotate);
+		final RectBox rect = MathUtils.getLimit(this.minX, this.minY, this.maxX, this.maxY, rotate, 1f, 1f);
 		return set(rect.x, rect.y, rect.width, rect.height);
 	}
 

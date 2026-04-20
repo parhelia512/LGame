@@ -34,7 +34,7 @@ import loon.geom.Vector2f;
 import loon.geom.XY;
 
 /**
- * 自0.3.2版起新增类，用以绑定任意一个LGame对象进行简单的重力牵引操作。
+ * 用以绑定任意一个LGame对象进行简单的重力牵引操作
  */
 public class Gravity implements LRelease {
 
@@ -89,6 +89,8 @@ public class Gravity implements LRelease {
 	private float damping;
 
 	public String name;
+	
+	public boolean isMagnetic;
 
 	public Gravity(ActionBind o) {
 		this(LSystem.UNKNOWN, o);
@@ -657,3 +659,4 @@ public class Gravity implements LRelease {
 	}
 
 }
+

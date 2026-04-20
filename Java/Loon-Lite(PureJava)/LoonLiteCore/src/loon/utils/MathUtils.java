@@ -177,8 +177,8 @@ public final class MathUtils {
 	}
 
 	public static RectBox getBounds(float x, float y, float width, float height, float rotate, float cx, float cy,
-			RectBox result) {
-		if (rotate == 0) {
+			float scaleX, float scaleY, RectBox result) {
+		if (rotate == 0 && MathUtils.equal(scaleX, 1f) && MathUtils.equal(scaleY, 1f)) {
 			if (result == null) {
 				result = new RectBox(x, y, width, height);
 			} else {
@@ -186,11 +186,12 @@ public final class MathUtils {
 			}
 			return result;
 		}
-		return getLimit(x, y, width, height, rotate, cx, cy, result);
+		return getLimit(x, y, width, height, rotate, cx, cy, scaleX, scaleY, result);
 	}
 
-	public static RectBox getBounds(float x, float y, float width, float height, float rotate, RectBox result) {
-		if (rotate == 0) {
+	public static RectBox getBounds(float x, float y, float width, float height, float rotate, float scaleX,
+			float scaleY, RectBox result) {
+		if (rotate == 0 && MathUtils.equal(scaleX, 1f) && MathUtils.equal(scaleY, 1f)) {
 			if (result == null) {
 				result = new RectBox(x, y, width, height);
 			} else {
@@ -198,11 +199,12 @@ public final class MathUtils {
 			}
 			return result;
 		}
-		return getLimit(x, y, width, height, rotate, result);
+		return getLimit(x, y, width, height, rotate, scaleX, scaleY, result);
 	}
 
-	public static RectBox getBounds(float x, float y, float width, float height, float rotate) {
-		return getBounds(x, y, width, height, rotate, TEMP_RECT);
+	public static RectBox getBounds(float x, float y, float width, float height, float rotate, float scaleX,
+			float scaleY) {
+		return getBounds(x, y, width, height, rotate, scaleX, scaleY, TEMP_RECT);
 	}
 
 	public static boolean isZero(float value, float tolerance) {
@@ -311,11 +313,14 @@ public final class MathUtils {
 	 * @param y
 	 * @param width
 	 * @param height
+	 * @param scaleX
+	 * @param scaleY
 	 * @param rotate
 	 * @return
 	 */
-	public static RectBox getLimit(float x, float y, float width, float height, float rotate) {
-		return getLimit(x, y, width, height, rotate, TEMP_RECT);
+	public static RectBox getLimit(float x, float y, float width, float height, float scaleX, float scaleY,
+			float rotate) {
+		return getLimit(x, y, width, height, rotate, scaleX, scaleY, TEMP_RECT);
 	}
 
 	/**
@@ -326,14 +331,21 @@ public final class MathUtils {
 	 * @param width
 	 * @param height
 	 * @param rotate
+	 * @param scaleX
+	 * @param scaleY
 	 * @param result
 	 * @return
 	 */
-	public static RectBox getLimit(float x, float y, float width, float height, float rotate, RectBox result) {
+	public static RectBox getLimit(float x, float y, float width, float height, float rotate, float scaleX,
+			float scaleY, RectBox result) {
 		if (result == null) {
 			result = new RectBox();
 		}
-		result.set(x, y, width, height);
+		if ((!MathUtils.equal(scaleX, 1f) || !MathUtils.equal(scaleY, 1f)) && (scaleX > 0.5f || scaleY > 0.5f)) {
+			result.set(x - width / 2f, y - height / 2f, width, height);
+		} else {
+			result.set(x, y, width, height);
+		}
 		result.setRotation(rotate);
 		return result;
 	}
@@ -348,14 +360,24 @@ public final class MathUtils {
 	 * @param rotate
 	 * @param pivotX
 	 * @param pivotY
+	 * @param scaleX
+	 * @param scaleY
+	 * 
 	 * @return [newX, newY, newW, newH]
 	 */
 	public static RectBox getLimit(float x, float y, float width, float height, float rotate, float pivotX,
-			float pivotY, RectBox result) {
+			float pivotY, float scaleX, float scaleY, RectBox result) {
 		if (result == null) {
 			result = new RectBox();
 		}
-		result.set(x, y, width, height);
+		final float limitWidth = width * scaleX;
+		final float limitHeight = height * scaleY;
+		if ((!MathUtils.equal(scaleX, 1f) || !MathUtils.equal(scaleY, 1f))
+				&& (limitWidth > pivotX || limitHeight > pivotY)) {
+			result.set(x - pivotX, y - pivotY, width, height);
+		} else {
+			result.set(x, y, width, height);
+		}
 		result.setRotation(rotate, pivotX, pivotY);
 		return result;
 	}
@@ -368,7 +390,7 @@ public final class MathUtils {
 			float width = rect.width;
 			float height = rect.height;
 			float rotate = rect.getRotation();
-			results.add(getLimit(x, y, width, height, rotate, pivotX, pivotY, null));
+			results.add(getLimit(x, y, width, height, rotate, pivotX, pivotY, 1f, 1f, null));
 		}
 		return results;
 	}
@@ -381,7 +403,7 @@ public final class MathUtils {
 			float width = rect.width;
 			float height = rect.height;
 			float rotate = rect.getRotation();
-			results.add(getLimit(x, y, width, height, rotate, null));
+			results.add(getLimit(x, y, width, height, rotate, 1f, 1f, null));
 		}
 		return results;
 	}

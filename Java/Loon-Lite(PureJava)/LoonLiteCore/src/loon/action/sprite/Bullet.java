@@ -212,8 +212,8 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 		_isHoming = false;
 		_homingRotateSpeed = 90f;
 		if (ani != null) {
-			final int width = (int) (ani.getWidth() / 2f);
-			final int height = (int) (ani.getHeight() / 2f);
+			final int width = MathUtils.ifloor(ani.getWidth() / 2f);
+			final int height = MathUtils.ifloor(ani.getHeight() / 2f);
 			setLocation(x - width / 2, y - height / 2);
 			_lastPos.set(x - width / 2, y - height / 2);
 		} else {
@@ -473,7 +473,7 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 			applyGravity(delta);
 			updateHoming(delta);
 			applyFadeEffect(delta);
-			_objectRotation += _selfRotateSpeed * delta;
+			_objectRotation += (_selfRotateSpeed * delta);
 			if (!checkLifeOver(_listener)) {
 				float v = LSystem.getScaleFPS();
 				Vector2f offset = getWaveSpeedOffset(_easeTimer);
@@ -782,7 +782,7 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 	@Override
 	public RectBox getCollisionArea() {
 		return MathUtils.getBounds(getScalePixelX(), getScalePixelY(), getWidth(), getHeight(), _objectRotation,
-				_objectRect);
+				_scaleX, _scaleY, _objectRect);
 	}
 
 	public float getScalePixelX() {
@@ -982,8 +982,8 @@ public class Bullet extends LObject<BulletEntity> implements CollisionObject {
 		_easeTimer.setEasingMode(easingMode);
 		_animation = ani;
 		if (ani != null) {
-			final int w = (int) (ani.getWidth() / 2f);
-			final int h = (int) (ani.getHeight() / 2f);
+			final int w = MathUtils.ifloor(ani.getWidth() / 2f);
+			final int h = MathUtils.ifloor(ani.getHeight() / 2f);
 			setLocation(x - w / 2, y - h / 2);
 			_lastPos.set(x - w / 2, y - h / 2);
 		} else {

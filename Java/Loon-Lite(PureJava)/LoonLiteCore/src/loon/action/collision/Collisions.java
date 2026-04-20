@@ -217,7 +217,6 @@ public class Collisions implements Comparator<Integer>, LRelease {
 			while (swapMap.containsKey(k)) {
 				k = swapMap.get(k, Integer.valueOf(0));
 			}
-
 			swapMap.put(i, Integer.valueOf(k));
 		}
 		Entry<Integer>[] entrys = swapMap.getEntrys();

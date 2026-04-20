@@ -1665,7 +1665,7 @@ public class GLEx implements LRelease {
 
 		final boolean dirDirty = (dir != null && dir != Direction.TRANS_NONE);
 		final boolean rotDirty = (rotation != 0 || pivot != null);
-		final boolean scaleDirty = !(scaleX == 1 && scaleY == 1);
+		final boolean scaleDirty = !(MathUtils.equal(scaleX, 1) && MathUtils.equal(scaleY, 1));
 
 		if (dirDirty || rotDirty || scaleDirty) {
 			xf = getTempAffine();

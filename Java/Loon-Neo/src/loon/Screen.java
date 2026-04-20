@@ -6530,11 +6530,13 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 	}
 
 	public boolean isTxUpdate() {
-		return _scaleX != 1f || _scaleY != 1f || _rotation != 0 || _flipX || _flipY || isTranslate();
+		return !MathUtils.equal(_scaleX, 1f) || !MathUtils.equal(_scaleY, 1f) || _rotation != 0 || _flipX || _flipY
+				|| isTranslate();
 	}
 
 	public boolean isPosOffsetUpdate() {
-		return isTranslate() && (_scaleX == 1f && _scaleY == 1f && _rotation == 0 && !_flipX && !_flipY);
+		return isTranslate() && (MathUtils.equal(_scaleX, 1f) && MathUtils.equal(_scaleY, 1f) && _rotation == 0
+				&& !_flipX && !_flipY);
 	}
 
 	public Affine2f getViewportAffine() {
@@ -6627,10 +6629,10 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 	public RectBox getRectBox() {
 		if (_rectBox != null) {
 			_rectBox.setBounds(MathUtils.getBounds(getScalePixelX(), getScalePixelY(), getScreenWidth(),
-					getScreenHeight(), _rotation, _rectBox));
+					getScreenHeight(), _rotation, _scaleX, _scaleY, _rectBox));
 		} else {
 			_rectBox = MathUtils.getBounds(getScalePixelX(), getScalePixelY(), getScreenWidth(), getScreenHeight(),
-					_rotation, _rectBox);
+					_rotation, _scaleX, _scaleY, _rectBox);
 		}
 		return _rectBox;
 	}

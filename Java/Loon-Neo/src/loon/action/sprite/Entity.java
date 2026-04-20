@@ -806,8 +806,9 @@ public class Entity extends SpriteBase<IEntity> implements IEntity {
 		if (exist) {
 			final int blend = g.getBlendMode();
 			g.setBlendMode(_GL_BLEND);
-			final boolean update = ((_objectRotation != 0 || !(_scaleX == 1f && _scaleY == 1f)
-					|| !(_skewX == 0 && _skewY == 0)) || _flipX || _flipY) && _deform;
+			final boolean update = ((_objectRotation != 0
+					|| !(MathUtils.equal(_scaleX, 1f) && MathUtils.equal(_scaleY, 1f)) || !(_skewX == 0 && _skewY == 0))
+					|| _flipX || _flipY) && _deform;
 			final float nx = drawX(offsetX);
 			final float ny = drawY(offsetY);
 			if (update) {
@@ -901,6 +902,7 @@ public class Entity extends SpriteBase<IEntity> implements IEntity {
 			if (_debugDraw) {
 				g.drawRect(nx, ny, _width, _height, _debugDrawColor);
 			}
+
 			if (update) {
 				g.restoreBrush();
 				g.restoreTx();

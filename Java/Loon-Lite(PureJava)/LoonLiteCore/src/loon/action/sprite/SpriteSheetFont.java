@@ -28,6 +28,7 @@ import loon.font.ITranslator;
 import loon.geom.Affine2f;
 import loon.geom.PointI;
 import loon.opengl.GLEx;
+import loon.utils.MathUtils;
 import loon.utils.StringKeyValue;
 import loon.utils.StringUtils;
 
@@ -117,7 +118,7 @@ public class SpriteSheetFont extends FontTrans implements IFont {
 				}
 				if ((i >= startIndex) || (i <= endIndex)) {
 					if (_font.contains(xPos, yPos)) {
-						if (_fontScaleX == 1f && _fontScaleY == 1f) {
+						if (MathUtils.equal(_fontScaleX, 1f) && MathUtils.equal(_fontScaleY, 1f)) {
 							_font.getSubImage(xPos, yPos).draw(sx, sy + lines, col);
 						} else {
 							_font.getSubImage(xPos, yPos).draw(sx, sy + lines, widthSize, heightSize, col);
@@ -167,7 +168,7 @@ public class SpriteSheetFont extends FontTrans implements IFont {
 				}
 				if ((i >= startIndex) || (i <= endIndex)) {
 					if (_font.contains(xPos, yPos)) {
-						if (_fontScaleX == 1f && _fontScaleY == 1f) {
+						if (MathUtils.equal(_fontScaleX, 1f) && MathUtils.equal(_fontScaleY, 1f)) {
 							gl.draw(_font.getSubImage(xPos, yPos), sx, sy + lines, col);
 						} else {
 							gl.draw(_font.getSubImage(xPos, yPos), sx, sy + lines, widthSize, heightSize, col);

@@ -1218,7 +1218,7 @@ public abstract class SpriteBase<T extends ISprite> extends LObject<T> implement
 		final float width = newW - offsetX * 2f;
 		final float height = newH - offsetY * 2f;
 		return setRect(MathUtils.getBounds(newX + offsetX, newY + offsetY, width, height, _objectRotation,
-				_origin.ox(width), _origin.oy(height), _objectRect));
+				_origin.ox(width), _origin.oy(height), _scaleX, _scaleY, _objectRect));
 	}
 
 	public boolean containsInScreen(XY xy) {
@@ -1313,7 +1313,7 @@ public abstract class SpriteBase<T extends ISprite> extends LObject<T> implement
 
 	public RectBox getCollisionBox() {
 		return setRect(MathUtils.getBounds(getScreenScalePixelX(), getScreenScalePixelY(), getWidth(), getHeight(),
-				_objectRotation, _origin.ox(getWidth()), _origin.oy(getHeight()), _objectRect));
+				_objectRotation, _origin.ox(getWidth()), _origin.oy(getHeight()), _scaleX, _scaleY, _objectRect));
 	}
 
 	/**

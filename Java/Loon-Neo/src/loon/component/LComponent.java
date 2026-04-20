@@ -462,7 +462,8 @@ public abstract class LComponent extends LObject<LContainer>
 			return;
 		}
 		final int blend = g.getBlendMode();
-		final boolean update = _objectRotation != 0 || !(_scaleX == 1f && _scaleY == 1f) || _flipX || _flipY;
+		final boolean update = _objectRotation != 0 || !(MathUtils.equal(_scaleX, 1f) && MathUtils.equal(_scaleY, 1f))
+				|| _flipX || _flipY;
 		try {
 			g.saveBrush();
 			float screenAlpha = 1f;
@@ -496,7 +497,7 @@ public abstract class LComponent extends LObject<LContainer>
 						Affine2f.transform(tx, centerX, centerY, Affine2f.TRANS_MIRROR_ROT180);
 					}
 				}
-				if (!(_scaleX == 1f && _scaleY == 1f)) {
+				if (!(MathUtils.equal(_scaleX, 1f) && MathUtils.equal(_scaleY, 1f))) {
 					tx.translate(centerX, centerY);
 					tx.preScale(_scaleX, _scaleY);
 					tx.translate(-centerX, -centerY);
@@ -1097,7 +1098,7 @@ public abstract class LComponent extends LObject<LContainer>
 		final float width = newW - offsetX * 2f;
 		final float height = newH - offsetY * 2f;
 		return setRect(MathUtils.getBounds(newX + offsetX, newY + offsetY, width, height, _objectRotation,
-				_origin.ox(width), _origin.oy(height), _objectRect));
+				_origin.ox(width), _origin.oy(height), _scaleX, _scaleY, _objectRect));
 	}
 
 	public boolean containsInScreen(final XY xy) {
@@ -1163,7 +1164,7 @@ public abstract class LComponent extends LObject<LContainer>
 	public RectBox getCollisionBox() {
 		validatePosition();
 		return setRect(MathUtils.getBounds(getScalePixelX(), getScalePixelY(), getWidth(), getHeight(), _objectRotation,
-				_origin.ox(getWidth()), _origin.oy(getHeight()), _objectRect));
+				_origin.ox(getWidth()), _origin.oy(getHeight()), _scaleX, _scaleY, _objectRect));
 	}
 
 	public float getScalePixelX() {

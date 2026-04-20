@@ -257,7 +257,7 @@ public abstract class DisplayObject extends EventDispatcher implements Collision
 			y -= ((int) (h) >> 1);
 			break;
 		}
-		return setRect(MathUtils.getBounds(x, y, w, h, _objectRotation, _objectRect));
+		return setRect(MathUtils.getBounds(x, y, w, h, _objectRotation, _scaleX, _scaleY, _objectRect));
 	}
 
 	public float getScalePixelX() {

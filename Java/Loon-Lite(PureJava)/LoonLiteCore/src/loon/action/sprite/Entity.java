@@ -806,8 +806,9 @@ public class Entity extends SpriteBase<IEntity> implements IEntity {
 		}
 		final boolean exist = _image != null || (_width > 0 && _height > 0) || _repaintDraw;
 		if (exist) {
-			final boolean update = ((_objectRotation != 0 || !(_scaleX == 1f && _scaleY == 1f)
-					|| !(_skewX == 0 && _skewY == 0)) || _flipX || _flipY) && _deform;
+			final boolean update = ((_objectRotation != 0
+					|| !(MathUtils.equal(_scaleX, 1f) && MathUtils.equal(_scaleY, 1f)) || !(_skewX == 0 && _skewY == 0))
+					|| _flipX || _flipY) && _deform;
 			final float nx = drawX(offsetX);
 			final float ny = drawY(offsetY);
 			if (update) {

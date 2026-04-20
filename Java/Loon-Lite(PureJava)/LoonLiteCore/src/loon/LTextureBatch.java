@@ -30,6 +30,7 @@ import loon.opengl.Mesh;
 import loon.opengl.MeshData;
 import loon.opengl.Painter;
 import loon.utils.IntMap;
+import loon.utils.MathUtils;
 import loon.utils.TArray;
 import loon.utils.TimeUtils;
 
@@ -494,7 +495,7 @@ public final class LTextureBatch implements LRelease {
 
 		boolean rotDirty = (rotation != 0 || (pivotX != -1 && pivotY != -1));
 
-		boolean scaleDirty = !(scaleX == 1 && scaleY == 1);
+		boolean scaleDirty = !(MathUtils.equal(scaleX, 1) && MathUtils.equal(scaleY, 1));
 
 		_display.idt();
 

@@ -45,6 +45,18 @@ import loon.utils.StringKeyValue;
  */
 public class Affine2f implements LTrans, XY {
 
+	public static Affine2f fromMatrix3(Matrix3 matrix, Affine2f affine) {
+		if (!matrix.isValidAffine2D()) {
+			return new Affine2f();
+		}
+		affine.set(matrix);
+		return matrix.toAffine2f();
+	}
+
+	public static Affine2f fromMatrix3(Matrix3 matrix) {
+		return fromMatrix3(matrix, new Affine2f());
+	}
+
 	public final static Affine2f ofPos(float tx, float ty) {
 		Affine2f xf = new Affine2f();
 		xf.setToTranslate(tx, ty);
@@ -2018,6 +2030,12 @@ public class Affine2f implements LTrans, XY {
 		setScaleX(scaleX);
 		setScaleY(scaleY);
 		return this;
+	}
+
+	public Matrix3 toMatrix3() {
+		Matrix3 matrix = new Matrix3();
+		matrix.set(this);
+		return matrix;
 	}
 
 	@Override

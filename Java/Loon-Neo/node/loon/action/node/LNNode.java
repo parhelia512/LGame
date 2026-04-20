@@ -1245,7 +1245,7 @@ public class LNNode extends LObject<LNNode> implements ISprite, BoxSize {
 	public RectBox getRectBox() {
 		if (_objectRotation != 0) {
 			temp_rect = MathUtils.getLimit(_objectLocation.getX(), _objectLocation.getY(), getWidth(), getHeight(),
-					MathUtils.toDegrees(_objectRotation), temp_rect);
+					MathUtils.toDegrees(_objectRotation), getScaleX(), getScaleY(), temp_rect);
 		} else {
 			if (temp_rect == null) {
 				temp_rect = new RectBox(_objectLocation.getX(), _objectLocation.getY(), getWidth(), getHeight());

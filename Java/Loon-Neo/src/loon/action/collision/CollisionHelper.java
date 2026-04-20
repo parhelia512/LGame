@@ -1277,12 +1277,17 @@ public final class CollisionHelper extends ShapeUtils {
 
 	public static final boolean checkPointvsLine(float px, float py, float x1, float y1, float x2, float y2,
 			float size) {
-		final float mpx = px - x1;
-		final float mpy = py - y1;
-		final float d1 = MathUtils.dist(mpx, mpy, x1, y1);
-		final float d2 = MathUtils.dist(mpx, mpy, x2, y2);
-		final float lineLen = MathUtils.dist(x1, y1, x2, y2);
-		return d1 + d2 >= lineLen - size && d1 + d2 <= lineLen + size;
+		float dx = x2 - x1;
+		float dy = y2 - y1;
+		float px1 = px - x1;
+		float py1 = py - y1;
+		float lenSq = dx * dx + dy * dy;
+		float t = (px1 * dx + py1 * dy) / lenSq;
+		t = MathUtils.max(0, MathUtils.min(1, t));
+		float nearestX = x1 + t * dx;
+		float nearestY = y1 + t * dy;
+		float dist = MathUtils.dist(px, py, nearestX, nearestY);
+		return dist <= size;
 	}
 
 	public static final boolean checkPointvsTriangle(XY pos, XY p1, XY p2, XY p3) {
@@ -1348,7 +1353,7 @@ public final class CollisionHelper extends ShapeUtils {
 		for (int i = 0, j = length - 2; i < length; i += 2) {
 			float xi = vertices[i], yi = vertices[i + 1];
 			float xj = vertices[j], yj = vertices[j + 1];
-			boolean intersect = ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi + 1e-6f) + xi);
+			boolean intersect = ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
 			if (intersect) {
 				collision = !collision;
 			}
@@ -1379,21 +1384,13 @@ public final class CollisionHelper extends ShapeUtils {
 		float polyMinX = Float.MAX_VALUE, polyMinY = Float.MAX_VALUE;
 		float polyMaxX = Float.MIN_VALUE, polyMaxY = Float.MIN_VALUE;
 		for (int i = 0; i < vertices.length; i += 2) {
-			float vx = vertices[i];
-			float vy = vertices[i + 1];
-			if (vx < polyMinX) {
-				polyMinX = vx;
-			}
-			if (vx > polyMaxX) {
-				polyMaxX = vx;
-			}
-			if (vy < polyMinY) {
-				polyMinY = vy;
-			}
-			if (vy > polyMaxY) {
-				polyMaxY = vy;
-			}
+			float vx = vertices[i], vy = vertices[i + 1];
+			polyMinX = MathUtils.min(polyMinX, vx);
+			polyMaxX = MathUtils.max(polyMaxX, vx);
+			polyMinY = MathUtils.min(polyMinY, vy);
+			polyMaxY = MathUtils.max(polyMaxY, vy);
 		}
+
 		if (px + w < polyMinX || px > polyMaxX || py + h < polyMinY || py > polyMaxY) {
 			return false;
 		}
@@ -1406,27 +1403,24 @@ public final class CollisionHelper extends ShapeUtils {
 		tmp_rect_Cache[6] = px;
 		tmp_rect_Cache[7] = py + h;
 
-		for (int i = 0; i < 8; i += 2) {
-			float p1x = tmp_rect_Cache[i];
-			float p1y = tmp_rect_Cache[i + 1];
-			float p2x = tmp_rect_Cache[(i + 2) % 8];
-			float p2y = tmp_rect_Cache[(i + 3) % 8];
+		for (int i = 0; i < 4; i++) {
+			float p1x = tmp_rect_Cache[i * 2], p1y = tmp_rect_Cache[i * 2 + 1];
+			float p2x = tmp_rect_Cache[((i + 1) % 4) * 2], p2y = tmp_rect_Cache[((i + 1) % 4) * 2 + 1];
 			for (int j = 0; j < vertices.length; j += 2) {
-				float x1 = vertices[j];
-				float y1 = vertices[j + 1];
-				float x2 = vertices[(j + 2) % vertices.length];
-				float y2 = vertices[(j + 3) % vertices.length];
+				float x1 = vertices[j], y1 = vertices[j + 1];
+				float x2 = vertices[(j + 2) % vertices.length], y2 = vertices[(j + 3) % vertices.length];
 				if (segmentsIntersectFast(p1x, p1y, p2x, p2y, x1, y1, x2, y2)) {
 					return true;
 				}
 			}
 		}
-		if (pointInPolygon(px, py, vertices)) {
-			return true;
+		for (int i = 0; i < 4; i++) {
+			if (pointInPolygon(tmp_rect_Cache[i * 2], tmp_rect_Cache[i * 2 + 1], vertices)) {
+				return true;
+			}
 		}
 		for (int i = 0; i < vertices.length; i += 2) {
-			float vx = vertices[i];
-			float vy = vertices[i + 1];
+			float vx = vertices[i], vy = vertices[i + 1];
 			if (vx >= px && vx <= px + w && vy >= py && vy <= py + h) {
 				return true;
 			}
@@ -1444,12 +1438,28 @@ public final class CollisionHelper extends ShapeUtils {
 		tmp_rect_Cache[5] = py + h;
 		tmp_rect_Cache[6] = px;
 		tmp_rect_Cache[7] = py + h;
-		for (int i = 0; i < 8; i += 2) {
-			if (!pointInPolygon(tmp_rect_Cache[i], tmp_rect_Cache[i + 1], vertices)) {
+		for (int i = 0; i < 4; i++) {
+			if (!pointInPolygon(tmp_rect_Cache[i * 2], tmp_rect_Cache[i * 2 + 1], vertices)) {
 				return false;
 			}
 		}
+		for (int i = 0; i < 4; i++) {
+			float p1x = tmp_rect_Cache[i * 2], p1y = tmp_rect_Cache[i * 2 + 1];
+			float p2x = tmp_rect_Cache[((i + 1) % 4) * 2], p2y = tmp_rect_Cache[((i + 1) % 4) * 2 + 1];
+			for (int j = 0; j < vertices.length; j += 2) {
+				float x1 = vertices[j], y1 = vertices[j + 1];
+				float x2 = vertices[(j + 2) % vertices.length], y2 = vertices[(j + 3) % vertices.length];
+				if (segmentsIntersectFast(p1x, p1y, p2x, p2y, x1, y1, x2, y2)) {
+					return false;
+				}
+			}
+		}
 		return true;
+	}
+
+	private static boolean onSegment(float x1, float y1, float x2, float y2, float px, float py) {
+		return px >= MathUtils.min(x1, x2) - 1e-6f && px <= MathUtils.max(x1, x2) + 1e-6f
+				&& py >= MathUtils.min(y1, y2) - 1e-6f && py <= MathUtils.max(y1, y2) + 1e-6f;
 	}
 
 	private static boolean pointInPolygon(float x, float y, float[] vertices) {
@@ -1458,13 +1468,14 @@ public final class CollisionHelper extends ShapeUtils {
 		if (n < 3) {
 			return false;
 		}
-		float x1, y1, x2, y2;
 		for (int i = 0, j = n - 1; i < n; j = i++) {
-			x1 = vertices[i * 2];
-			y1 = vertices[i * 2 + 1];
-			x2 = vertices[j * 2];
-			y2 = vertices[j * 2 + 1];
-			if (((y1 > y) != (y2 > y)) && (x < (x2 - x1) * (y - y1) / (y2 - y1) + x1)) {
+			float xi = vertices[i * 2], yi = vertices[i * 2 + 1];
+			float xj = vertices[j * 2], yj = vertices[j * 2 + 1];
+			if (MathUtils.abs(yj - yi) < 1e-6f) {
+				continue;
+			}
+			boolean intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+			if (intersect) {
 				inside = !inside;
 			}
 		}
@@ -1486,12 +1497,19 @@ public final class CollisionHelper extends ShapeUtils {
 
 		final float EPSILON = 1e-6f;
 
-		if (MathUtils.abs(d1) < EPSILON || MathUtils.abs(d2) < EPSILON || MathUtils.abs(d3) < EPSILON
-				|| MathUtils.abs(d4) < EPSILON) {
+		if (MathUtils.abs(d1) < EPSILON && onSegment(x3, y3, x4, y4, x1, y1)) {
 			return true;
 		}
-
-		return (d1 * d2 <= 0) && (d3 * d4 <= 0);
+		if (MathUtils.abs(d2) < EPSILON && onSegment(x3, y3, x4, y4, x2, y2)) {
+			return true;
+		}
+		if (MathUtils.abs(d3) < EPSILON && onSegment(x1, y1, x2, y2, x3, y3)) {
+			return true;
+		}
+		if (MathUtils.abs(d4) < EPSILON && onSegment(x1, y1, x2, y2, x4, y4)) {
+			return true;
+		}
+		return (d1 * d2 < 0) && (d3 * d4 < 0);
 	}
 
 	private static float cross(float x1, float y1, float x2, float y2, float x3, float y3) {

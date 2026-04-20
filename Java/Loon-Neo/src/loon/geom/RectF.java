@@ -352,7 +352,7 @@ public class RectF implements XYZW, SetXY {
 	}
 
 	public RectF rotate(float rotate) {
-		final RectBox rect = MathUtils.getLimit(x, y, width, height, rotate);
+		final RectBox rect = MathUtils.getLimit(x, y, width, height, 1f, 1f, rotate);
 		return set(rect.x, rect.y, rect.width, rect.height);
 	}
 

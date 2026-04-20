@@ -160,7 +160,7 @@ public class Bone implements Comparable<Bone> {
 			_size = new RectBox();
 		}
 		return MathUtils.getBounds(getScalePixelX(), getScalePixelY(), getScaleWidth(), getScaleHeight(), _angle,
-				_size);
+				_scaleX, _scaleY, _size);
 	}
 
 	public float getLayer() {

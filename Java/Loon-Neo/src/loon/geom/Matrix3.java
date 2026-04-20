@@ -38,17 +38,43 @@ public final class Matrix3 extends BaseBufferSupport implements Serializable, XY
 	 */
 	private static final long serialVersionUID = 3501619461925966551L;
 
-	public static Matrix3 setToCombineTransform(float cx, float cy, float scaleX, float scaleY, float degrees) {
+	private static final Matrix3 TEMP_MAT = new Matrix3();
+
+	public static Matrix3 fromAffine(Affine2f affine) {
+		return fromAffine(new Matrix3(), affine);
+	}
+
+	public static Matrix3 fromAffine(Matrix3 matrix, Affine2f affine) {
+		matrix.set(affine);
+		return matrix;
+	}
+
+	public final static Matrix3 setToCombineTransform(float cx, float cy, float scaleX, float scaleY, float degrees) {
 		return setToCombineTransformRad(cx, cy, scaleX, scaleY, MathUtils.toRadians(degrees));
 	}
 
-	public static Matrix3 setToCombineTransformRad(float cx, float cy, float scaleX, float scaleY, float radians) {
-		Matrix3 m = new Matrix3();
-		m.mul(Matrix3.createTranslateTransform(-cx, -cy));
-		m.mul(Matrix3.createScaleTransform(scaleX, scaleY));
-		m.mul(Matrix3.createRotateTransform(radians, cx, cy));
-		m.mul(Matrix3.createTranslateTransform(cx, cy));
-		return m;
+	public final static Matrix3 setToCombineTransformRad(float cx, float cy, float scaleX, float scaleY,
+			float radians) {
+		final float cos = MathUtils.cos(radians);
+		final float sin = MathUtils.sin(radians);
+		final float m00 = cos * scaleX;
+		final float m10 = sin * scaleX;
+		final float m01 = -sin * scaleY;
+		final float m11 = cos * scaleY;
+		final float m02 = cx - m00 * cx - m01 * cy;
+		final float m12 = cy - m10 * cx - m11 * cy;
+		Matrix3 mat = TEMP_MAT;
+		final float[] val = mat.val;
+		val[0] = m00;
+		val[1] = m01;
+		val[2] = m02;
+		val[3] = m10;
+		val[4] = m11;
+		val[5] = m12;
+		val[6] = 0;
+		val[7] = 0;
+		val[8] = 1;
+		return mat;
 	}
 
 	public final static Matrix3 TMP() {
@@ -1018,6 +1044,15 @@ public final class Matrix3 extends BaseBufferSupport implements Serializable, XY
 		}
 	}
 
+	public static void mul(float[] result, float[] m1, float[] m2) {
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < 3; j++) {
+				result[i * 3 + j] = m1[i * 3 + 0] * m2[0 * 3 + j] + m1[i * 3 + 1] * m2[1 * 3 + j]
+						+ m1[i * 3 + 2] * m2[2 * 3 + j];
+			}
+		}
+	}
+
 	public static void mul(Matrix3 result, Matrix3 m1, Matrix3 m2) {
 		for (int i = 0; i < 3; i++) {
 			for (int j = 0; j < 3; j++) {
@@ -1232,6 +1267,20 @@ public final class Matrix3 extends BaseBufferSupport implements Serializable, XY
 		rm[rmOffset + 13] = 0.0f;
 		rm[rmOffset + 14] = 0.0f;
 		rm[rmOffset + 15] = 1.0f;
+	}
+
+	public boolean isValidAffine2D() {
+		return MathUtils.abs(val[M20]) < MathUtils.EPSILON && MathUtils.abs(val[M21]) < MathUtils.EPSILON
+				&& MathUtils.abs(val[M22] - 1) < MathUtils.EPSILON;
+	}
+
+	public Affine2f toAffine2f() {
+		if (!isValidAffine2D()) {
+			return new Affine2f();
+		}
+		Affine2f affine = new Affine2f();
+		affine.set(this);
+		return affine;
 	}
 
 	@Override

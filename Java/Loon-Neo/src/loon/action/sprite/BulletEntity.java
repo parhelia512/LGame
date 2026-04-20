@@ -2169,9 +2169,11 @@ public class BulletEntity extends Entity {
 				if (spriteList == null || spriteList.length == 0) {
 					continue;
 				}
-				float cx = bullet.getX();
-				float cy = bullet.getY();
-				float radius = MathUtils.min(bullet.getWidth(), bullet.getHeight()) / 2f;
+				final float width = MathUtils.max(2, bullet.getWidth() - bullet.getWidth() / 4f);
+				final float height = MathUtils.max(2, bullet.getHeight() - bullet.getHeight() / 4f);
+				float cx = bullet.getX() + width / 2;
+				float cy = bullet.getY() + height / 2;
+				float radius = MathUtils.min(width, height) / 2f;
 				boolean hasCollided = false;
 				for (int j = spriteList.length - 1; j >= 0; j--) {
 					ISprite target = spriteList[j];

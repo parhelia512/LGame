@@ -353,7 +353,7 @@ public class RectI implements XYZW, SetXY {
 	}
 
 	public RectI rotate(int rotate) {
-		final RectBox rect = MathUtils.getLimit(x, y, width, height, rotate);
+		final RectBox rect = MathUtils.getLimit(x, y, width, height, 1f, 1f, rotate);
 		return set(rect.x(), rect.y(), rect.width, rect.height);
 	}
 

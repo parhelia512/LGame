@@ -34,7 +34,7 @@ import loon.utils.timer.Duration;
 import loon.utils.timer.EaseTimer;
 
 /**
- * 简单的重力控制器,使用时需要绑定Gravity
+ * 简单的重力控制器（主要用途是模拟特殊重力环境，有物理特性，但不是物理引擎，里面有很多反重力方式）,使用时需要绑定Gravity
  */
 public class GravityHandler implements LRelease {
 
@@ -42,61 +42,92 @@ public class GravityHandler implements LRelease {
 		public void action(Gravity g, float x, float y);
 	}
 
+	// 异常重力状态枚举
+	public static enum ChaosGravityState {
+		// 正常重力
+		NORMAL,
+		// 漂浮失重
+		FLOAT,
+		// 重力过大无法移动
+		LOCKED
+	}
+
+	// 引力源（黑洞）
+	public static class GravitySource {
+		public float x, y;
+		public float pullForce;
+		public float radius;
+
+		public GravitySource(float x, float y, float pullForce, float radius) {
+			this.x = x;
+			this.y = y;
+			this.pullForce = pullForce;
+			this.radius = radius;
+		}
+	}
+
 	private EaseTimer _easeTimer;
-
 	private EasingMode _easingMode;
-
 	private CollisionWorld _collisionWorld;
-
 	protected CollisionFilter worldCollisionFilter;
-
 	private float _objectMaxSpeed;
-
 	private ObjectMap<ActionBind, Gravity> _gravityMap;
-
 	private GravityUpdate _gravitylistener;
-
 	private boolean _closed;
-
 	private float _deviation;
-
 	private boolean _collClearVelocity;
-
 	private float _collScale = 1f;
-
 	private float _bindWidth;
-
 	private float _bindHeight;
-
 	private float _lastX = -1f, _lastY = -1f;
-
 	private float _bindX;
-
 	private float _bindY;
-
 	private float _velocityX, _velocityY;
-
 	private float _gravityScale;
+	// 行星重力倍数(简单来说，地球1, 贝吉塔星20)
+	private float _planetGravityMultiplier;
+	// 异常重力开关(随机重力，忽高忽低)
+	private boolean _enableChaosGravity;
+	// 当前异常重力状态
+	private ChaosGravityState _currentChaosState;
+	// 异常重力计时
+	private float _chaosGravityTimer;
+	// 异常状态切换间隔(秒)
+	private float _chaosSwitchInterval;
+	// 使用电磁力
+	private boolean _enableMagnetism;
+	private float _magneticDamping;
 
 	boolean isBounded;
-
 	boolean isGravityListener;
-
 	boolean isEnabled;
-
 	boolean syncActionBind;
 
 	RectBox rectLimit;
-
 	Gravity[] lazyObjects;
-
 	TArray<Gravity> objects;
-
 	TArray<Gravity> pendingAdd;
-
 	TArray<Gravity> pendingRemove;
-
 	private final TArray<Gravity> collisionObjects = new TArray<Gravity>();
+
+	private boolean _enableFloatEffect;
+	private float _floatAmplitude;
+	private float _floatSpeed;
+	private float _floatCycle;
+	private float _globalAntiGravityAngle;
+	private boolean _useAntiGravityAngle;
+
+	// 黑洞位置
+	private TArray<GravitySource> _gravitySources;
+	private boolean _enableGlobalBlackHole;
+	private float _globalBlackHoleX;
+	private float _globalBlackHoleY;
+	private float _globalBlackHoleForce;
+
+	// 开启大风（依照风向改变移动方向）
+	private boolean _enableOneWayWind;
+	private float _windForceX;
+	private float _windForceY;
 
 	public GravityHandler() {
 		this(EasingMode.Linear, 1f);
@@ -135,6 +166,49 @@ public class GravityHandler implements LRelease {
 		this.lazyObjects = new Gravity[] {};
 		this.syncActionBind = true;
 		this.isEnabled = true;
+		this._enableFloatEffect = false;
+		this._floatAmplitude = 5f;
+		this._floatSpeed = 1f;
+		this._floatCycle = 0f;
+		this._globalAntiGravityAngle = 270f;
+		this._useAntiGravityAngle = false;
+		// 默认为地球基准的1倍重力
+		this._planetGravityMultiplier = 1.0f;
+		this._enableChaosGravity = false;
+		this._currentChaosState = ChaosGravityState.NORMAL;
+		this._chaosGravityTimer = 0f;
+		// 默认30秒切换一次重力异常状态
+		this._chaosSwitchInterval = 30.0f;
+		this._enableMagnetism = false;
+		this._magneticDamping = 0.1f;
+		// 特殊重力黑洞（默认关闭）
+		this._gravitySources = new TArray<GravitySource>();
+		this._enableGlobalBlackHole = false;
+		// 特殊风力方向
+		this._enableOneWayWind = false;
+		this._windForceX = 0f;
+		this._windForceY = 0f;
+	}
+
+	public void enableGlobalBlackHole(boolean enable, float x, float y, float force) {
+		this._enableGlobalBlackHole = enable;
+		this._globalBlackHoleX = x;
+		this._globalBlackHoleY = y;
+		this._globalBlackHoleForce = force;
+	}
+
+	public void addGravitySource(float x, float y, float force, float radius) {
+		_gravitySources.add(new GravitySource(x, y, force, radius));
+	}
+
+	public void clearGravitySources() {
+		_gravitySources.clear();
+	}
+
+	public void enableOneWayWind(boolean enable, float forceX, float forceY) {
+		this._enableOneWayWind = enable;
+		this._windForceX = forceX;
+		this._windForceY = forceY;
 	}
 
 	public boolean isGravityRunning() {
@@ -142,7 +216,7 @@ public class GravityHandler implements LRelease {
 			return false;
 		}
 		if (objects != null) {
-			for (int i = 0; i < objects.size; i++) {
+			for (int i = objects.size() - 1; i >= 0; i--) {
 				Gravity g = objects.get(i);
 				if (g != null && !g.enabled) {
 					return true;
@@ -174,7 +248,7 @@ public class GravityHandler implements LRelease {
 	}
 
 	private float getGravity(Gravity g) {
-		return g.g * _gravityScale;
+		return g.g * _gravityScale * _planetGravityMultiplier;
 	}
 
 	protected boolean checkCollideSolidObjects(Gravity gravityObject, float delta, float gravity, float newX,
@@ -232,31 +306,50 @@ public class GravityHandler implements LRelease {
 		if (objects == null || objects.size == 0) {
 			return;
 		}
-
 		_easeTimer.action(elapsedTime);
-
-		final float delta = MathUtils.max(Duration.toS(elapsedTime), LSystem.MIN_SECONE_SPEED_FIXED)
-				* _easeTimer.getProgress() * _objectMaxSpeed;
-
+		final float delta = MathUtils.clamp(MathUtils.max(Duration.toS(elapsedTime), LSystem.MIN_SECONE_SPEED_FIXED)
+				* _easeTimer.getProgress() * _objectMaxSpeed, 0, 0.1f);
 		final int size = objects.size;
-
-		for (int i = 0; i < size; i++) {
-
+		if (_enableFloatEffect) {
+			_floatCycle += delta * _floatSpeed;
+		}
+		if (_enableChaosGravity) {
+			_chaosGravityTimer += delta;
+			if (_chaosGravityTimer >= _chaosSwitchInterval) {
+				_chaosGravityTimer = 0f;
+				int random = MathUtils.random(0, 2);
+				switch (random) {
+				case 0:
+					_currentChaosState = ChaosGravityState.NORMAL;
+					break;
+				case 1:
+					_currentChaosState = ChaosGravityState.FLOAT;
+					break;
+				case 2:
+					_currentChaosState = ChaosGravityState.LOCKED;
+					break;
+				}
+			}
+		}
+		for (int i = size - 1; i >= 0; i--) {
 			Gravity g = objects.get(i);
-
 			if (g.enabled && g.bind != null) {
-
 				final float v = LSystem.getScaleFPS();
-
-				final float accelerationX = g.getAccelerationX() * v;
-				final float accelerationY = g.getAccelerationY() * v;
+				float accelerationX = g.getAccelerationX() * v;
+				float accelerationY = g.getAccelerationY() * v;
 				final float angularVelocity = g.getAngularVelocity() * v;
 				final float gravity = getGravity(g) * v;
 
+				if (_enableChaosGravity && _currentChaosState == ChaosGravityState.LOCKED) {
+					g.velocityX = 0;
+					g.velocityY = 0;
+					g.accelerationX = 0;
+					g.accelerationY = 0;
+					continue;
+				}
+
 				if (!g._collisioning) {
-
 					g.initPosRotation();
-
 					if (syncActionBind) {
 						_bindX = g.bind.getX();
 						_bindY = g.bind.getY();
@@ -279,17 +372,85 @@ public class GravityHandler implements LRelease {
 						g.bind.setRotation(rotate);
 					}
 				}
+				if (_enableMagnetism) {
+					for (int n = 0; n < objects.size; n++) {
+						Gravity other = objects.get(n);
+						if (other == g || !other.isMagnetic) {
+							continue;
+						}
+						float mx = other.getX() - g.getX();
+						float my = other.getY() - g.getY();
+						float d = MathUtils.sqrt(mx * mx + my * my);
+						if (d < 100 && d > 1) {
+							float repel = 4000f / (d * d);
+							accelerationX -= (mx / d) * repel * _magneticDamping;
+							accelerationY -= (my / d) * repel * _magneticDamping;
+						}
+					}
+				}
+
+				if (_enableGlobalBlackHole) {
+					float cx = g.getX() + g.getWidth() * 0.5f;
+					float cy = g.getY() + g.getHeight() * 0.5f;
+					float dx = _globalBlackHoleX - cx;
+					float dy = _globalBlackHoleY - cy;
+					float dist = MathUtils.sqrt(dx * dx + dy * dy);
+					if (dist > 0.1f) {
+						float force = _globalBlackHoleForce / dist;
+						g.velocityX += (dx / dist) * force * delta;
+						g.velocityY += (dy / dist) * force * delta;
+					}
+				}
+
+				if (_gravitySources.size() > 0) {
+					for (int s = 0; s < _gravitySources.size(); s++) {
+						GravitySource source = _gravitySources.get(s);
+						float cx = g.getX() + g.getWidth() * 0.5f;
+						float cy = g.getY() + g.getHeight() * 0.5f;
+						float dx = source.x - cx;
+						float dy = source.y - cy;
+						float dist = MathUtils.sqrt(dx * dx + dy * dy);
+
+						if (dist < source.radius && dist > 0.1f) {
+							float force = source.pullForce / dist;
+							g.velocityX += (dx / dist) * force * delta;
+							g.velocityY += (dy / dist) * force * delta;
+						}
+					}
+				}
+
+				// 特定风向改变矢量方向
+				if (_enableOneWayWind) {
+					g.velocityX += _windForceX * delta;
+					g.velocityY += _windForceY * delta;
+				}
+
+				float velocityMultiplier = 1.0f / MathUtils.max(_planetGravityMultiplier, 0.1f);
+				// 升空额外阻力
+				float liftResistance = velocityMultiplier * 0.5f;
 
 				if (accelerationX != 0 || accelerationY != 0) {
-					g.velocityX += accelerationX * delta;
-					g.velocityY += accelerationY * delta;
+					g.velocityX += accelerationX * delta * velocityMultiplier;
+					g.velocityY += accelerationY * delta * (accelerationY > 0 ? liftResistance : velocityMultiplier);
+				}
+
+				// 异常重力开启
+				if (_enableChaosGravity && _currentChaosState == ChaosGravityState.FLOAT) {
+					_useAntiGravityAngle = true;
+				}
+
+				if (_useAntiGravityAngle) {
+					float rad = MathUtils.toRadians(_globalAntiGravityAngle);
+					float antiGX = MathUtils.cos(rad) * MathUtils.abs(gravity);
+					float antiGY = MathUtils.sin(rad) * MathUtils.abs(gravity);
+					g.velocityX += antiGX * delta;
+					g.velocityY += antiGY * delta;
 				}
 
 				_velocityX = g.velocityX;
 				_velocityY = g.velocityY;
 
 				if (_velocityX != 0 || _velocityY != 0) {
-
 					_velocityX = _bindX + (_velocityX * delta);
 					_velocityY = _bindY + (_velocityY * delta);
 
@@ -301,6 +462,13 @@ public class GravityHandler implements LRelease {
 					}
 					if (gravity != 0) {
 						g.gadd += gravity;
+					}
+
+					if (_enableFloatEffect) {
+						float floatOffsetY = MathUtils.sin(_floatCycle + i) * _floatAmplitude;
+						float floatOffsetX = MathUtils.cos(_floatCycle + i * 0.5f) * _floatAmplitude * 0.3f;
+						_velocityX += floatOffsetX;
+						_velocityY += floatOffsetY;
 					}
 
 					if (isBounded) {
@@ -344,6 +512,10 @@ public class GravityHandler implements LRelease {
 				}
 			}
 		}
+
+		if (_enableChaosGravity && _currentChaosState != ChaosGravityState.FLOAT) {
+			_useAntiGravityAngle = false;
+		}
 	}
 
 	private float limitValue(Gravity g, float value, float limit) {
@@ -368,7 +540,7 @@ public class GravityHandler implements LRelease {
 		}
 		final int additionCount = pendingAdd.size;
 		if (additionCount > 0) {
-			for (int i = 0; i < additionCount; i++) {
+			for (int i = additionCount - 1; i >= 0; i--) {
 				Gravity o = pendingAdd.get(i);
 				objects.add(o);
 			}
@@ -376,7 +548,7 @@ public class GravityHandler implements LRelease {
 		}
 		final int removalCount = pendingRemove.size;
 		if (removalCount > 0) {
-			for (int i = 0; i < removalCount; i++) {
+			for (int i = removalCount - 1; i >= 0; i--) {
 				Gravity o = pendingRemove.get(i);
 				objects.remove(o);
 			}
@@ -684,7 +856,7 @@ public class GravityHandler implements LRelease {
 			return;
 		}
 		final int count = objects.size;
-		for (int i = 0; i < count; i++) {
+		for (int i = count - 1; i >= 0; i--) {
 			Gravity g = objects.get(i);
 			if (g != null) {
 				g.enabled = false;
@@ -706,7 +878,6 @@ public class GravityHandler implements LRelease {
 				if (o.name.equals(name)) {
 					return o;
 				}
-
 			}
 		}
 		return null;
@@ -750,7 +921,7 @@ public class GravityHandler implements LRelease {
 	}
 
 	public GravityResult query(Gravity target, boolean clearVelocity) {
-		return getCollisionBetweenObjects(target, clearVelocity);
+		return getCollisionBetweenObjects(target, objects, rectLimit, clearVelocity);
 	}
 
 	public GravityResult query(Gravity target, TArray<Gravity> otherObjects) {
@@ -797,14 +968,10 @@ public class GravityHandler implements LRelease {
 			return null;
 		}
 		GravityResult result = new GravityResult();
-
 		result.source = target;
-
 		float remainingVX = target.velocityX * scale * _gravityScale;
 		float remainingVY = target.velocityY * scale * _gravityScale;
-
 		final RectBox rect = target.getRect();
-
 		float positionX = rect.x;
 		float positionY = rect.y;
 		float halfWidth = rect.width * 0.5f;
@@ -828,7 +995,6 @@ public class GravityHandler implements LRelease {
 			} else {
 				moveAmountY = remainingVY;
 			}
-
 			if (MathUtils.abs(remainingVX) > 0) {
 				moveAmountX = remainingVX * (remainingVY == 0 ? 1 : MathUtils.abs(remainingVX / remainingVY));
 			}
@@ -867,19 +1033,15 @@ public class GravityHandler implements LRelease {
 						overlapY = (rb.y + rb.height) - rect.y;
 						normal.y = 1;
 					}
-
 					if (MathUtils.abs(overlapX) < MathUtils.abs(overlapY)) {
 						normal.y = 0;
 					}
-
 					if (MathUtils.abs(overlapY) < MathUtils.abs(overlapX)) {
 						normal.x = 0;
 					}
-
 					if (MathUtils.abs(overlapX) > rb.width && MathUtils.abs(overlapY) > rb.height) {
 						continue;
 					}
-
 					if (normal.x == 1) {
 						positionX = rb.x + rb.width;
 						remainingVX = 0;
@@ -895,7 +1057,6 @@ public class GravityHandler implements LRelease {
 						}
 						moveAmountX = 0;
 					}
-
 					if (normal.y == 1) {
 						positionY = rb.y + rb.height;
 						remainingVY = 0;
@@ -914,7 +1075,6 @@ public class GravityHandler implements LRelease {
 					result.targets.add(b);
 					result.collided = true;
 				}
-
 				if (positionY + rect.height > rb.y && positionY < rb.y + rb.height) {
 					final boolean posResultA = MathUtils.ifloor(positionX + rect.width) == rb.x && remainingVX > 0;
 					final boolean posResultB = MathUtils.equal(MathUtils.ifloor(rb.x + rb.width), positionX)
@@ -934,11 +1094,9 @@ public class GravityHandler implements LRelease {
 						result.collided = true;
 					}
 				}
-
 				if (positionX + rect.width > rb.x && positionX < rb.x + rb.width) {
 					if ((MathUtils.equal(positionY + rect.height, rb.y) && remainingVY > 0)
 							|| (MathUtils.equal(positionY, rb.y + rb.height) && remainingVY < 0)) {
-
 						if ((MathUtils.equal(positionY + rect.height, rb.y) && remainingVY > 0)
 								&& result.normal.y == 0) {
 							result.normal.y = -1;
@@ -946,7 +1104,6 @@ public class GravityHandler implements LRelease {
 								&& result.normal.y == 0) {
 							result.normal.y = 1;
 						}
-
 						remainingVY = 0;
 						if (clearVelocity) {
 							target.velocityY = 0;
@@ -956,9 +1113,7 @@ public class GravityHandler implements LRelease {
 						result.collided = true;
 					}
 				}
-
 			}
-
 			if (!lastIteration) {
 				if (MathUtils.abs(remainingVX) < MathUtils.abs(moveAmountX)) {
 					moveAmountX = remainingVX;
@@ -968,11 +1123,9 @@ public class GravityHandler implements LRelease {
 				}
 				positionX += moveAmountX;
 				positionY += moveAmountY;
-
 				remainingVX -= moveAmountX;
 				remainingVY -= moveAmountY;
 			}
-
 			if (!lastIteration && MathUtils.isEqual(0, remainingVX, deviation)
 					&& MathUtils.isEqual(0, remainingVY, deviation)) {
 				lastIteration = true;
@@ -987,7 +1140,6 @@ public class GravityHandler implements LRelease {
 		}
 		result.position.set(positionX, positionY);
 		return result;
-
 	}
 
 	protected GravityHandler movePos(Gravity g, float delta, float gravity, float x, float y) {
@@ -1054,24 +1206,12 @@ public class GravityHandler implements LRelease {
 		return _lastY;
 	}
 
-	public boolean isEnabled() {
-		return isEnabled;
-	}
-
 	public void setEnabled(boolean isEnabled) {
 		this.isEnabled = isEnabled;
 	}
 
-	public boolean isBounded() {
-		return isBounded;
-	}
-
 	public void setBounded(boolean isBounded) {
 		this.isBounded = isBounded;
-	}
-
-	public boolean isListener() {
-		return isGravityListener;
 	}
 
 	public GravityHandler setListener(GravityUpdate listener) {
@@ -1119,17 +1259,147 @@ public class GravityHandler implements LRelease {
 	}
 
 	public GravityHandler setSyncBind(boolean syncBind) {
-		this.syncActionBind = syncBind;
+		this.syncActionBind = true;
 		return this;
+	}
+
+	public GravityHandler setObjectMaxSpeed(float speed) {
+		this._objectMaxSpeed = speed;
+		return this;
+	}
+
+	public GravityHandler setDeviation(float d) {
+		this._deviation = d;
+		return this;
+	}
+
+	public GravityHandler setCollisionClearVelocity(boolean c) {
+		this._collClearVelocity = c;
+		return this;
+	}
+
+	public GravityHandler setCollisionScale(float s) {
+		this._collScale = s;
+		return this;
+	}
+
+	public void setGlobalGravityScale(float scale) {
+		if (_closed) {
+			return;
+		}
+		this._gravityScale = scale;
+	}
+
+	public void resetGlobalGravity() {
+		setGlobalGravityScale(1f);
+	}
+
+	public void reverseAllGravity() {
+		if (_closed) {
+			return;
+		}
+		for (int i = objects.size - 1; i >= 0; i--) {
+			Gravity g = objects.get(i);
+			if (g != null) {
+				g.g = -g.g;
+			}
+		}
+	}
+
+	public void setAllGravityStrength(float gravityValue) {
+		if (_closed) {
+			return;
+		}
+		for (int i = objects.size - 1; i >= 0; i--) {
+			Gravity g = objects.get(i);
+			if (g != null) {
+				g.g = gravityValue;
+			}
+		}
+	}
+
+	public void setAllGravityDirection(float angle) {
+		if (_closed) {
+			return;
+		}
+		float rad = MathUtils.toRadians(angle);
+		float gx = MathUtils.cos(rad);
+		float gy = MathUtils.sin(rad);
+		for (int i = objects.size - 1; i >= 0; i--) {
+			Gravity g = objects.get(i);
+			if (g != null) {
+				g.accelerationX = gx * MathUtils.abs(g.g);
+				g.accelerationY = gy * MathUtils.abs(g.g);
+			}
+		}
+	}
+
+	public void reverseGravity(Gravity g) {
+		if (_closed || g == null) {
+			return;
+		}
+		g.g = -g.g;
+	}
+
+	public void setGravityDirection(Gravity g, float angle) {
+		if (_closed || g == null) {
+			return;
+		}
+		float rad = MathUtils.toRadians(angle);
+		g.accelerationX = MathUtils.cos(rad) * MathUtils.abs(g.g);
+		g.accelerationY = MathUtils.sin(rad) * MathUtils.abs(g.g);
+	}
+
+	public void setGravityStrength(Gravity g, float strength) {
+		if (_closed || g == null) {
+			return;
+		}
+		g.g = strength;
+	}
+
+	public void useAntiGravityAngle(boolean enable) {
+		this._useAntiGravityAngle = enable;
+	}
+
+	public void setGlobalAntiGravityAngle(float angle) {
+		this._globalAntiGravityAngle = angle;
+		this._useAntiGravityAngle = true;
+	}
+
+	public float getGlobalAntiGravityAngle() {
+		return _globalAntiGravityAngle;
+	}
+
+	public void enableFloatEffect(boolean enable) {
+		this._enableFloatEffect = enable;
+		if (enable) {
+			_floatCycle = 0f;
+		}
+	}
+
+	public void setFloatParams(float amplitude, float speed) {
+		this._floatAmplitude = amplitude;
+		this._floatSpeed = speed;
+	}
+
+	public boolean isEnabled() {
+		return isEnabled;
+	}
+
+	public boolean isBounded() {
+		return isBounded;
+	}
+
+	public boolean isListener() {
+		return isGravityListener;
 	}
 
 	public float getObjectMaxSpeed() {
 		return _objectMaxSpeed;
 	}
 
-	public GravityHandler setObjectMaxSpeed(float speed) {
-		this._objectMaxSpeed = speed;
-		return this;
+	public boolean isFloatEffectEnabled() {
+		return _enableFloatEffect;
 	}
 
 	public boolean isClosed() {
@@ -1140,26 +1410,62 @@ public class GravityHandler implements LRelease {
 		return _deviation;
 	}
 
-	public GravityHandler setDeviation(float d) {
-		this._deviation = d;
-		return this;
-	}
-
 	public boolean isCollisionClearVelocity() {
 		return _collClearVelocity;
-	}
-
-	public GravityHandler setCollisionClearVelocity(boolean c) {
-		this._collClearVelocity = c;
-		return this;
 	}
 
 	public float getCollisionScale() {
 		return _collScale;
 	}
 
-	public GravityHandler setCollisionScale(float s) {
-		this._collScale = s;
+	/**
+	 * 设置行星重力倍数 (地球=1, 贝吉塔星=20)
+	 */
+	public void setPlanetGravityMultiplier(float multiplier) {
+		if (_closed || multiplier < 0.1f) {
+			return;
+		}
+		this._planetGravityMultiplier = multiplier;
+	}
+
+	public float getPlanetGravityMultiplier() {
+		return _planetGravityMultiplier;
+	}
+
+	public void setEarthGravity() {
+		setPlanetGravityMultiplier(1.0f);
+	}
+
+	public void setVegetaGravity() {
+		setPlanetGravityMultiplier(20.0f);
+	}
+
+	public void enableChaosGravity(boolean enable) {
+		this._enableChaosGravity = enable;
+		this._chaosGravityTimer = 0f;
+		if (!enable) {
+			_currentChaosState = ChaosGravityState.NORMAL;
+			_useAntiGravityAngle = false;
+		}
+	}
+
+	public void setChaosSwitchInterval(float seconds) {
+		if (seconds > 0.1f) {
+			this._chaosSwitchInterval = seconds;
+		}
+	}
+
+	public boolean isChaosGravityEnabled() {
+		return _enableChaosGravity;
+	}
+
+	public ChaosGravityState getCurrentChaosState() {
+		return _currentChaosState;
+	}
+
+	public GravityHandler enableMagnetism(boolean e, float damping) {
+		_enableMagnetism = e;
+		_magneticDamping = damping;
 		return this;
 	}
 

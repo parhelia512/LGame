@@ -476,7 +476,8 @@ public abstract class LObject<T> extends BlendMethod implements Comparator<T>, X
 	}
 
 	public RectBox getCollisionArea() {
-		return setRect(MathUtils.getBounds(getX(), getY(), getWidth(), getHeight(), _objectRotation, _objectRect));
+		return setRect(
+				MathUtils.getBounds(getX(), getY(), getWidth(), getHeight(), _objectRotation, 1f, 1f, _objectRect));
 	}
 
 	protected RectBox setRect(RectBox rect) {

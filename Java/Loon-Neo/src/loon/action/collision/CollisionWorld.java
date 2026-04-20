@@ -28,12 +28,10 @@ import loon.action.collision.CollisionGrid.TraverseCallback;
 import loon.action.map.Side;
 import loon.geom.PointF;
 import loon.geom.RectF;
+import loon.utils.IntMap;
 import loon.utils.MathUtils;
 import loon.utils.ObjectMap;
 import loon.utils.TArray;
-import loon.utils.ObjectMap.Entries;
-import loon.utils.ObjectMap.Entry;
-import loon.utils.ObjectMap.Keys;
 
 /**
  * 一个碰撞物体自动管理用类,和CollisionManager不同,它会自动获得碰撞后新的物体坐标
@@ -43,93 +41,80 @@ public class CollisionWorld implements LRelease {
 	private static class WorldCollisionFilter extends CollisionFilter {
 
 		private final CollisionWorld _world;
-		private final TArray<ActionBind> _visited;
+		private final ObjectMap<ActionBind, Boolean> _visitedMap;
 		private final CollisionFilter _filter;
 
-		public WorldCollisionFilter(CollisionWorld world, TArray<ActionBind> v, CollisionFilter f) {
+		public WorldCollisionFilter(CollisionWorld world, ObjectMap<ActionBind, Boolean> visitedMap,
+				CollisionFilter f) {
 			this._world = world;
-			this._visited = v;
+			this._visitedMap = visitedMap;
 			this._filter = f;
 		}
 
 		@Override
 		public CollisionResult filter(ActionBind obj, ActionBind other) {
-			if (_visited.contains(other)) {
+			if (_visitedMap.containsKey(other)) {
 				return null;
 			}
-			CollisionResult result = null;
-			if (_filter == null) {
-				result = _world._worldCollisionFilter.filter(obj, other);
-			} else {
-				result = _filter.filter(obj, other);
+			CollisionResult result = _filter == null ? _world._worldCollisionFilter.filter(obj, other)
+					: _filter.filter(obj, other);
+			CollisionActionQuery<ActionBind> actionQuery = _world._collisionActionQuery;
+			if (actionQuery == null)
+				return result;
+			int dir = Side.getCollisionSide(obj.getRectBox(), other.getRectBox());
+			boolean query = actionQuery.checkQuery(obj, other, dir);
+			if (query) {
+				actionQuery.onCollisionResult(obj, other, dir);
+				return result;
 			}
-			final CollisionActionQuery<ActionBind> actionQuery = _world._collisionActionQuery;
-			if (actionQuery != null) {
-				final int dir = Side.getCollisionSide(obj.getRectBox(), other.getRectBox());
-				final boolean query = actionQuery.checkQuery(obj, other, dir);
-				if (query) {
-					actionQuery.onCollisionResult(obj, other, dir);
-					return result;
-				} else {
-					return null;
-				}
-			}
-			return result;
+			return null;
 		}
 	}
 
 	public class Cell {
 		public int itemCount = 0;
-		public float x;
-		public float y;
-		public ObjectMap<ActionBind, Boolean> items = new ObjectMap<ActionBind, Boolean>();
+		public int cx;
+		public int cy;
+		public final ObjectMap<ActionBind, Boolean> items = new ObjectMap<>();
 	}
 
-	private final static float DELTA = 1e-5f;
-
+	private static final float DELTA = 1e-5f;
 	private CollisionFilter _worldCollisionFilter;
-
 	private final Screen _gameScreen;
 
 	private final RectF detectCollisionDiff = new RectF();
 	private final PointF nearestCorner = new PointF();
-	private final PointF segmentIntersectionIndices_ti = new PointF();
-	private final PointF segmentIntersectionIndicesn1 = new PointF();
-	private final PointF segmentIntersectionIndicesn2 = new PointF();
-	private final CollisionData segmentIntersectionIndicescol = new CollisionData();
+	private final PointF segTI = new PointF(), segN1 = new PointF(), segN2 = new PointF();
+	private final CollisionData colData = new CollisionData();
+	private final PointF tmpF2 = new PointF();
+	private final RectF tmpRect = new RectF();
 
 	private ObjectMap<ActionBind, RectF> rects = new ObjectMap<ActionBind, RectF>();
-	private ObjectMap<Float, ObjectMap<Float, Cell>> rows = new ObjectMap<Float, ObjectMap<Float, Cell>>();
-	private ObjectMap<Cell, Boolean> nonEmptyCells = new ObjectMap<Cell, Boolean>();
-	private CollisionGrid grid = new CollisionGrid();
+	private IntMap<IntMap<Cell>> rows = new IntMap<IntMap<Cell>>();
+
+	private final CollisionGrid grid = new CollisionGrid();
 
 	private boolean _tileMode = false;
 	private boolean _closed = false;
-
 	private boolean _autoRemoveItem = false;
 	private boolean _autoAddItem = true;
 
 	private CollisionManager collisionManager;
+	private final float cellSizeX, cellSizeY;
 
-	private final float cellSizeX;
-	private final float cellSizeY;
+	private final ObjectMap<Cell, Boolean> cellVisitMap = new ObjectMap<Cell, Boolean>();
+	private final TArray<Cell> cellVisitCache = new TArray<Cell>();
 
-	private final TArray<Cell> getCellsTouchedBySegment_visited = new TArray<Cell>();
+	private final RectF removeRect = new RectF(), addRect = new RectF();
+	private final RectF updateRect1 = new RectF(), updateRect2 = new RectF();
+	private final RectF projectRect = new RectF();
 
-	private final RectF remove_c = new RectF();
-	private final TArray<ActionBind> project_visited = new TArray<ActionBind>();
-	private final RectF project_c = new RectF();
-	private final ObjectMap<ActionBind, Boolean> project_dictItemsInCellRect = new ObjectMap<ActionBind, Boolean>();
+	private final ObjectMap<ActionBind, Boolean> bindVisitMap = new ObjectMap<ActionBind, Boolean>();
+	private final ObjectMap<ActionBind, Boolean> cellItemCache = new ObjectMap<ActionBind, Boolean>();
 
-	private final RectF add_c = new RectF();
-	private final RectF update_c1 = new RectF();
-	private final RectF update_c2 = new RectF();
-
-	private final TArray<ActionBind> check_visited = new TArray<ActionBind>();
-
-	private final Collisions check_cols = new Collisions();
-	private final Collisions check_projectedCols = new Collisions();
-	private final CollisionResult.Result check_result = new CollisionResult.Result();
+	private final Collisions checkCols = new Collisions();
+	private final Collisions checkProjCols = new Collisions();
+	private final CollisionResult.Result checkResult = new CollisionResult.Result();
 
 	private CollisionActionQuery<ActionBind> _collisionActionQuery;
 
@@ -151,8 +136,6 @@ public class CollisionWorld implements LRelease {
 		this.cellSizeY = celly;
 		this._tileMode = mode;
 		this._worldCollisionFilter = CollisionFilter.getDefault();
-		this._autoRemoveItem = false;
-		this._autoAddItem = true;
 	}
 
 	public CollisionManager getCollisionManager() {
@@ -161,8 +144,8 @@ public class CollisionWorld implements LRelease {
 		}
 		if (collisionManager == null) {
 			collisionManager = new CollisionManager();
+			collisionManager.initialize(MathUtils.iceil(cellSizeX), MathUtils.iceil(cellSizeY));
 		}
-		collisionManager.initialize(MathUtils.iceil(cellSizeX), MathUtils.iceil(cellSizeY));
 		return collisionManager;
 	}
 
@@ -171,55 +154,42 @@ public class CollisionWorld implements LRelease {
 		if (_closed) {
 			return null;
 		}
-		CollisionData col = segmentIntersectionIndicescol;
+		CollisionData col = colData;
 		float dx = goalX - x1;
 		float dy = goalY - y1;
 
 		CollisionHelper.getDiff(x1, y1, w1, h1, x2, y2, w2, h2, detectCollisionDiff);
-		float x = detectCollisionDiff.x;
-		float y = detectCollisionDiff.y;
-		float w = detectCollisionDiff.width;
-		float h = detectCollisionDiff.height;
+		float x = detectCollisionDiff.x, y = detectCollisionDiff.y;
+		float w = detectCollisionDiff.width, h = detectCollisionDiff.height;
 
 		boolean overlaps = false;
-		float ti = -1f;
-		float nx = 0, ny = 0;
+		float ti = -1, nx = 0, ny = 0;
 
 		if (CollisionHelper.containsPoint(x, y, w, h, 0, 0, DELTA)) {
 			CollisionHelper.getNearestCorner(x, y, w, h, 0, 0, nearestCorner);
-			float px = nearestCorner.x;
-			float py = nearestCorner.y;
-			float wi = MathUtils.min(w1, MathUtils.abs(px));
-			float hi = MathUtils.min(h1, MathUtils.abs(py));
-			ti = -wi * hi;
-			// ti = -wi * h1;
+			float px = nearestCorner.x, py = nearestCorner.y;
+			ti = -MathUtils.min(w1, MathUtils.abs(px)) * MathUtils.min(h1, MathUtils.abs(py));
 			overlaps = true;
 		} else {
 			boolean intersect = CollisionHelper.getSegmentIntersectionIndices(x, y, w, h, 0, 0, dx, dy,
-					-Float.MAX_VALUE, Float.MAX_VALUE, segmentIntersectionIndices_ti, segmentIntersectionIndicesn1,
-					segmentIntersectionIndicesn2);
-			float ti1 = segmentIntersectionIndices_ti.x;
-			float ti2 = segmentIntersectionIndices_ti.y;
-			float nx1 = segmentIntersectionIndicesn1.x;
-			float ny1 = segmentIntersectionIndicesn1.y;
-
-			if (intersect && ti1 < 1 && MathUtils.abs(ti1 - ti2) >= DELTA && (0 < ti1 + DELTA || 0 == ti1 && ti2 > 0)) {
+					-Float.MAX_VALUE, Float.MAX_VALUE, segTI, segN1, segN2);
+			float ti1 = segTI.x, ti2 = segTI.y;
+			if (intersect && ti1 < 1 && MathUtils.abs(ti1 - ti2) >= DELTA
+					&& (0 < ti1 + DELTA || (0 == ti1 && ti2 > 0))) {
 				ti = ti1;
-				nx = nx1;
-				ny = ny1;
+				nx = segN1.x;
+				ny = segN1.y;
 				overlaps = false;
 			}
 		}
-		if (ti == -1f) {
+		if (ti == -1) {
 			return null;
 		}
 		float tx, ty;
-
 		if (overlaps) {
 			if (dx == 0 && dy == 0) {
 				CollisionHelper.getNearestCorner(x, y, w, h, 0, 0, nearestCorner);
-				float px = nearestCorner.x;
-				float py = nearestCorner.y;
+				float px = nearestCorner.x, py = nearestCorner.y;
 				if (MathUtils.abs(px) < MathUtils.abs(py)) {
 					py = 0;
 				} else {
@@ -231,16 +201,14 @@ public class CollisionWorld implements LRelease {
 				ty = y1 + py;
 			} else {
 				boolean intersect = CollisionHelper.getSegmentIntersectionIndices(x, y, w, h, 0, 0, dx, dy,
-						-Float.MAX_VALUE, 1, segmentIntersectionIndices_ti, segmentIntersectionIndicesn1,
-						segmentIntersectionIndicesn2);
-				float ti1 = segmentIntersectionIndices_ti.x;
-				nx = segmentIntersectionIndicesn1.x;
-				ny = segmentIntersectionIndicesn1.y;
+						-Float.MAX_VALUE, 1, segTI, segN1, segN2);
 				if (!intersect) {
 					return null;
 				}
-				tx = x1 + dx * ti1;
-				ty = y1 + dy * ti1;
+				tx = x1 + dx * segTI.x;
+				ty = y1 + dy * segTI.x;
+				nx = segN1.x;
+				ny = segN1.y;
 			}
 		} else {
 			tx = x1;
@@ -258,68 +226,61 @@ public class CollisionWorld implements LRelease {
 		return _tileMode;
 	}
 
-	private void addItemToCell(ActionBind bind, float cx, float cy) {
-		if (_closed) {
+	private void addItemToCell(ActionBind bind, int cx, int cy) {
+		if (_closed || bind == null) {
 			return;
 		}
-		if (!rows.containsKey(cy)) {
-			rows.put(cy, new ObjectMap<Float, Cell>());
-		}
-		ObjectMap<Float, Cell> row = rows.get(cy);
-		if (!row.containsKey(cx)) {
-			row.put(cx, new Cell());
+		IntMap<Cell> row = rows.get(cy);
+		if (row == null) {
+			rows.put(cy, row = new IntMap<Cell>());
 		}
 		Cell cell = row.get(cx);
-
-		nonEmptyCells.put(cell, true);
+		if (cell == null) {
+			cell = new Cell();
+			cell.cx = cx;
+			cell.cy = cy;
+			row.put(cx, cell);
+		}
 		if (!cell.items.containsKey(bind)) {
 			cell.items.put(bind, true);
-			cell.itemCount = cell.itemCount + 1;
+			cell.itemCount++;
 		}
 	}
 
-	private boolean removeItemFromCell(ActionBind bind, float cx, float cy) {
-		if (_closed) {
+	private boolean removeItemFromCell(ActionBind bind, int cx, int cy) {
+		if (_closed || bind == null || !rows.containsKey(cy)) {
 			return false;
 		}
-		if (!rows.containsKey(cy)) {
-			return false;
-		}
-		ObjectMap<Float, Cell> row = rows.get(cy);
-		if (!row.containsKey(cx)) {
-			return false;
-		}
+		IntMap<Cell> row = rows.get(cy);
 		Cell cell = row.get(cx);
-		if (!cell.items.containsKey(bind)) {
+		if (cell == null || !cell.items.containsKey(bind)) {
 			return false;
 		}
 		cell.items.remove(bind);
-		cell.itemCount = cell.itemCount - 1;
-		if (cell.itemCount == 0) {
-			nonEmptyCells.remove(cell);
-		}
+		cell.itemCount--;
 		return true;
 	}
 
-	private ObjectMap<ActionBind, Boolean> getDictItemsInCellRect(float cl, float ct, float cw, float ch,
+	private ObjectMap<ActionBind, Boolean> getDictItemsInCellRect(int cl, int ct, int cw, int ch,
 			ObjectMap<ActionBind, Boolean> result) {
-		if (_closed) {
+		if (_closed || result == null) {
 			return null;
 		}
 		result.clear();
-		for (float cy = ct; cy < ct + ch; cy++) {
-			if (rows.containsKey(cy)) {
-				ObjectMap<Float, Cell> row = rows.get(cy);
-				for (float cx = cl; cx < cl + cw; cx++) {
-					if (row.containsKey(cx)) {
-						Cell cell = row.get(cx);
-						if (cell.itemCount > 0) {
-							Keys<ActionBind> keys = cell.items.keys();
-							for (ActionBind bind : keys) {
-								result.put(bind, true);
-							}
-						}
-					}
+		int endX = cl + cw;
+		int endY = ct + ch;
+		for (int cy = ct; cy < endY; cy++) {
+			IntMap<Cell> row = rows.get(cy);
+			if (row == null) {
+				continue;
+			}
+			for (int cx = cl; cx < endX; cx++) {
+				Cell cell = row.get(cx);
+				if (cell == null || cell.itemCount == 0) {
+					continue;
+				}
+				for (ObjectMap.Entry<ActionBind, Boolean> entry : cell.items.entries()) {
+					result.put(entry.key, true);
 				}
 			}
 		}
@@ -327,32 +288,30 @@ public class CollisionWorld implements LRelease {
 	}
 
 	public TArray<Cell> getCellsTouchedBySegment(float x1, float y1, float x2, float y2, final TArray<Cell> result) {
-		if (_closed) {
+		if (_closed || result == null) {
 			return null;
 		}
 		result.clear();
-		getCellsTouchedBySegment_visited.clear();
-		final TArray<Cell> visited = getCellsTouchedBySegment_visited;
-
+		cellVisitCache.clear();
+		cellVisitMap.clear();
 		grid.traverse(cellSizeX, cellSizeY, x1, y1, x2, y2, new TraverseCallback() {
 			@Override
 			public void onTraverse(float cx, float cy) {
-				if (!rows.containsKey(cy)) {
+				int icx = (int) cx;
+				int icy = (int) cy;
+				IntMap<Cell> row = rows.get(icy);
+				if (row == null) {
 					return;
 				}
-				ObjectMap<Float, Cell> row = rows.get(cy);
-				if (!row.containsKey(cx)) {
+				Cell cell = row.get(icx);
+				if (cell == null || cellVisitMap.containsKey(cell)) {
 					return;
 				}
-				Cell cell = row.get(cx);
-				if (visited.contains(cell)) {
-					return;
-				}
-				visited.add(cell);
+				cellVisitMap.put(cell, true);
+				cellVisitCache.add(cell);
 				result.add(cell);
 			}
 		});
-
 		return result;
 	}
 
@@ -363,45 +322,41 @@ public class CollisionWorld implements LRelease {
 
 	public Collisions project(ActionBind bind, float x, float y, float w, float h, float goalX, float goalY,
 			CollisionFilter filter, Collisions collisions) {
-		if (_closed) {
+		if (_closed || collisions == null) {
 			return null;
 		}
 		collisions.clear();
-		TArray<ActionBind> visited = project_visited;
-		visited.clear();
+		bindVisitMap.clear();
 		if (bind != null) {
-			visited.add(bind);
+			bindVisitMap.put(bind, true);
 		}
-		float tl = MathUtils.min(goalX, x);
-		float tt = MathUtils.min(goalY, y);
-		float tr = MathUtils.max(goalX + w, x + w);
-		float tb = MathUtils.max(goalY + h, y + h);
+		float tl = MathUtils.min(goalX, x), tt = MathUtils.min(goalY, y);
+		float tr = MathUtils.max(goalX + w, x + w), tb = MathUtils.max(goalY + h, y + h);
+		grid.toCellRect(cellSizeX, cellSizeY, tl, tt, tr - tl, tb - tt, projectRect);
 
-		float tw = tr - tl;
-		float th = tb - tt;
+		getDictItemsInCellRect((int) projectRect.x, (int) projectRect.y, (int) projectRect.width,
+				(int) projectRect.height, cellItemCache);
 
-		grid.toCellRect(cellSizeX, cellSizeY, tl, tt, tw, th, project_c);
-		float cl = project_c.x, ct = project_c.y, cw = project_c.width, ch = project_c.height;
-		ObjectMap<ActionBind, Boolean> dictItemsInCellRect = getDictItemsInCellRect(cl, ct, cw, ch,
-				project_dictItemsInCellRect);
-		for (ActionBind other : dictItemsInCellRect.keys()) {
-			if (!visited.contains(other)) {
-				visited.add(other);
-				CollisionResult response = filter.filter(bind, other);
-				if (response != null) {
-					RectF rect = getRect(other);
-					if (rect != null) {
-						float ox = rect.x, oy = rect.y, ow = rect.width, oh = rect.height;
-						CollisionData col = detectCollision(x, y, w, h, ox, oy, ow, oh, goalX, goalY);
+		for (ObjectMap.Entry<ActionBind, Boolean> entry : cellItemCache.entries()) {
+			ActionBind other = entry.key;
+			if (bindVisitMap.containsKey(other)) {
+				continue;
+			}
+			bindVisitMap.put(other, true);
 
-						if (col != null) {
-							collisions.add(col.overlaps, col.ti, col.move.x, col.move.y, col.normal.x, col.normal.y,
-									col.touch.x, col.touch.y, col.itemRect.x, col.itemRect.y, col.itemRect.width,
-									col.itemRect.height, col.otherRect.x, col.otherRect.y, col.otherRect.width,
-									col.otherRect.height, bind, other, response);
-						}
-					}
-				}
+			CollisionResult res = filter.filter(bind, other);
+			if (res == null) {
+				continue;
+			}
+			RectF r = getRect(other);
+			if (r == null) {
+				continue;
+			}
+			CollisionData col = detectCollision(x, y, w, h, r.x, r.y, r.width, r.height, goalX, goalY);
+			if (col != null) {
+				collisions.add(col.overlaps, col.ti, col.move.x, col.move.y, col.normal.x, col.normal.y, col.touch.x,
+						col.touch.y, col.itemRect.x, col.itemRect.y, col.itemRect.width, col.itemRect.height,
+						col.otherRect.x, col.otherRect.y, col.otherRect.width, col.otherRect.height, bind, other, res);
 			}
 		}
 		if (_tileMode) {
@@ -414,15 +369,12 @@ public class CollisionWorld implements LRelease {
 		if (_closed) {
 			return this;
 		}
-		for (Entries<ActionBind, RectF> it = rects.entries(); it.hasNext();) {
-			Entry<ActionBind, RectF> obj = it.next();
-			if (obj != null) {
-				RectF rect = obj.value;
-				ActionBind act = obj.key;
-				if (rect != null && act != null) {
-					act.setLocation(rect.x, rect.y);
-					act.setSize(rect.width, rect.height);
-				}
+		for (ObjectMap.Entry<ActionBind, RectF> e : rects.entries()) {
+			ActionBind act = e.key;
+			RectF rect = e.value;
+			if (act != null && rect != null) {
+				act.setLocation(rect.x, rect.y);
+				act.setSize(rect.width, rect.height);
 			}
 		}
 		return this;
@@ -432,96 +384,76 @@ public class CollisionWorld implements LRelease {
 		if (_closed) {
 			return this;
 		}
-		for (Entries<ActionBind, RectF> it = rects.entries(); it.hasNext();) {
-			Entry<ActionBind, RectF> obj = it.next();
-			if (obj != null) {
-				RectF rect = obj.value;
-				ActionBind act = obj.key;
-				if (rect != null && act != null) {
-					rect.set(act.getX(), act.getY(), act.getWidth(), act.getHeight());
-				}
+		for (ObjectMap.Entry<ActionBind, RectF> e : rects.entries()) {
+			ActionBind act = e.key;
+			RectF rect = e.value;
+			if (act != null && rect != null) {
+				rect.set(act.getX(), act.getY(), act.getWidth(), act.getHeight());
 			}
 		}
 		return this;
 	}
 
 	public RectF getRect(ActionBind bind) {
-		if (_closed) {
-			return null;
-		}
-		return rects.get(bind);
+		return _closed || bind == null ? null : rects.get(bind);
 	}
 
 	public int countCells() {
 		if (_closed) {
 			return 0;
 		}
-		int count = 0;
-		for (ObjectMap<Float, Cell> row : rows.values()) {
-			for (Float x : row.keys()) {
-				if (x != null) {
-					count++;
-				}
-			}
+		int c = 0;
+		for (IntMap<Cell> r : rows.values()) {
+			c += r.size;
 		}
-		return count;
+		return c;
 	}
 
 	public boolean hasItem(ActionBind bind) {
-		if (_closed) {
-			return false;
-		}
-		return rects.containsKey(bind);
+		return !_closed && bind != null && rects.containsKey(bind);
 	}
 
 	public int countItems() {
-		if (_closed) {
-			return 0;
-		}
-		return rects.size();
+		return _closed ? 0 : rects.size;
 	}
 
-	public PointF toWorld(float cx, float cy, PointF result) {
-		CollisionGrid.toWorld(cellSizeX, cellSizeY, cx, cy, result);
-		return result;
+	public PointF toWorld(float cx, float cy, PointF r) {
+		CollisionGrid.toWorld(cellSizeX, cellSizeY, cx, cy, r);
+		return r;
 	}
 
-	public PointF toCell(float x, float y, PointF result) {
-		CollisionGrid.toCell(cellSizeX, cellSizeY, x, y, result);
-		return result;
+	public PointF toCell(float x, float y, PointF r) {
+		CollisionGrid.toCell(cellSizeX, cellSizeY, x, y, r);
+		return r;
 	}
 
 	public CollisionWorld add(ActionBind... binds) {
-		for (ActionBind act : binds) {
-			if (act != null) {
-				add(act);
+		for (ActionBind b : binds) {
+			if (b != null) {
+				add(b);
 			}
 		}
 		return this;
 	}
 
 	public ActionBind add(ActionBind bind) {
-		if (_closed) {
-			return null;
-		}
-		return add(bind, bind.getX(), bind.getY(), bind.getWidth(), bind.getHeight());
+		return _closed || bind == null ? null : add(bind, bind.getX(), bind.getY(), bind.getWidth(), bind.getHeight());
 	}
 
 	public ActionBind add(ActionBind bind, float x, float y, float w, float h) {
-		if (_closed) {
-			return null;
-		}
-		if (rects.containsKey(bind)) {
+		if (_closed || bind == null || rects.containsKey(bind)) {
 			return bind;
 		}
 		if (_gameScreen != null) {
 			_gameScreen.add(bind);
 		}
 		rects.put(bind, new RectF(x, y, w, h));
-		grid.toCellRect(cellSizeX, cellSizeY, x, y, w, h, add_c);
-		float cl = add_c.x, ct = add_c.y, cw = add_c.width, ch = add_c.height;
-		for (float cy = ct; cy < ct + ch; cy++) {
-			for (float cx = cl; cx < cl + cw; cx++) {
+		grid.toCellRect(cellSizeX, cellSizeY, x, y, w, h, addRect);
+		int cl = (int) addRect.x, ct = (int) addRect.y, cw = (int) addRect.width, ch = (int) addRect.height;
+		int endX = cl + cw;
+		int endY = ct + ch;
+		for (int cy = ct; cy < endY; cy++) {
+			for (int cx = cl; cx < endX; cx++) {
 				addItemToCell(bind, cx, cy);
 			}
 		}
@@ -529,88 +461,77 @@ public class CollisionWorld implements LRelease {
 	}
 
 	public void remove(ActionBind bind) {
-		if (_closed) {
+		if (_closed || bind == null) {
 			return;
 		}
-		RectF rect = getRect(bind);
-		if (rect != null) {
-			float x = rect.x, y = rect.y, w = rect.width, h = rect.height;
-			if (_gameScreen != null) {
-				_gameScreen.remove(bind);
-			}
-			rects.remove(bind);
-			grid.toCellRect(cellSizeX, cellSizeY, x, y, w, h, remove_c);
-			float cl = remove_c.x, ct = remove_c.y, cw = remove_c.width, ch = remove_c.height;
-
-			for (float cy = ct; cy < ct + ch; cy++) {
-				for (float cx = cl; cx < cl + cw; cx++) {
-					removeItemFromCell(bind, cx, cy);
-				}
+		RectF r = getRect(bind);
+		if (r == null) {
+			return;
+		}
+		if (_gameScreen != null) {
+			_gameScreen.remove(bind);
+		}
+		rects.remove(bind);
+		grid.toCellRect(cellSizeX, cellSizeY, r.x, r.y, r.width, r.height, removeRect);
+		int cl = (int) removeRect.x, ct = (int) removeRect.y, cw = (int) removeRect.width, ch = (int) removeRect.height;
+		int endX = cl + cw;
+		int endY = ct + ch;
+		for (int cy = ct; cy < endY; cy++) {
+			for (int cx = cl; cx < endX; cx++) {
+				removeItemFromCell(bind, cx, cy);
 			}
 		}
 	}
 
 	public void update(ActionBind bind, float x2, float y2) {
-		if (_closed) {
+		if (_closed || bind == null) {
 			return;
 		}
-		RectF rect = getRect(bind);
-		if (rect != null) {
-			float w = rect.width, h = rect.height;
-			update(bind, x2, y2, w, h);
+		RectF r = getRect(bind);
+		if (r != null) {
+			update(bind, x2, y2, r.width, r.height);
 		}
 	}
 
 	public void update(ActionBind bind, float x2, float y2, float w2, float h2) {
-		if (_closed) {
+		if (_closed || bind == null) {
 			return;
 		}
-		RectF rect = getRect(bind);
-		if (rect != null) {
-			float x1 = rect.x, y1 = rect.y, w1 = rect.width, h1 = rect.height;
-			if (!MathUtils.equal(x1, x2) || !MathUtils.equal(y1, y2) || !MathUtils.equal(w1, w2)
-					|| !MathUtils.equal(h1, h2)) {
-
-				// size limit
-				RectF c1 = grid.toCellRect(cellSizeX, cellSizeY, x1, y1, w1, h1, update_c1);
-				RectF c2 = grid.toCellRect(cellSizeX, cellSizeY, x2, y2, w2, h2, update_c2);
-
-				float cl1 = MathUtils.ceil(c1.x), ct1 = MathUtils.ceil(c1.y), cw1 = MathUtils.ceil(c1.width),
-						ch1 = MathUtils.ceil(c1.height);
-				float cl2 = MathUtils.ceil(c2.x), ct2 = MathUtils.ceil(c2.y), cw2 = MathUtils.ceil(c2.width),
-						ch2 = MathUtils.ceil(c2.height);
-
-				if (!MathUtils.equal(cl1, cl2) || !MathUtils.equal(ct1, ct2) || !MathUtils.equal(cw1, cw2)
-						|| !MathUtils.equal(ch1, ch2)) {
-					float cr1 = cl1 + cw1 - 1, cb1 = ct1 + ch1 - 1;
-					float cr2 = cl2 + cw2 - 1, cb2 = ct2 + ch2 - 1;
-					boolean cyOut;
-
-					if (_autoAddItem) {
-						for (float cy = ct2; cy <= cb2; cy++) {
-							cyOut = cy < ct1 || cy > cb1;
-							for (float cx = cl2; cx <= cr2; cx++) {
-								if (cyOut || cx < cl1 || cy > cr1) {
-									addItemToCell(bind, cx, cy);
-								}
-							}
-						}
-					}
-					if (_autoRemoveItem) {
-						for (float cy = ct1; cy <= cb1; cy++) {
-							cyOut = cy < ct2 || cy > cb2;
-							for (float cx = cl1; cx <= cr1; cx++) {
-								if (cyOut || cx < cl2 || cx > cr2) {
-									removeItemFromCell(bind, cx, cy);
-								}
-							}
-						}
-					}
-
-				}
-				rect.set(x2, y2, w2, h2);
-			}
+		RectF r = getRect(bind);
+		if (r == null) {
+			return;
 		}
+		if (MathUtils.equal(r.x, x2) && MathUtils.equal(r.y, y2) && MathUtils.equal(r.width, w2)
+				&& MathUtils.equal(r.height, h2)) {
+			return;
+		}
+		grid.toCellRect(cellSizeX, cellSizeY, r.x, r.y, r.width, r.height, updateRect1);
+		grid.toCellRect(cellSizeX, cellSizeY, x2, y2, w2, h2, updateRect2);
+		int c1l = (int) updateRect1.x, c1t = (int) updateRect1.y, c1w = (int) updateRect1.width,
+				c1h = (int) updateRect1.height;
+		int c2l = (int) updateRect2.x, c2t = (int) updateRect2.y, c2w = (int) updateRect2.width,
+				c2h = (int) updateRect2.height;
+		if (c1l != c2l || c1t != c2t || c1w != c2w || c1h != c2h) {
+			int c1r = c1l + c1w - 1, c1b = c1t + c1h - 1;
+			int c2r = c2l + c2w - 1, c2b = c2t + c2h - 1;
+			if (_autoAddItem)
+				for (int cy = c2t; cy <= c2b; cy++) {
+					for (int cx = c2l; cx <= c2r; cx++) {
+						if (cy < c1t || cy > c1b || cx < c1l || cx > c1r) {
+							addItemToCell(bind, cx, cy);
+						}
+					}
+				}
+			if (_autoRemoveItem)
+				for (int cy = c1t; cy <= c1b; cy++) {
+					for (int cx = c1l; cx <= c1r; cx++) {
+						if (cy < c2t || cy > c2b || cx < c2l || cx > c2r) {
+							removeItemFromCell(bind, cx, cy);
+						}
+					}
+				}
+		}
+		r.set(x2, y2, w2, h2);
 	}
 
 	public CollisionResult.Result check(ActionBind bind, float goalX, float goalY) {
@@ -619,46 +540,37 @@ public class CollisionWorld implements LRelease {
 
 	public CollisionResult.Result check(ActionBind bind, float goalX, float goalY, final CollisionFilter filter) {
 		if (_closed || rects.size == 0) {
-			check_result.goalX = goalX;
-			check_result.goalY = goalY;
-			return check_result;
+			checkResult.set(goalX, goalY);
+			return checkResult;
 		}
-		final TArray<ActionBind> visited = check_visited;
-		visited.clear();
-		visited.add(bind);
-
-		final CollisionFilter visitedFilter = new WorldCollisionFilter(this, visited, filter);
-
-		RectF rect = getRect(bind);
-		CollisionResult.Result result = null;
-		if (rect != null) {
-			float x = rect.x, y = rect.y, w = rect.width, h = rect.height;
-			Collisions cols = check_cols;
-			cols.clear();
-			Collisions projectedCols = project(bind, x, y, w, h, goalX, goalY, filter, check_projectedCols);
-			result = check_result;
-			while (projectedCols != null && !projectedCols.isEmpty()) {
-				CollisionData col = projectedCols.get(0);
-				cols.add(col.overlaps, col.ti, col.move.x, col.move.y, col.normal.x, col.normal.y, col.touch.x,
-						col.touch.y, col.itemRect.x, col.itemRect.y, col.itemRect.width, col.itemRect.height,
-						col.otherRect.x, col.otherRect.y, col.otherRect.width, col.otherRect.height, col.item,
-						col.other, col.type);
-
-				visited.add(col.other);
-				CollisionResult response = col.type;
-				response.response(this, col, x, y, w, h, goalX, goalY, visitedFilter, result);
-				goalX = result.goalX;
-				goalY = result.goalY;
-				projectedCols = result.collisions;
-			}
-
-			result.set(goalX, goalY);
-			result.collisions.clear();
-			for (int i = 0; i < cols.size(); i++) {
-				result.collisions.add(cols.get(i));
-			}
+		bindVisitMap.clear();
+		bindVisitMap.put(bind, true);
+		WorldCollisionFilter f = new WorldCollisionFilter(this, bindVisitMap, filter);
+		RectF r = getRect(bind);
+		if (r == null) {
+			checkResult.set(goalX, goalY);
+			return checkResult;
 		}
-		return result;
+		checkCols.clear();
+		Collisions proj = project(bind, r.x, r.y, r.width, r.height, goalX, goalY, filter, checkProjCols);
+		CollisionResult.Result res = checkResult;
+		while (proj != null && !proj.isEmpty()) {
+			CollisionData c = proj.get(0);
+			checkCols.add(c.overlaps, c.ti, c.move.x, c.move.y, c.normal.x, c.normal.y, c.touch.x, c.touch.y,
+					c.itemRect.x, c.itemRect.y, c.itemRect.width, c.itemRect.height, c.otherRect.x, c.otherRect.y,
+					c.otherRect.width, c.otherRect.height, c.item, c.other, c.type);
+			bindVisitMap.put(c.other, true);
+			c.type.response(this, c, r.x, r.y, r.width, r.height, goalX, goalY, f, res);
+			goalX = res.goalX;
+			goalY = res.goalY;
+			proj = res.collisions;
+		}
+		res.set(goalX, goalY);
+		res.collisions.clear();
+		for (int i = 0; i < checkCols.size(); i++) {
+			res.collisions.add(checkCols.get(i));
+		}
+		return res;
 	}
 
 	public CollisionResult.Result move(ActionBind bind, float goalX, float goalY) {
@@ -667,15 +579,13 @@ public class CollisionWorld implements LRelease {
 
 	public CollisionResult.Result move(ActionBind bind, float goalX, float goalY, CollisionFilter filter) {
 		if (_closed) {
-			check_result.goalX = goalX;
-			check_result.goalY = goalY;
-			return check_result;
+			checkResult.set(goalX, goalY);
+			return checkResult;
 		}
-		CollisionResult.Result result = check(bind, goalX, goalY, filter);
-		if (result != null) {
-			update(bind, result.goalX, result.goalY);
-		}
-		return result;
+		CollisionResult.Result r = check(bind, goalX, goalY, filter);
+		if (r != null)
+			update(bind, r.goalX, r.goalY);
+		return r;
 	}
 
 	public CollisionFilter getWorldCollisionFilter() {
@@ -722,35 +632,107 @@ public class CollisionWorld implements LRelease {
 		return _autoAddItem;
 	}
 
+	public CollisionData raycast(float startX, float startY, float endX, float endY) {
+		return raycast(startX, startY, endX, endY, _worldCollisionFilter);
+	}
+
+	public CollisionData raycast(float startX, float startY, float endX, float endY, CollisionFilter filter) {
+		if (_closed) {
+			return null;
+		}
+		TArray<Cell> cells = getCellsTouchedBySegment(startX, startY, endX, endY, cellVisitCache);
+		float minTI = Float.MAX_VALUE;
+		CollisionData hit = null;
+		for (Cell cell : cells) {
+			for (ObjectMap.Entry<ActionBind, Boolean> entry : cell.items.entries()) {
+				ActionBind b = entry.key;
+				RectF r = getRect(b);
+				if (r == null || filter.filter(null, b) == null)
+					continue;
+				CollisionData col = detectCollision(startX, startY, 0, 0, r.x, r.y, r.width, r.height, endX, endY);
+				if (col != null && col.ti < minTI) {
+					minTI = col.ti;
+					hit = col;
+				}
+			}
+		}
+		return hit;
+	}
+
+	public ActionBind pointCheck(float x, float y) {
+		if (_closed) {
+			return null;
+		}
+		toCell(x, y, tmpF2);
+		int cx = (int) tmpF2.x, cy = (int) tmpF2.y;
+		IntMap<Cell> row = rows.get(cy);
+		if (row == null) {
+			return null;
+		}
+		Cell cell = row.get(cx);
+		if (cell == null) {
+			return null;
+		}
+		for (ObjectMap.Entry<ActionBind, Boolean> entry : cell.items.entries()) {
+			ActionBind b = entry.key;
+			RectF r = getRect(b);
+			if (r != null && x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height) {
+				return b;
+			}
+		}
+		return null;
+	}
+
+	public boolean overlapCheck(float x, float y, float w, float h) {
+		if (_closed) {
+			return false;
+		}
+		grid.toCellRect(cellSizeX, cellSizeY, x, y, w, h, tmpRect);
+		getDictItemsInCellRect((int) tmpRect.x, (int) tmpRect.y, (int) tmpRect.width, (int) tmpRect.height,
+				cellItemCache);
+		for (ObjectMap.Entry<ActionBind, Boolean> entry : cellItemCache.entries()) {
+			ActionBind b = entry.key;
+			RectF r = getRect(b);
+			if (r != null && x < r.x + r.width && x + w > r.x && y < r.y + r.height && y + h > r.y) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public TArray<ActionBind> getBindsInRect(float x, float y, float w, float h, TArray<ActionBind> out) {
+		if (_closed || out == null) {
+			return out;
+		}
+		out.clear();
+		grid.toCellRect(cellSizeX, cellSizeY, x, y, w, h, tmpRect);
+		getDictItemsInCellRect((int) tmpRect.x, (int) tmpRect.y, (int) tmpRect.width, (int) tmpRect.height,
+				cellItemCache);
+		for (ObjectMap.Entry<ActionBind, Boolean> entry : cellItemCache.entries()) {
+			out.add(entry.key);
+		}
+		return out;
+	}
+
 	@Override
 	public void close() {
 		if (_closed) {
 			return;
 		}
 		_closed = true;
-		_autoAddItem = false;
-		_autoRemoveItem = false;
-		if (rects != null) {
-			rects.clear();
-		}
-		if (rows != null) {
-			rows.clear();
-			rows = null;
-		}
-		if (nonEmptyCells != null) {
-			nonEmptyCells.clear();
-			nonEmptyCells = null;
-		}
+		_autoAddItem = _autoRemoveItem = false;
+		rects.clear();
+		rows.clear();
 		if (collisionManager != null) {
 			collisionManager.clear();
 			collisionManager = null;
 		}
-		getCellsTouchedBySegment_visited.clear();
-		project_visited.clear();
-		project_dictItemsInCellRect.clear();
-		check_visited.clear();
-		check_cols.clear();
-		check_projectedCols.clear();
+		cellVisitCache.clear();
+		cellVisitMap.clear();
+		cellItemCache.clear();
+		bindVisitMap.clear();
+		checkCols.clear();
+		checkProjCols.clear();
 	}
 
 }
