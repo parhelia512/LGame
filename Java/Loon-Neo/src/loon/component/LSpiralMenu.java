@@ -92,12 +92,14 @@ public class LSpiralMenu extends LContainer {
 		private float _pulseElapsed = 0f;
 		private float _pulseDuration = 0.3f;
 
-		public SpiralButton(String text, int x, int y, int width, int height, float duration, int rotationDirection) {
+		public SpiralButton(IFont font, String text, int x, int y, int width, int height, float duration,
+				int rotationDirection) {
 			super(text, x, y, width, height);
 			this._startX = x;
 			this._startY = y;
 			this._duration = duration;
 			this._rotationDirection = rotationDirection;
+			setFont(font);
 			setGrayButton(true);
 			setPosition(_startX, _startY);
 			setScale(0f);
@@ -281,7 +283,7 @@ public class LSpiralMenu extends LContainer {
 		final StrBuilder sbr = new StrBuilder();
 
 		for (String txt : _menuTexts) {
-			SpiralButton btn = new SpiralButton(txt, MathUtils.ifloor(cx), MathUtils.ifloor(cy),
+			SpiralButton btn = new SpiralButton(_mainButton.getFont(), txt, MathUtils.ifloor(cx), MathUtils.ifloor(cy),
 					MathUtils.ifloor(_childButtonWidth), MathUtils.ifloor(_childButtonHeight), _duration,
 					_rotationDirection);
 

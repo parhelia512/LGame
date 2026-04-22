@@ -270,6 +270,18 @@ public final class Session implements Bundle<String> {
 		return set(name, 0, vl);
 	}
 
+	public synchronized Session set(String name, String[] list) {
+		if (!StringUtils.isEmpty(list)) {
+			for (int i = 0; i < list.length; i++) {
+				String result = list[i];
+				if (result != null) {
+					set(name, i, result);
+				}
+			}
+		}
+		return this;
+	}
+
 	public synchronized Session set(String name, int index, String vl) {
 		if (StringUtils.isEmpty(vl)) {
 			return this;
@@ -341,6 +353,15 @@ public final class Session implements Bundle<String> {
 			return null;
 		} else {
 			return record.get(index);
+		}
+	}
+
+	public synchronized String[] getList(String name) {
+		final RecordData record = (RecordData) _records.get(name);
+		if (record == null) {
+			return null;
+		} else {
+			return record._values;
 		}
 	}
 

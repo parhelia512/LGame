@@ -42,6 +42,9 @@ import loon.utils.res.TextResource;
  */
 public class Command extends Conversion implements LRelease {
 
+	// 异常处理
+	private boolean _explicitGoto = false;
+
 	// 脚本缓存
 	private static ArrayMap _scriptLazy;
 
@@ -75,7 +78,7 @@ public class Command extends Conversion implements LRelease {
 	// 分支标记
 	private boolean _elseflag = false;
 
-	private boolean _esleover = false;
+	private boolean _elseover = false;
 
 	private boolean _backIfBool = false;
 
@@ -216,7 +219,7 @@ public class Command extends Conversion implements LRelease {
 		this._elseflag = false;
 		this._backIfBool = false;
 		this._functioning = false;
-		this._esleover = false;
+		this._elseover = false;
 		this._backIfBool = false;
 		this._addCommand = false;
 		this._isInnerCommand = false;
@@ -230,7 +233,7 @@ public class Command extends Conversion implements LRelease {
 
 	private void setDefaultIF(final boolean flag) {
 		_conditionEnvironmentList.put(_nowPosFlagName, flag);
-		_esleover = _elseflag = flag;
+		_elseover = _elseflag = flag;
 		_addCommand = false;
 	}
 
@@ -297,7 +300,7 @@ public class Command extends Conversion implements LRelease {
 		} catch (Throwable ex) {
 			LSystem.error("Command parse exception", ex);
 		}
-		_esleover = _elseflag = result;
+		_elseover = _elseflag = result;
 		_addCommand = false;
 		return result;
 	}
@@ -530,23 +533,33 @@ public class Command extends Conversion implements LRelease {
 	 * @return
 	 */
 	public boolean gotoIndex(final String gotoFlag) {
+		if (gotoFlag == null) {
+			return false;
+		}
 		int idx = -1;
 		for (int i = 0; i < _scriptSize; i++) {
 			final String line = _scriptList[i];
-			final Object varName = _setEnvironmentList.get(line);
+			if (line == null) {
+				continue;
+			}
 			if (line.equals(gotoFlag)) {
 				idx = i;
 				break;
-			} else if (varName != null && gotoFlag.equals((String) varName)) {
-				idx = i;
-				break;
+			}
+			final Object varNameObj = _setEnvironmentList.get(line);
+			if (varNameObj != null) {
+				final String varName = String.valueOf(varNameObj);
+				if (gotoFlag.equals(varName)) {
+					idx = i;
+					break;
+				}
 			}
 		}
 		if (idx != -1) {
 			_offsetPos = idx;
+			return true;
 		}
-		return idx == -1;
-
+		return false;
 	}
 
 	public int getIndex() {
@@ -639,17 +652,15 @@ public class Command extends Conversion implements LRelease {
 					Object vl = _setEnvironmentList.get(key);
 					// 已存在变量
 					if (vl != null) {
-						text = StringUtils.replaceMatch(text,
-								(RAND_TAG + BRACKET_LEFT_TAG + key + BRACKET_RIGHT_TAG), vl.toString());
+						text = StringUtils.replaceMatch(text, (RAND_TAG + BRACKET_LEFT_TAG + key + BRACKET_RIGHT_TAG),
+								vl.toString());
 						// 设定有随机数生成范围
 					} else if (MathUtils.isNan(key)) {
-						text = StringUtils.replaceMatch(text,
-								(RAND_TAG + BRACKET_LEFT_TAG + key + BRACKET_RIGHT_TAG),
+						text = StringUtils.replaceMatch(text, (RAND_TAG + BRACKET_LEFT_TAG + key + BRACKET_RIGHT_TAG),
 								String.valueOf(GLOBAL_RAND.nextInt(Integer.parseInt(key))));
 						// 无设定
 					} else {
-						text = StringUtils.replaceMatch(text,
-								(RAND_TAG + BRACKET_LEFT_TAG + key + BRACKET_RIGHT_TAG),
+						text = StringUtils.replaceMatch(text, (RAND_TAG + BRACKET_LEFT_TAG + key + BRACKET_RIGHT_TAG),
 								String.valueOf(GLOBAL_RAND.nextInt()));
 					}
 				}
@@ -676,6 +687,14 @@ public class Command extends Conversion implements LRelease {
 	public String doExecute() {
 		if (_isClose) {
 			return null;
+		}
+		if (_scriptList == null || _scriptSize <= 0) {
+			resetCache();
+			return _executeCommand;
+		}
+		if (_offsetPos < 0 || _offsetPos >= _scriptSize) {
+			resetCache();
+			return _executeCommand;
 		}
 		this._executeCommand = null;
 		this._addCommand = true;
@@ -827,7 +846,7 @@ public class Command extends Conversion implements LRelease {
 								_setEnvironmentList, _conditionEnvironmentList);
 						// 单纯的else
 					} else if (value.length == 1 && ELSE_TAG.equals(value[0])) {
-						if (!_esleover) {
+						if (!_elseover) {
 							setDefaultIF(true);
 						}
 					}
@@ -847,7 +866,7 @@ public class Command extends Conversion implements LRelease {
 				_ifing = false;
 				_if_bool = false;
 				_elseif_bool = false;
-				_esleover = false;
+				_elseover = false;
 				return null;
 			}
 			if (_backIfBool) {
@@ -935,20 +954,26 @@ public class Command extends Conversion implements LRelease {
 				_temps = commandSplit(cmd);
 				if (_temps != null && _temps.size == 2) {
 					final String gotoFlag = _temps.get(1);
-					// 如果是数字，跳转到指定行数
+					boolean jumped = false;
 					if (MathUtils.isNan(gotoFlag)) {
-						gotoIndex(MathUtils.ifloor(Float.parseFloat(gotoFlag)));
-					} else {// 如果不是，跳转向指定标记
-						gotoIndex(gotoFlag);
+						jumped = gotoIndex(MathUtils.ifloor(Float.parseFloat(gotoFlag)));
+					} else {
+						jumped = gotoIndex(gotoFlag);
+					}
+					if (jumped) {
+						// 标记为显式跳转
+						this._explicitGoto = true;
 					}
 				}
 			}
 		} catch (Throwable ex) {
 			throw new LSysException("Command index " + _offsetPos + " read error !", ex);
 		} finally {
-			if (!_isInnerCommand) {
+			if (!_isInnerCommand && !this._explicitGoto) {
 				_offsetPos++;
 			}
+			// 重置显式跳转标志以便下一次执行
+			this._explicitGoto = false;
 		}
 
 		return _executeCommand;
@@ -980,28 +1005,34 @@ public class Command extends Conversion implements LRelease {
 			name = _temps.get(1);
 		}
 		Session session = new Session(getSaveName(name), false);
+		session.set("cmd_scriptName", _scriptName);
+		if (_scriptList != null) {
+			session.set("cmd_scriptList", _scriptList);
+		}
+		session.set("cmd_scriptSize", _scriptSize);
+		session.set("cmd_isCache", _isCache);
 		for (int i = 0; i < _setEnvironmentList.size(); i++) {
 			Entry entry = _setEnvironmentList.getEntry(i);
-			session.add((String) entry.getKey(), (String) entry.getValue());
+			session.set((String) entry.getKey(), (String) entry.getValue());
 		}
-		session.add("cmd_offsetPos", MathUtils.min(_offsetPos + 1, _scriptSize));
-		session.add("cmd_cacheName", _cacheCommandName);
-		session.add("cmd_nowPosFlagName", _nowPosFlagName);
-		session.add("cmd_flaging", _flaging);
-		session.add("cmd_ifing", _ifing);
-		session.add("cmd_functioning", _functioning);
-		session.add("cmd_elseflag", _elseflag);
-		session.add("cmd_elseover", _esleover);
-		session.add("cmd_backIfBool", _backIfBool);
-		session.add("cmd_isInnerCommand", _isInnerCommand);
-		session.add("cmd_isRead", _isRead);
-		session.add("cmd_isCall", _isCall);
-		session.add("cmd_if_bool", _if_bool);
-		session.add("cmd_elseif_bool", _elseif_bool);
+		session.set("cmd_offsetPos", MathUtils.min(_offsetPos + 1, _scriptSize));
+		session.set("cmd_cacheName", _cacheCommandName);
+		session.set("cmd_nowPosFlagName", _nowPosFlagName);
+		session.set("cmd_flaging", _flaging);
+		session.set("cmd_ifing", _ifing);
+		session.set("cmd_functioning", _functioning);
+		session.set("cmd_elseflag", _elseflag);
+		session.set("cmd_elseover", _elseover);
+		session.set("cmd_backIfBool", _backIfBool);
+		session.set("cmd_isInnerCommand", _isInnerCommand);
+		session.set("cmd_isRead", _isRead);
+		session.set("cmd_isCall", _isCall);
+		session.set("cmd_if_bool", _if_bool);
+		session.set("cmd_elseif_bool", _elseif_bool);
 		if (other != null) {
 			for (int i = 0; i < other.size(); i++) {
 				Entry entry = other.getEntry(i);
-				session.add((String) entry.getKey(), (String) entry.getValue());
+				session.set((String) entry.getKey(), (String) entry.getValue());
 			}
 		}
 		session.save();
@@ -1038,20 +1069,21 @@ public class Command extends Conversion implements LRelease {
 		}
 		final Session session = Session.load(getSaveName(name));
 		if (session.getSize() > 0) {
+			_scriptName = session.get("cmd_scriptName");
+			_scriptList = session.getList("cmd_scriptList");
+			_scriptSize = session.getInt("cmd_scriptSize", 0);
+			_isCache = session.getBoolean("cmd_isCache");
+			_setEnvironmentList.clear();
 			_setEnvironmentList.putAll(session.getRecords(0));
 			int offsetLine = session.getInt("cmd_offsetPos", _offsetPos);
-			if (offsetLine == _offsetPos) {
-				gotoIndex(_offsetPos + 1);
-			} else {
-				gotoIndex(offsetLine);
-			}
+			gotoIndex(line > 0 ? line : offsetLine);
 			_cacheCommandName = session.get("cmd_cacheName");
 			_nowPosFlagName = session.get("cmd_nowPosFlagName");
 			_flaging = session.getBoolean("cmd_flaging");
 			_ifing = session.getBoolean("cmd_ifing");
 			_functioning = session.getBoolean("cmd_functioning");
 			_elseflag = session.getBoolean("cmd_elseflag");
-			_esleover = session.getBoolean("cmd_elseover");
+			_elseover = session.getBoolean("cmd_elseover");
 			_backIfBool = session.getBoolean("cmd_backIfBool");
 			_isInnerCommand = session.getBoolean("cmd_isInnerCommand");
 			_isRead = session.getBoolean("cmd_isRead");

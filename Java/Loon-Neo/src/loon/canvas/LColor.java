@@ -433,7 +433,14 @@ public final class LColor implements Serializable {
 	}
 
 	public static final LColor lerp(LColor value1, LColor value2, float amount) {
-		return new LColor(lerp(value1.getRed(), value2.getRed(), amount),
+		return lerp(value1, value2, amount, null);
+	}
+
+	public static final LColor lerp(LColor value1, LColor value2, float amount, LColor result) {
+		if (result == null) {
+			result = new LColor();
+		}
+		return result.setColor(lerp(value1.getRed(), value2.getRed(), amount),
 				lerp(value1.getGreen(), value2.getGreen(), amount), lerp(value1.getBlue(), value2.getBlue(), amount),
 				lerp(value1.getAlpha(), value2.getAlpha(), amount));
 	}
@@ -2448,6 +2455,10 @@ public final class LColor implements Serializable {
 
 	public LColor lerp(LColor target, float alpha) {
 		return lerp(this, target, alpha);
+	}
+
+	public LColor lerp(LColor target, float alpha, LColor result) {
+		return lerp(this, target, alpha, result);
 	}
 
 	public LColor interpolate(int endColor) {

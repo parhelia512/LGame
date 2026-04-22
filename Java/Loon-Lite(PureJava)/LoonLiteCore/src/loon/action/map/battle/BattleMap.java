@@ -56,6 +56,7 @@ import loon.canvas.LColor;
 import loon.events.DrawListener;
 import loon.events.GameEventBus;
 import loon.events.ResizeListener;
+import loon.geom.Affine2f;
 import loon.geom.PointF;
 import loon.geom.PointI;
 import loon.geom.RectBox;
@@ -118,11 +119,13 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	private final IsoResult _isoTempResult = new IsoResult();
 
+	private final Vector2f _backgroundOffset = new Vector2f();
+
+	private final Vector2f _backgroundSize = new Vector2f();
+
 	private Vector2f _followOffset = new Vector2f();
 
 	private Vector2f _pixelOffset = new Vector2f();
-
-	private Vector2f _backgroundOffset = new Vector2f();
 
 	private GameEventBus<Object> _eventBus;
 
@@ -500,9 +503,42 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		if (!_visible) {
 			return;
 		}
-		if (this._roll) {
-			this._pixelOffset = toRollPosition(this._pixelOffset);
+		final boolean update = (_objectRotation != 0);
+		final int blend = g.getBlendMode();
+		final int color = g.color();
+		try {
+			g.setBlendMode(_GL_BLEND);
+			g.setAlpha(_objectAlpha);
+			if (this._roll) {
+				this._pixelOffset = toRollPosition(this._pixelOffset);
+			}
+			final float drawMapX = this._objectLocation.x + offsetX + _pixelOffset.getX();
+			final float drawMapY = this._objectLocation.y + offsetY + _pixelOffset.getY();
+			if (update) {
+				g.saveTx();
+				Affine2f tx = g.tx();
+				if (_objectRotation != 0) {
+					final float rotationCenterX = drawMapX + getWidth() / 2f;
+					final float rotationCenterY = drawMapY + getHeight() / 2f;
+					tx.translate(rotationCenterX, rotationCenterY);
+					tx.preRotate(_objectRotation);
+					tx.translate(-rotationCenterX, -rotationCenterY);
+				}
+			}
+			followActionObject();
+			drawIsoMap(g, drawMapX, drawMapY);
+		} catch (Throwable ex) {
+			LSystem.error("The BattleMap error !", ex);
+		} finally {
+			if (update) {
+				g.restoreTx();
+			}
+			g.setBlendMode(blend);
+			g.setColor(color);
 		}
+	}
+
+	protected void drawIsoMap(GLEx g, float drawMapX, float drawMapY) {
 		final float tileW = _isoConfig.tileWidth;
 		final float tileH = _isoConfig.tileHeight;
 		final int mapTileW = _field2d.getWidth();
@@ -511,18 +547,20 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 		final float tileHeight = _isoConfig.tileHeight * _isoConfig.scaleY;
 		final float screenW = _pixelInWidth;
 		final float screenH = _pixelInHeight;
-		final float drawMapX = this._objectLocation.x + offsetX + _pixelOffset.getX();
-		final float drawMapY = this._objectLocation.y + offsetY + _pixelOffset.getY();
-		followActionObject();
 		final int posOffsetX = MathUtils.ifloor(drawMapX);
 		final int posOffsetY = MathUtils.ifloor(drawMapY);
 		// 背景图在斜视地图中，其实一般是用于显示绘制好的大地图用的，也就是类似隔壁某模拟战某世录那种用法。
 		// 在这些游戏中虽然会设定瓦片功能，但具体瓦片只是用于设置指定坐标效果，通常会隐藏瓦片，或者只显示某几个特殊瓦片。
 		if (_background != null) {
-			g.draw(_background, offsetX + _backgroundOffset.x, offsetY + _backgroundOffset.y, _baseColor);
+			if (_backgroundSize.isEmpty()) {
+				g.draw(_background, posOffsetX + _backgroundOffset.x, posOffsetY + _backgroundOffset.y, _baseColor);
+			} else {
+				g.draw(_background, posOffsetX + _backgroundOffset.x, posOffsetY + _backgroundOffset.y,
+						_backgroundSize.x, _backgroundSize.y, _baseColor);
+			}
 		}
-		final float worldLTX = -drawMapX;
-		final float worldLTY = -drawMapY;
+		final float worldLTX = -posOffsetX;
+		final float worldLTY = -posOffsetY;
 		final float worldRBX = worldLTX + screenW;
 		final float worldRBY = worldLTY + screenH;
 		int startX = MathUtils.ifloor(worldLTX / tileW);
@@ -2035,6 +2073,24 @@ public class BattleMap extends LObject<ISprite> implements TileMapCollision, Siz
 
 	public BattleMap setBackgroundOffset(float x, float y) {
 		_backgroundOffset.set(x, y);
+		return this;
+	}
+
+	public float getBackgroundSizeX() {
+		return _backgroundSize.x;
+	}
+
+	public float getBackgroundSizeY() {
+		return _backgroundSize.y;
+	}
+
+	public BattleMap setBackgroundSize(XY pos) {
+		_backgroundSize.set(pos);
+		return this;
+	}
+
+	public BattleMap setBackgroundSize(float x, float y) {
+		_backgroundSize.set(x, y);
 		return this;
 	}
 

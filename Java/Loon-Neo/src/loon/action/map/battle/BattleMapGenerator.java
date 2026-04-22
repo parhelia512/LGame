@@ -1071,7 +1071,6 @@ public class BattleMapGenerator implements LRelease {
 			shapeRatio.put("circle", MathUtils.random());
 			shapeRatio.put("triangle", MathUtils.random());
 			shapeRatio.put("polygon", MathUtils.random());
-			// 归一化比例（传统for循环）
 			float totalShape = 0f;
 			for (String key : shapeRatio.keys()) {
 				totalShape += shapeRatio.get(key);
@@ -1079,12 +1078,10 @@ public class BattleMapGenerator implements LRelease {
 			for (String key : shapeRatio.keys()) {
 				shapeRatio.put(key, shapeRatio.get(key) / totalShape);
 			}
-			// 随机地形权重
 			IntMap<Float> nestedTileWeights = new IntMap<Float>();
 			nestedTileWeights.put(BattleTileType.CITY.getId(), Float.valueOf(MathUtils.random()));
 			nestedTileWeights.put(BattleTileType.CASTLE.getId(), Float.valueOf(MathUtils.random()));
 			nestedTileWeights.put(BattleTileType.FARM.getId(), Float.valueOf(MathUtils.random()));
-			// 归一化权重
 			float totalTiles = 0f;
 			int[] keys = nestedTileWeights.keys();
 			for (int key : keys) {
@@ -1106,9 +1103,6 @@ public class BattleMapGenerator implements LRelease {
 	 * @param persistence
 	 * @param frequency
 	 * @param amplitude
-	 */
-	/**
-	 * 使用分层噪声生成地图，支持更多地形
 	 */
 	public void generateLayeredNoise(int seed, int octaves, float persistence, float frequency, float amplitude) {
 		PerlinNoise noise = new PerlinNoise(seed, persistence, frequency, amplitude, octaves);

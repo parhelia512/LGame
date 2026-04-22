@@ -53,6 +53,7 @@ import loon.geom.Polygon;
 import loon.geom.RectBox;
 import loon.geom.Sized;
 import loon.geom.Vector2f;
+import loon.geom.XY;
 import loon.opengl.GLEx;
 import loon.opengl.LTexturePack;
 import loon.opengl.LTexturePackClip;
@@ -117,6 +118,10 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 	private Field2D field2d;
 
 	private final PointF _scrollDrag = new PointF();
+
+	private final Vector2f _backgroundOffset = new Vector2f();
+
+	private final Vector2f _backgroundSize = new Vector2f();
 
 	private float _fixedWidthOffset = 0f;
 
@@ -1863,7 +1868,12 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 			return;
 		}
 		if (_background != null) {
-			g.draw(_background, offsetX, offsetY);
+			if (_backgroundSize.isEmpty()) {
+				g.draw(_background, offsetX + _backgroundOffset.x, offsetY + _backgroundOffset.y, _baseColor);
+			} else {
+				g.draw(_background, offsetX + _backgroundOffset.x, offsetY + _backgroundOffset.y, _backgroundSize.x,
+						_backgroundSize.y, _baseColor);
+			}
 		}
 		if (!active || texturePack == null) {
 			completed();
@@ -2253,6 +2263,42 @@ public class HexagonMap extends LObject<ISprite> implements FontSet<HexagonMap>,
 
 	public float hexHoriaontalSpacing() {
 		return hexWidth();
+	}
+
+	public float getBackgroundOffsetX() {
+		return _backgroundOffset.x;
+	}
+
+	public float getBackgroundOffsetY() {
+		return _backgroundOffset.y;
+	}
+
+	public HexagonMap setBackgroundOffset(XY pos) {
+		_backgroundOffset.set(pos);
+		return this;
+	}
+
+	public HexagonMap setBackgroundOffset(float x, float y) {
+		_backgroundOffset.set(x, y);
+		return this;
+	}
+
+	public float getBackgroundSizeX() {
+		return _backgroundSize.x;
+	}
+
+	public float getBackgroundSizeY() {
+		return _backgroundSize.y;
+	}
+
+	public HexagonMap setBackgroundSize(XY pos) {
+		_backgroundSize.set(pos);
+		return this;
+	}
+
+	public HexagonMap setBackgroundSize(float x, float y) {
+		_backgroundSize.set(x, y);
+		return this;
 	}
 
 	@Override

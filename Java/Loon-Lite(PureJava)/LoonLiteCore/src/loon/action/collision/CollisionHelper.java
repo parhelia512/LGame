@@ -2197,4 +2197,73 @@ public final class CollisionHelper extends ShapeUtils {
 		return coeffs;
 	}
 
+	public static final Vector2f quadPoint(Vector2f a, Vector2f c, Vector2f b, float t) {
+		float u = 1 - t;
+		float x = u * u * a.x + 2 * u * t * c.x + t * t * b.x;
+		float y = u * u * a.y + 2 * u * t * c.y + t * t * b.y;
+		return new Vector2f(x, y);
+	}
+
+	public static final Vector2f defaultQuadControl(Vector2f a, Vector2f b, float offsetRatio) {
+		Vector2f mid = new Vector2f((a.x + b.x) / 2f, (a.y + b.y) / 2f);
+		float dx = b.x - a.x, dy = b.y - a.y;
+		float len = (float) MathUtils.sqrt(dx * dx + dy * dy);
+		if (len < 1e-6f) {
+			return mid;
+		}
+		float nx = -dy / len, ny = dx / len;
+		float offset = len * offsetRatio;
+		return new Vector2f(mid.x + nx * offset, mid.y + ny * offset);
+	}
+
+	public static final boolean segmentIntersectsCircle(Vector2f p, Vector2f q, Vector2f center, float radius) {
+		float vx = q.x - p.x, vy = q.y - p.y;
+		float wx = center.x - p.x, wy = center.y - p.y;
+		float c1 = vx * wx + vy * wy;
+		if (c1 <= 0) {
+			float d2 = (p.x - center.x) * (p.x - center.x) + (p.y - center.y) * (p.y - center.y);
+			return d2 <= radius * radius;
+		}
+		float c2 = vx * vx + vy * vy;
+		if (c2 <= c1) {
+			float d2 = (q.x - center.x) * (q.x - center.x) + (q.y - center.y) * (q.y - center.y);
+			return d2 <= radius * radius;
+		}
+		float b = c1 / c2;
+		float px = p.x + b * vx, py = p.y + b * vy;
+		float d2 = (px - center.x) * (px - center.x) + (py - center.y) * (py - center.y);
+		return d2 <= radius * radius;
+	}
+
+	public static final Vector2f clipPointToCircle(Vector2f from, Vector2f to, Vector2f circleCenter, float radius) {
+		Vector2f dir = new Vector2f(to.x - from.x, to.y - from.y);
+		float dx = dir.x, dy = dir.y;
+		float fx = from.x - circleCenter.x, fy = from.y - circleCenter.y;
+		float a = dx * dx + dy * dy;
+		float b = 2 * (fx * dx + fy * dy);
+		float c = fx * fx + fy * fy - radius * radius;
+		float disc = b * b - 4 * a * c;
+		if (disc < 0 || MathUtils.abs(a) < 1e-6f) {
+			return new Vector2f(from);
+		}
+		disc = (float) MathUtils.sqrt(disc);
+		float t1 = (-b - disc) / (2 * a);
+		float t2 = (-b + disc) / (2 * a);
+		float t = MathUtils.max(t1, t2);
+		t = MathUtils.clamp(t, 0f, 1f);
+		return new Vector2f(from.x + dx * t, from.y + dy * t);
+	}
+
+	public static Vector2f catmullRom(Vector2f p0, Vector2f p1, Vector2f p2, Vector2f p3, float t) {
+		float t2 = t * t, t3 = t2 * t;
+		float x = 0.5f * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2
+				+ (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+		float y = 0.5f * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2
+				+ (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+		return new Vector2f(x, y);
+	}
+
+	public static Vector2f fitQuadControl(Vector2f p0, Vector2f p1, Vector2f p2) {
+		return new Vector2f(2 * p1.x - (p0.x + p2.x) / 2f, 2 * p1.y - (p0.y + p2.y) / 2f);
+	}
 }

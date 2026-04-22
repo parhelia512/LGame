@@ -95,6 +95,10 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 
 	private TArray<Animation> _animations = new TArray<Animation>();
 
+	private final Vector2f _backgroundOffset = new Vector2f();
+
+	private final Vector2f _backgroundSize = new Vector2f();
+
 	private final int _pixelInWidth, _pixelInHeight;
 
 	private final Field2D _field2d;
@@ -461,7 +465,12 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 	public void draw(GLEx g, int offsetX, int offsetY) {
 
 		if (_background != null) {
-			g.draw(_background, offsetX, offsetY);
+			if (_backgroundSize.isEmpty()) {
+				g.draw(_background, offsetX + _backgroundOffset.x, offsetY + _backgroundOffset.y, _baseColor);
+			} else {
+				g.draw(_background, offsetX + _backgroundOffset.x, offsetY + _backgroundOffset.y, _backgroundSize.x,
+						_backgroundSize.y, _baseColor);
+			}
 		}
 
 		if (!_active || _texturePack == null) {
@@ -1634,6 +1643,42 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 
 	public TileMap setResizeListener(ResizeListener<TileMap> listener) {
 		this._resizeListener = listener;
+		return this;
+	}
+
+	public float getBackgroundOffsetX() {
+		return _backgroundOffset.x;
+	}
+
+	public float getBackgroundOffsetY() {
+		return _backgroundOffset.y;
+	}
+
+	public TileMap setBackgroundOffset(XY pos) {
+		_backgroundOffset.set(pos);
+		return this;
+	}
+
+	public TileMap setBackgroundOffset(float x, float y) {
+		_backgroundOffset.set(x, y);
+		return this;
+	}
+
+	public float getBackgroundSizeX() {
+		return _backgroundSize.x;
+	}
+
+	public float getBackgroundSizeY() {
+		return _backgroundSize.y;
+	}
+
+	public TileMap setBackgroundSize(XY pos) {
+		_backgroundSize.set(pos);
+		return this;
+	}
+
+	public TileMap setBackgroundSize(float x, float y) {
+		_backgroundSize.set(x, y);
 		return this;
 	}
 

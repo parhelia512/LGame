@@ -28,6 +28,25 @@ import loon.geom.Vector2f;
  */
 public final class ISOUtils {
 
+	private static final float R_MAJOR = 6378137f;
+
+	public final static Vector2f getMetersToMapPixels(Vector2f meters, Vector2f originMeters, float scale) {
+		float dx = meters.x - originMeters.x;
+		float dy = meters.y - originMeters.y;
+		return new Vector2f((dx * scale), (dy * scale));
+	}
+
+	public final static Vector2f getLatLonToMapPixels(float lat, float lon, Vector2f originMeters, float scale) {
+		Vector2f m = latLonToMeters(lat, lon);
+		return getMetersToMapPixels(m, originMeters, scale);
+	}
+
+	public static Vector2f latLonToMeters(float lat, float lon) {
+		float x = R_MAJOR * MathUtils.toRadians(lon);
+		float y = R_MAJOR * MathUtils.log(MathUtils.tan(MathUtils.PI / 4 + MathUtils.toRadians(lat) / 2));
+		return new Vector2f(x, y);
+	}
+
 	private ISOUtils() {
 	}
 
@@ -538,7 +557,7 @@ public final class ISOUtils {
 	 * @return
 	 */
 	public static ObjectMap<String, Vector2f> getIsoMapCorners(int mapWidth, int mapHeight, IsoConfig config) {
-		ObjectMap<String, Vector2f> cornersMap = new ObjectMap<>();
+		ObjectMap<String, Vector2f> cornersMap = new ObjectMap<String, Vector2f>();
 		IsoResult lt = isoTransform(0, 0, config.tileWidth, config.tileHeight, config, null, null);
 		cornersMap.put("leftTop", lt.screenPos);
 		IsoResult lb = isoTransform(0, mapHeight, config.tileWidth, config.tileHeight, config, null, null);
