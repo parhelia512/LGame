@@ -5784,7 +5784,7 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 
 	private final void offsetTouch(GameTouch e) {
 		if (isTranslate()) {
-			e.offset(getX() / _scaleX, getY() / _scaleY);
+			e.offset(_scaleX > 1f ? getX() / _scaleX : getX(), _scaleY > 1f ? getY() / _scaleY : getY());
 		}
 	}
 

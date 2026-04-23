@@ -1171,14 +1171,14 @@ public abstract class LComponent extends LObject<LContainer>
 		if (_pivotX != -1f) {
 			return getDrawScrollX() + _pivotX;
 		}
-		return ((MathUtils.equal(1f, _scaleX)) ? getDrawScrollX() : (getDrawScrollX() + _scaleX * getWidth()));
+		return (MathUtils.equal(_scaleX, 1f) ? getDrawScrollX() : (getDrawScrollX() + _origin.ox(getWidth())));
 	}
 
 	public float getScalePixelY() {
 		if (_pivotY != -1f) {
 			return getDrawScrollY() + _pivotY;
 		}
-		return ((MathUtils.equal(1f, _scaleY)) ? getDrawScrollY() : (getDrawScrollY() + _scaleY * getHeight()));
+		return (MathUtils.equal(_scaleY, 1f) ? getDrawScrollY() : (getDrawScrollY() + _origin.oy(getHeight())));
 	}
 
 	public LComponent getToolTipParent() {
@@ -1749,7 +1749,7 @@ public abstract class LComponent extends LObject<LContainer>
 		if (parent != null) {
 			newX = pointResult.x - parent.getX() - getX();
 			newY = pointResult.y - parent.getY() - getY();
-		
+
 		} else {
 			newX = pointResult.x - getX();
 			newY = pointResult.y - getY();

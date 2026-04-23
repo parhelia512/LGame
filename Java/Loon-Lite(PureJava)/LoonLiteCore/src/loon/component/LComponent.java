@@ -461,7 +461,6 @@ public abstract class LComponent extends LObject<LContainer>
 		if (_objectAlpha < 0.01f) {
 			return;
 		}
-		final int blend = g.getBlendMode();
 		final boolean update = _objectRotation != 0 || !(MathUtils.equal(_scaleX, 1f) && MathUtils.equal(_scaleY, 1f))
 				|| _flipX || _flipY;
 		try {
@@ -503,7 +502,6 @@ public abstract class LComponent extends LObject<LContainer>
 					tx.translate(-centerX, -centerY);
 				}
 			}
-			g.setBlendMode(_GL_BLEND);
 			preUI(g);
 			if (_drawBackground && _background != null) {
 				g.draw(_background, newX, newY, width, height, _component_baseColor);
@@ -524,7 +522,6 @@ public abstract class LComponent extends LObject<LContainer>
 			if (this._component_elastic) {
 				g.clearClip();
 			}
-			g.setBlendMode(blend);
 			g.restoreBrush();
 		}
 
@@ -1171,14 +1168,14 @@ public abstract class LComponent extends LObject<LContainer>
 		if (_pivotX != -1f) {
 			return getDrawScrollX() + _pivotX;
 		}
-		return ((MathUtils.equal(1f, _scaleX)) ? getDrawScrollX() : (getDrawScrollX() + _scaleX * getWidth()));
+		return (MathUtils.equal(_scaleX, 1f) ? getDrawScrollX() : (getDrawScrollX() + _origin.ox(getWidth())));
 	}
 
 	public float getScalePixelY() {
 		if (_pivotY != -1f) {
 			return getDrawScrollY() + _pivotY;
 		}
-		return ((MathUtils.equal(1f, _scaleY)) ? getDrawScrollY() : (getDrawScrollY() + _scaleY * getHeight()));
+		return (MathUtils.equal(_scaleY, 1f) ? getDrawScrollY() : (getDrawScrollY() + _origin.oy(getHeight())));
 	}
 
 	public LComponent getToolTipParent() {

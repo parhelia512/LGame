@@ -24,6 +24,7 @@ import loon.utils.MathUtils;
 import loon.utils.TArray;
 
 public final class RaycastHelper {
+	private static final float EPS = 1e-6f;
 
 	public static RaycastHit raycastLine(Vector2f origin, Vector2f direction, Line line) {
 		Vector2f a = origin;
@@ -210,6 +211,170 @@ public final class RaycastHelper {
 			}
 		}
 		return null;
+	}
+
+	private static Vector2f rotate(Vector2f v, float cos, float sin) {
+		return new Vector2f(v.x * cos - v.y * sin, v.x * sin + v.y * cos);
+	}
+
+	public static RaycastHit raycastSegment(Vector2f origin, Vector2f direction, Vector2f a, Vector2f b) {
+		if (origin == null || direction == null || a == null || b == null) {
+			return null;
+		}
+		Line seg = new Line(new Vector2f(a), new Vector2f(b));
+		return raycastLine(origin, direction, seg);
+	}
+
+	public static RaycastHit raycastTriangle(Vector2f origin, Vector2f direction, Vector2f v0, Vector2f v1,
+			Vector2f v2) {
+		if (origin == null || direction == null || v0 == null || v1 == null || v2 == null) {
+			return null;
+		}
+		RaycastHit best = null;
+		RaycastHit h;
+		h = raycastLine(origin, direction, new Line(new Vector2f(v0), new Vector2f(v1)));
+		if (h != null) {
+			best = h;
+		}
+		h = raycastLine(origin, direction, new Line(new Vector2f(v1), new Vector2f(v2)));
+		if (h != null && (best == null || h.getFraction() < best.getFraction())) {
+			best = h;
+		}
+		h = raycastLine(origin, direction, new Line(new Vector2f(v2), new Vector2f(v0)));
+		if (h != null && (best == null || h.getFraction() < best.getFraction())) {
+			best = h;
+		}
+		return best;
+	}
+
+	public static RaycastHit raycastCapsule(Vector2f origin, Vector2f direction, Vector2f p1, Vector2f p2,
+			float radius) {
+		if (origin == null || direction == null || p1 == null || p2 == null) {
+			return null;
+		}
+		if (radius < 0f) {
+			return null;
+		}
+		RaycastHit hitA = raycastCircle(origin, direction, new Circle(p1.x, p1.y, radius));
+		RaycastHit hitB = raycastCircle(origin, direction, new Circle(p2.x, p2.y, radius));
+		RaycastHit best = null;
+		if (hitA != null) {
+			best = hitA;
+		}
+		if (hitB != null && (best == null || hitB.getFraction() < best.getFraction())) {
+			best = hitB;
+		}
+		Vector2f seg = new Vector2f(p2).subSelf(p1);
+		float len = seg.len();
+		if (len > EPS) {
+			float angle = MathUtils.atan2(seg.y, seg.x);
+			float cos = MathUtils.cos(-angle);
+			float sin = MathUtils.sin(-angle);
+			Vector2f localOrigin = new Vector2f(origin).sub(p1);
+			localOrigin = rotate(localOrigin, cos, sin);
+			Vector2f localDir = rotate(direction, cos, sin);
+			RectBox rect = new RectBox(0f, -radius, len, radius * 2f);
+			RaycastHit rectHit = raycastRect(localOrigin, localDir, rect);
+			if (rectHit != null) {
+				Vector2f localPoint = rectHit.getPoint();
+				float cosInv = MathUtils.cos(angle);
+				float sinInv = MathUtils.sin(angle);
+				Vector2f worldPoint = rotate(localPoint, cosInv, sinInv).add(p1);
+				Vector2f localNormal = rectHit.getNormal();
+				Vector2f worldNormal = rotate(localNormal, cosInv, sinInv).nor();
+				RaycastHit rh = new RaycastHit();
+				rh.setPoint(worldPoint);
+				rh.setNormal(worldNormal);
+				rh.setFraction(worldPoint.sub(origin).len() / direction.len());
+				if (best == null || rh.getFraction() < best.getFraction())
+					best = rh;
+			}
+		}
+
+		return best;
+	}
+
+	public static RaycastHit raycastArc(Vector2f origin, Vector2f direction, Vector2f center, float radius,
+			float startDeg, float sweepDeg) {
+		if (origin == null || direction == null || center == null)
+			return null;
+		RaycastHit circleHit = raycastCircle(origin, direction, new Circle(center.x, center.y, radius));
+		if (circleHit == null) {
+			return null;
+		}
+		Vector2f hitPoint = circleHit.getPoint();
+		Vector2f rel = new Vector2f(hitPoint).sub(center);
+		float ang = MathUtils.toDegrees(MathUtils.atan2(rel.y, rel.x));
+		ang = (ang % 360f + 360f) % 360f;
+		float s = (startDeg % 360f + 360f) % 360f;
+		float e = (s + sweepDeg) % 360f;
+		boolean inside;
+		if (sweepDeg >= 0f) {
+			if (s <= e) {
+				inside = (ang >= s - EPS && ang <= e + EPS);
+			} else {
+				inside = (ang >= s - EPS || ang <= e + EPS);
+			}
+		} else {
+			if (e <= s) {
+				inside = (ang <= s + EPS && ang >= e - EPS);
+			} else {
+				inside = (ang <= s + EPS || ang >= e - EPS);
+			}
+		}
+		if (!inside) {
+			return null;
+		}
+		return circleHit;
+	}
+
+	public static RaycastHit raycastRoundedRect(Vector2f origin, Vector2f direction, RectBox rect, float cornerRadius) {
+		if (origin == null || direction == null || rect == null) {
+			return null;
+		}
+		float r = MathUtils.max(0f, cornerRadius);
+		RectBox inner = new RectBox(rect.x + r, rect.y + r, rect.width - 2f * r, rect.height - 2f * r);
+		RaycastHit best = null;
+		if (inner.width > 0f && inner.height > 0f) {
+			RaycastHit h = raycastRect(origin, direction, inner);
+			if (h != null)
+				best = h;
+		}
+		Vector2f[] centers = new Vector2f[] { Vector2f.at(rect.x + r, rect.y + r),
+				Vector2f.at(rect.x + rect.width - r, rect.y + r),
+				Vector2f.at(rect.x + rect.width - r, rect.y + rect.height - r),
+				Vector2f.at(rect.x + r, rect.y + rect.height - r) };
+		for (Vector2f c : centers) {
+			RaycastHit h = raycastCircle(origin, direction, new Circle(c.x, c.y, r));
+			if (h != null && (best == null || h.getFraction() < best.getFraction()))
+				best = h;
+		}
+		return best;
+	}
+
+	public static RaycastHit raycastBezierApprox(Vector2f origin, Vector2f direction, Vector2f p0, Vector2f c1,
+			Vector2f c2, Vector2f p3, int maxSegments) {
+		if (origin == null || direction == null || p0 == null || c1 == null || c2 == null || p3 == null) {
+			return null;
+		}
+		int segments = MathUtils.max(4, MathUtils.min(1024, maxSegments));
+		RaycastHit best = null;
+		Vector2f prev = new Vector2f(p0);
+		for (int i = 1; i <= segments; i++) {
+			float t = (float) i / segments;
+			float u = 1f - t;
+			float b0 = u * u * u;
+			float b1 = 3f * u * u * t;
+			float b2 = 3f * u * t * t;
+			float b3 = t * t * t;
+			Vector2f cur = new Vector2f(p0.x * b0 + c1.x * b1 + c2.x * b2 + p3.x * b3,
+					p0.y * b0 + c1.y * b1 + c2.y * b2 + p3.y * b3);
+			RaycastHit h = raycastLine(origin, direction, new Line(new Vector2f(prev), new Vector2f(cur)));
+			if (h != null && (best == null || h.getFraction() < best.getFraction()))
+				best = h;
+			prev = cur;
+		}
+		return best;
 	}
 
 }
