@@ -5972,6 +5972,12 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 		return !isNotAllowTouch();
 	}
 
+	private final void offsetTouch(GameTouch e) {
+		if (isTranslate()) {
+			e.offset(getX() / _scaleX, getY() / _scaleY);
+		}
+	}
+
 	public final void keyPressed(GameKey e) {
 		if (isNotAllowTouch()) {
 			return;
@@ -6072,9 +6078,7 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 		if (isNotAllowTouch()) {
 			return;
 		}
-		if (isTranslate()) {
-			e.offset(getX(), getY());
-		}
+		offsetTouch(e);
 		final int type = e.getTypeCode();
 		final int button = e.getButton();
 		try {
@@ -6125,9 +6129,7 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 		if (isNotAllowTouch()) {
 			return;
 		}
-		if (isTranslate()) {
-			e.offset(getX(), getY());
-		}
+		offsetTouch(e);
 		final int type = e.getTypeCode();
 		final int button = e.getButton();
 		try {
@@ -6161,9 +6163,7 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 		if (isNotAllowTouch()) {
 			return;
 		}
-		if (isTranslate()) {
-			e.offset(getX(), getY());
-		}
+		offsetTouch(e);
 		if (!isClickLimit(e)) {
 			updateTouchArea(Event.MOVE, e.getX(), e.getY());
 			touchMove(e);
@@ -6177,9 +6177,7 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 		if (isNotAllowTouch()) {
 			return;
 		}
-		if (isTranslate()) {
-			e.offset(getX(), getY());
-		}
+		offsetTouch(e);
 		if (!isClickLimit(e)) {
 			updateTouchArea(Event.DRAG, e.getX(), e.getY());
 			touchDrag(e);

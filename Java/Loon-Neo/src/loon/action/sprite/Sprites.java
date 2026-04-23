@@ -2312,7 +2312,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public float getStageY() {
-		return (getX() - getScreenX());
+		return (getY() - getScreenY());
 	}
 
 	/**

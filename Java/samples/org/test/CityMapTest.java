@@ -38,7 +38,8 @@ public class CityMapTest extends Stage {
 		// 设定地图大小16x16，单独瓦片大小32x32
 		// (这个城市地图模块基本和隔壁某三国志1X的城市布局系统功能一致，当然，没有他的分区之类细节功能，但布局功能上一样)
 		CityMap map = new CityMap(16, 16, 32, 32, 0);
-
+        // 使用虚线显示链接路径
+		map.setDefaultDash(true);
 		// 在指定xy坐标位置添加城市
 		City luoyang = map.addCity("洛阳", 11, 2, icon);
 		City changan = map.addCity("长安", 4, 2, icon);
@@ -46,8 +47,6 @@ public class CityMapTest extends Stage {
 		City wan = map.addCity("宛", 6, 6, icon);
 		City xinye = map.addCity("新野", 4, 8, icon);
 
-		// 选中一个城市
-		// map.selectCity(luoyang);
 		// 设置默认的链接线颜色
 		// map.setDefaultEdgeColorFrom(LColor.red);
 		// map.setDefaultEdgeColorTo(LColor.blue);
@@ -77,7 +76,11 @@ public class CityMapTest extends Stage {
 			// 向指定城市行军
 			// map.playMarchAnimation(luoyang, changan);
 			// 以像素坐标获得选中城市
-			System.out.println(map.getCityByPixelToWorldPos(x, y));
+			City city = map.getCityByPixelToWorldPos(x, y);
+			if(city != null) {
+				// 选中一个城市
+				map.selectCity(city);
+			}
 		});
 
 

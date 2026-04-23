@@ -727,58 +727,49 @@ public abstract class SpriteBase<T extends ISprite> extends LObject<T> implement
 		}
 		float newX = 0f;
 		float newY = 0f;
-		T parent = getParent();
-		if (parent != null) {
-			newX = pointResult.x - parent.getX() - getX();
-			newY = pointResult.y - parent.getX() - getY();
-		} else {
-			newX = pointResult.x - getX();
-			newY = pointResult.y - getY();
-		}
-		final float angle = getRotation();
-		if (angle == 0 || angle == 360) {
-			pointResult.x = toPixelScaleX(newX) + _touchOffset.x;
-			pointResult.y = toPixelScaleY(newY) + _touchOffset.y;
+		try {
+			T parent = getParent();
+			if (parent != null) {
+				newX = pointResult.x - parent.getX() - getX();
+				newY = pointResult.y - parent.getY() - getY();
+			} else {
+				newX = pointResult.x - getX();
+				newY = pointResult.y - getY();
+			}
+			final float angle = getRotation();
+			if (MathUtils.equal(angle, 0f) || MathUtils.equal(angle, 360f)) {
+				float lx = newX / getScaleX();
+				float ly = newY / getScaleY();
+				pointResult.x = lx + _touchOffset.x;
+				pointResult.y = ly + _touchOffset.y;
+				return pointResult;
+			}
+			float oldWidth = getAniWidth();
+			float oldHeight = getAniHeight();
+			float newWidth = getWidth();
+			float newHeight = getHeight();
+			float centerX = newWidth / 2f;
+			float centerY = newHeight / 2f;
+			float dx = newX - centerX;
+			float dy = newY - centerY;
+			float rad = MathUtils.toRadians(-angle);
+			float cos = MathUtils.cos(rad);
+			float sin = MathUtils.sin(rad);
+			float rx = cos * dx - sin * dy;
+			float ry = sin * dx + cos * dy;
+			float invScaleX = (MathUtils.equal(getScaleX(), 0f) ? 1f : 1f / getScaleX());
+			float invScaleY = (MathUtils.equal(getScaleY(), 0f) ? 1f : 1f / getScaleY());
+			float ux = rx * invScaleX;
+			float uy = ry * invScaleY;
+			float animX = ux + oldWidth / 2f;
+			float animY = uy + oldHeight / 2f;
+			pointResult.x = animX + _touchOffset.x;
+			pointResult.y = animY + _touchOffset.y;
+			return pointResult;
+		} catch (Throwable t) {
+			pointResult.addSelf(_touchOffset);
 			return pointResult;
 		}
-		float oldWidth = getAniWidth();
-		float oldHeight = getAniHeight();
-		float newWidth = getWidth();
-		float newHeight = getHeight();
-		float offX = oldWidth / 2f - newWidth / 2f;
-		float offY = oldHeight / 2f - newHeight / 2f;
-		float posX = (newX - offX);
-		float posY = (newY - offY);
-		if (angle == 90) {
-			offX = oldHeight / 2f - newWidth / 2f;
-			offY = oldWidth / 2f - newHeight / 2f;
-			posX = (newX - offY);
-			posY = (newY - offX);
-			pointResult.set(posX / getScaleX(), posY / getScaleY()).rotateSelf(90);
-			pointResult.set(-pointResult.x, MathUtils.abs(pointResult.y - this.getAniHeight()));
-		} else if (angle == -90) {
-			offX = oldHeight / 2f - newWidth / 2f;
-			offY = oldWidth / 2f - newHeight / 2f;
-			posX = (newX - offY);
-			posY = (newY - offX);
-			pointResult.set(posX / getScaleX(), posY / getScaleY()).rotateSelf(-90);
-			pointResult.set(-(pointResult.x - this.getAniWidth()), MathUtils.abs(pointResult.y));
-		} else if (angle == -180 || angle == 180) {
-			pointResult.set(posX / getScaleX(), posY / getScaleY()).rotateSelf(getRotation()).addSelf(getAniWidth(),
-					getAniHeight());
-		} else {
-			float rad = MathUtils.toRadians(angle);
-			float sin = MathUtils.sin(rad);
-			float cos = MathUtils.cos(rad);
-			float dx = offX / getScaleX();
-			float dy = offY / getScaleY();
-			float dx2 = cos * dx - sin * dy;
-			float dy2 = sin * dx + cos * dy;
-			pointResult.x = getAniWidth() - (newX - dx2);
-			pointResult.y = getAniHeight() - (newY - dy2);
-		}
-		pointResult.addSelf(_touchOffset);
-		return pointResult;
 	}
 
 	public Vector2f getUITouchXY() {

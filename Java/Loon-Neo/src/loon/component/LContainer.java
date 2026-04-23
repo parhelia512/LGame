@@ -201,16 +201,7 @@ public abstract class LContainer extends LComponent implements IArray {
 	}
 
 	public LComponent add(LComponent comp) {
-		if (_destroyed) {
-			return null;
-		}
-		if (this == comp) {
-			return this;
-		}
-		if (comp == null) {
-			return this;
-		}
-		if (this.contains(comp)) {
+		if (_destroyed || comp == null || this == comp || contains(comp)) {
 			return this;
 		}
 		if (comp.getContainer() != null) {
@@ -266,7 +257,9 @@ public abstract class LContainer extends LComponent implements IArray {
 		}
 		this._childs = newChilds;
 		this._childs[index] = comp;
-		this._desktop.setDesktop(comp);
+		if (_desktop != null) {
+			_desktop.setDesktop(comp);
+		}
 		this._dirtyChildren = true;
 		this._latestInserted = comp;
 		return this;
@@ -577,7 +570,7 @@ public abstract class LContainer extends LComponent implements IArray {
 			if (name != null) {
 				for (int i = size - 1; i > -1; i--) {
 					final LComponent child = childs[i];
-					if (!name.equals(child.getName())) {
+					if (child != null && !name.equals(child.getName())) {
 						list.add(child);
 					}
 				}
@@ -1244,9 +1237,6 @@ public abstract class LContainer extends LComponent implements IArray {
 		if (this._childCount <= 1 || this._childs[0] == comp) {
 			return this;
 		}
-		if (_childs[0] == comp) {
-			return this;
-		}
 		final int size = this._childCount;
 		final LComponent[] childs = this._childs;
 		for (int i = 0; i < size; i++) {
@@ -1324,7 +1314,6 @@ public abstract class LContainer extends LComponent implements IArray {
 						return;
 					}
 				} while (!child.requestFocus());
-
 				break;
 			}
 		}
@@ -1396,36 +1385,24 @@ public abstract class LContainer extends LComponent implements IArray {
 		this.sortComponents();
 		final int size = this._childCount;
 		final LComponent[] childs = this._childs;
-		for (int i = size - 1; i >= 0; i--) {
+		for (int i = 0; i < size; i++) {
 			LComponent child = childs[i];
-			if (child == null || !child.isVisible()) {
+			if (child == null || !child.isVisible() || !child.isAllowTouch()) {
 				continue;
 			}
-			float checkX = x1;
-			float checkY = y1;
-			LComponent childParent = child.getSuper();
-			if (childParent instanceof LScrollContainer) {
-				LScrollContainer scroll = (LScrollContainer) childParent;
-				checkX = MathUtils.floor(x1 + scroll.getBoxScrollX());
-				checkY = MathUtils.floor(y1 + scroll.getBoxScrollY());
+			float cx = x1;
+			float cy = y1;
+			LComponent parent = child.getSuper();
+			if (parent instanceof LScrollContainer) {
+				LScrollContainer scr = (LScrollContainer) parent;
+				cx = MathUtils.floor(x1 + scr.getBoxScrollX());
+				cy = MathUtils.floor(y1 + scr.getBoxScrollY());
 			}
-			if (child.intersects(checkX, checkY)) {
-				LComponent target = child.isContainer()
-						? ((LContainer) child).findComponentInternal(checkX, checkY, recursionDepth + 1)
-						: child;
-				if (target != null && (!target.isContainer() || (target instanceof ActorLayer))) {
-					boolean nextChecked = true;
-					// ActorLayer是特殊组件，有特殊的下级对象Actor，不属于组件，但是可以进行鼠标与触屏操作，所以要单独处理
-					if (target instanceof ActorLayer) {
-						final int objectSize = ((ActorLayer) target).size();
-						if (objectSize == 0) {
-							nextChecked = false;
-							continue;
-						}
-					}
-					if (nextChecked) {
-						return checkComponent(target, checkX, checkY);
-					}
+			if (child.intersects(cx, cy)) {
+				LComponent target = (!child.isContainer()) ? child
+						: ((LContainer) child).findComponentInternal(cx, cy, recursionDepth + 1);
+				if (target != null) {
+					return checkComponent(target, cx, cy);
 				}
 			}
 		}
@@ -1566,7 +1543,7 @@ public abstract class LContainer extends LComponent implements IArray {
 		for (int i = size; i > -1; i--) {
 			LComponent comp = _childs[i];
 			if (comp != null) {
-				comp.setRotation(i);
+				comp.setRotation(r);
 			}
 		}
 		return this;
@@ -1793,7 +1770,7 @@ public abstract class LContainer extends LComponent implements IArray {
 		final LComponent[] comps = this._childs;
 		if (comps != null) {
 			final int size = this._childCount;
-			for (int i = 0; i > size; i++) {
+			for (int i = 0; i < size; i++) {
 				if (comps[i] != null) {
 					comps[i].setDesktop(d);
 				}
@@ -2094,7 +2071,7 @@ public abstract class LContainer extends LComponent implements IArray {
 		return maxLayer;
 	}
 
-	public int geMinX() {
+	public int getMinX() {
 		int minX = 0;
 		final int size = this._childCount;
 		final LComponent[] childs = this._childs;
@@ -2126,7 +2103,7 @@ public abstract class LContainer extends LComponent implements IArray {
 		return maxX;
 	}
 
-	public int geMinY() {
+	public int getMinY() {
 		int minY = 0;
 		final int size = this._childCount;
 		final LComponent[] childs = this._childs;
@@ -2158,7 +2135,7 @@ public abstract class LContainer extends LComponent implements IArray {
 		return maxY;
 	}
 
-	public int geMinZ() {
+	public int getMinZ() {
 		int minZ = 0;
 		final int size = this._childCount;
 		final LComponent[] childs = this._childs;
@@ -2317,6 +2294,13 @@ public abstract class LContainer extends LComponent implements IArray {
 		return this;
 	}
 
+	public LContainer clearScroll() {
+		this._component_scrollX = 0;
+		this._component_scrollY = 0;
+		this._scrolling = false;
+		return this;
+	}
+
 	public LContainer scrollTo(float x, float y) {
 		scrollX(x);
 		scrollY(y);
@@ -2426,7 +2410,7 @@ public abstract class LContainer extends LComponent implements IArray {
 	}
 
 	public float getStageY() {
-		return (getX() - getScreenX()) / getScaleY();
+		return (getY() - getScreenY()) / getScaleY();
 	}
 
 	public LContainer setSortableChildren(boolean v) {
@@ -2461,6 +2445,11 @@ public abstract class LContainer extends LComponent implements IArray {
 		if (_component_autoDestroy) {
 			closeChilds();
 		}
+		this._childs = new LComponent[0];
+		this._childCount = 0;
+		this._latestInserted = null;
+		clearScroll();
+		this._dirtyChildren = true;
 		this._newLineHeight = 0;
 		this._destroyed = true;
 	}

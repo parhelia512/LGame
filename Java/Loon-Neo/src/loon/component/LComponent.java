@@ -1748,53 +1748,33 @@ public abstract class LComponent extends LObject<LContainer>
 		LComponent parent = getParent();
 		if (parent != null) {
 			newX = pointResult.x - parent.getX() - getX();
-			newY = pointResult.y - parent.getX() - getY();
+			newY = pointResult.y - parent.getY() - getY();
+		
 		} else {
 			newX = pointResult.x - getX();
 			newY = pointResult.y - getY();
 		}
 		final float angle = getRotation();
-		if (angle == 0 || angle == 360) {
+		if (MathUtils.equal(angle, 0f) || MathUtils.equal(angle, 360f)) {
 			pointResult.x = toPixelScaleX(newX) + _touchOffset.x;
 			pointResult.y = toPixelScaleY(newY) + _touchOffset.y;
 			return pointResult;
 		}
-		final float oldWidth = _width;
-		final float oldHeight = _height;
-		final float newWidth = getWidth();
-		final float newHeight = getHeight();
-		float offX = oldWidth / 2f - newWidth / 2f;
-		float offY = oldHeight / 2f - newHeight / 2f;
-		float posX = (newX - offX);
-		float posY = (newY - offY);
-		if (angle == 90) {
-			offX = oldHeight / 2f - newWidth / 2f;
-			offY = oldWidth / 2f - newHeight / 2f;
-			posX = (newX - offY);
-			posY = (newY - offX);
-			pointResult.set(posX / getScaleX(), posY / getScaleY()).rotateSelf(90);
-			pointResult.set(-pointResult.x, MathUtils.abs(pointResult.y - this._height));
-		} else if (angle == -90) {
-			offX = oldHeight / 2f - newWidth / 2f;
-			offY = oldWidth / 2f - newHeight / 2f;
-			posX = (newX - offY);
-			posY = (newY - offX);
-			pointResult.set(posX / getScaleX(), posY / getScaleY()).rotateSelf(-90);
-			pointResult.set(-(pointResult.x - this._width), MathUtils.abs(pointResult.y));
-		} else if (angle == -180 || angle == 180) {
-			pointResult.set(posX / getScaleX(), posY / getScaleY()).rotateSelf(getRotation()).addSelf(_width, _height);
-		} else {
-			float rad = MathUtils.toRadians(angle);
-			float sin = MathUtils.sin(rad);
-			float cos = MathUtils.cos(rad);
-			float dx = offX / getScaleX();
-			float dy = offY / getScaleY();
-			float dx2 = cos * dx - sin * dy;
-			float dy2 = sin * dx + cos * dy;
-			pointResult.x = _width - (newX - dx2);
-			pointResult.y = _height - (newY - dy2);
-		}
-		pointResult.addSelf(_touchOffset);
+		float localX = newX;
+		float localY = newY;
+		float cx = getWidth() / 2f;
+		float cy = getHeight() / 2f;
+		float dx = localX - cx;
+		float dy = localY - cy;
+		float rad = MathUtils.toRadians(-angle);
+		float cos = MathUtils.cos(rad);
+		float sin = MathUtils.sin(rad);
+		float rx = cos * dx - sin * dy;
+		float ry = sin * dx + cos * dy;
+		float ux = rx / getScaleX() + cx;
+		float uy = ry / getScaleY() + cy;
+		pointResult.x = toPixelScaleX(ux) + _touchOffset.x;
+		pointResult.y = toPixelScaleY(uy) + _touchOffset.y;
 		return pointResult;
 	}
 
@@ -2710,25 +2690,139 @@ public abstract class LComponent extends LObject<LContainer>
 		return this;
 	}
 
-	public LComponent freeImages() {
+	public Vector2f localToScreen(final float localX, final float localY, Vector2f out) {
+		if (out == null) {
+			out = new Vector2f();
+		}
+		float sx = localX * getScaleX();
+		float sy = localY * getScaleY();
+		float cx = getWidth() / 2f;
+		float cy = getHeight() / 2f;
+		float dx = sx - cx;
+		float dy = sy - cy;
+		float angle = getRotation();
+		if (!MathUtils.equal(angle, 0f)) {
+			float rad = MathUtils.toRadians(angle);
+			float cos = MathUtils.cos(rad);
+			float sin = MathUtils.sin(rad);
+			float rx = cos * dx - sin * dy;
+			float ry = sin * dx + cos * dy;
+			sx = rx + cx;
+			sy = ry + cy;
+		}
+		out.x = getDrawOriginX() + sx;
+		out.y = getDrawOriginY() + sy;
+		return out;
+	}
+
+	public Vector2f screenToLocal(final float screenX, final float screenY, Vector2f out) {
+		if (out == null) {
+			out = new Vector2f();
+		}
+		float lx = screenX - getDrawOriginX();
+		float ly = screenY - getDrawOriginY();
+		float cx = getWidth() / 2f;
+		float cy = getHeight() / 2f;
+		float dx = lx - cx;
+		float dy = ly - cy;
+		float angle = getRotation();
+		if (!MathUtils.equal(angle, 0f)) {
+			float rad = MathUtils.toRadians(-angle);
+			float cos = MathUtils.cos(rad);
+			float sin = MathUtils.sin(rad);
+			float rx = cos * dx - sin * dy;
+			float ry = sin * dx + cos * dy;
+			dx = rx;
+			dy = ry;
+		}
+		out.x = dx / getScaleX() + cx / getScaleX();
+		out.y = dy / getScaleY() + cy / getScaleY();
+		return out;
+	}
+
+	public boolean hitTestScreenPoint(final float screenX, final float screenY) {
+		Vector2f local = screenToLocal(screenX, screenY, null);
+		return (local.x >= 0 && local.y >= 0 && local.x <= getWidth() && local.y <= getHeight());
+	}
+
+	public float getDrawOriginX() {
+		return getDrawScrollX();
+	}
+
+	public float getDrawOriginY() {
+		return getDrawScrollY();
+	}
+
+	public float getScaledCenterX() {
+		return getScalePixelX() + _origin.ox(getWidth());
+	}
+
+	public float getScaledCenterY() {
+		return getScalePixelY() + _origin.oy(getHeight());
+	}
+
+	public LComponent setClickListenerSafe(final ClickListener c) {
+		synchronized (this) {
+			this._clickListener = c;
+			if (c != null) {
+				makeTouched();
+			}
+		}
+		return this;
+	}
+
+	public LComponent clearListenersSafe() {
+		synchronized (this) {
+			this._clickListener = null;
+			if (_touchListener != null) {
+				_touchListener.clear();
+				_touchListener = null;
+			}
+			this._resizeListener = null;
+			this._loopActionListener = null;
+		}
+		return this;
+	}
+
+	LComponent freeImages() {
 		if (!_component_autoDestroy) {
 			return this;
 		}
-		if (_imageUI != null) {
-			final int size = _imageUI.length;
-			for (int i = 0; i < size; i++) {
-				_imageUI[i].close();
-				_imageUI[i] = null;
+		try {
+			if (_imageUI != null) {
+				final int size = _imageUI.length;
+				for (int i = 0; i < size; i++) {
+					try {
+						if (_imageUI[i] != null) {
+							_imageUI[i].close();
+							_imageUI[i] = null;
+						}
+					} catch (Throwable t) {
+						LSystem.error("freeImages: close imageUI[" + i + "] failed", t);
+					}
+				}
+				this._imageUI = null;
 			}
-			this._imageUI = null;
-		}
-		if (_background != null) {
-			this._background.close();
-			this._background = null;
-		}
-		if (_freeTextures != null) {
-			this._freeTextures.close();
-			this._freeTextures = null;
+			if (_background != null) {
+				try {
+					this._background.close();
+				} catch (Throwable t) {
+					LSystem.error("freeImages: close background failed", t);
+				} finally {
+					this._background = null;
+				}
+			}
+			if (_freeTextures != null) {
+				try {
+					this._freeTextures.close();
+				} catch (Throwable t) {
+					LSystem.error("freeImages: close freeTextures failed", t);
+				} finally {
+					this._freeTextures = null;
+				}
+			}
+		} catch (Throwable t) {
+			LSystem.error("freeImages: unexpected error", t);
 		}
 		return this;
 	}

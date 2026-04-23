@@ -60,7 +60,7 @@ import loon.utils.timer.Duration;
 
 /**
  * 城市地图显示与链接系统，作用是渲染指定城市并在任意指定城市间绘制可选效果的连接线。
- * (可用于常见的大地图系统，例如三国类游戏或者某些门派模拟类游戏.当然，充当技能树之类也行)
+ * (可用于常见的大地图系统，例如三国类游戏或者某些门派模拟类游戏.当然，关卡选择，充当技能树之类也行)
  */
 public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized, ISprite {
 
@@ -96,6 +96,12 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 		public float roughSideOffset = 6f;
 		// 崎岖分段数 (即一条线来回曲折几次)
 		public int roughSegments = 8;
+		// 默认是否启用虚线
+		public boolean dashed = false;
+		// 虚线长度
+		public float dashLength = 8f;
+		// 虚线间隙
+		public float dashGap = 8f;
 
 		public Edge(String id, City from, City to) {
 			this.id = id;
@@ -157,6 +163,17 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 
 		public Edge setRoughSegments(int segments) {
 			this.roughSegments = MathUtils.clamp(segments, 1, 100);
+			return this;
+		}
+
+		public Edge setDashed(boolean dashed) {
+			this.dashed = dashed;
+			return this;
+		}
+
+		public Edge setDashPattern(float dashLength, float dashGap) {
+			this.dashLength = MathUtils.clamp(dashLength, 1f, 100f);
+			this.dashGap = MathUtils.clamp(dashGap, 1f, 100f);
 			return this;
 		}
 	}
@@ -402,6 +419,12 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 	private float _defaultEdgeWidth = 3f;
 	// 默认连接线出现的缓动时长
 	private float _defaultEdgeAnimationDuration = 2f;
+	// 默认是否启用虚线渲染链接线
+	private boolean _defaultDashed = false;
+	// 默认的虚线长度
+	private float _defaultDashLength = 8f;
+	// 默认的虚线间隙
+	private float _defaultDashGap = 8f;
 
 	public CityMap(String fileName, int tileWidth, int tileHeight) {
 		this(fileName, tileWidth, tileHeight, LSystem.viewSize.getWidth(), LSystem.viewSize.getHeight());
@@ -930,7 +953,8 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 			return;
 		}
 		if (!_edgeAnimationEnabled) {
-			drawFullPolyline(g, offsetX, offsetY, poly, e.width, e.colorFrom, e.colorTo);
+			drawFullPolyline(g, offsetX, offsetY, poly, e.width, e.colorFrom, e.colorTo, e.dashed, e.dashLength,
+					e.dashGap);
 			return;
 		}
 		float total = 0f;
@@ -943,6 +967,7 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 		float prog = e.progress(nowTime);
 		float drawLen = total * prog;
 		float remain = drawLen;
+		float accumulatedDistance = 0f;
 		for (int i = 0; i < poly.size - 1; i++) {
 			Vector2f p0 = poly.get(i), p1 = poly.get(i + 1);
 			float l = segLen[i];
@@ -952,8 +977,10 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 			float t = MathUtils.min(1f, remain / l);
 			Vector2f q = _tempPosA.set(MathUtils.lerp(p0.x, p1.x, t), MathUtils.lerp(p0.y, p1.y, t));
 			LColor col = _tempColorA.setColor(e.colorFrom).lerp(e.colorTo, (i + 0.5f) / (poly.size - 1), _tempColorB);
-			drawThickLine(g, p0.x + offsetX, p0.y + offsetY, q.x + offsetX, q.y + offsetY, e.width, col);
+			drawThickLine(g, p0.x + offsetX, p0.y + offsetY, q.x + offsetX, q.y + offsetY, e.width, col, e.dashed,
+					e.dashLength, e.dashGap, accumulatedDistance);
 			remain -= l;
+			accumulatedDistance += l;
 		}
 	}
 
@@ -961,18 +988,27 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 	 * 绘制完整连接线（无动画）
 	 * 
 	 * @param g
+	 * @param offsetX
+	 * @param offsetY
 	 * @param poly
 	 * @param width
 	 * @param colorFrom
 	 * @param colorTo
+	 * @param dashed
+	 * @param dashLen
+	 * @param dashGap
 	 */
 	private void drawFullPolyline(GLEx g, float offsetX, float offsetY, TArray<Vector2f> poly, float width,
-			LColor colorFrom, LColor colorTo) {
+			LColor colorFrom, LColor colorTo, boolean dashed, float dashLen, float dashGap) {
+		float accumulatedDistance = 0f;
 		for (int i = 0; i < poly.size - 1; i++) {
 			Vector2f p0 = poly.get(i);
 			Vector2f p1 = poly.get(i + 1);
 			LColor col = _tempColorA.setColor(colorFrom).lerp(colorTo, (i + 0.5f) / (poly.size - 1), _tempColorB);
-			drawThickLine(g, p0.x + offsetX, p0.y + offsetY, p1.x + offsetX, p1.y + offsetY, width, col);
+			float segmentLength = p0.dst(p1);
+			drawThickLine(g, p0.x + offsetX, p0.y + offsetY, p1.x + offsetX, p1.y + offsetY, width, col, dashed,
+					dashLen, dashGap, accumulatedDistance);
+			accumulatedDistance += segmentLength;
 		}
 	}
 
@@ -1000,6 +1036,10 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 		if (drawSegments < 1) {
 			drawSegments = 1;
 		}
+
+		float segmentLength = a.dst(b) / segments;
+		float accumulatedDistance = 0f;
+
 		for (int i = 0; i < drawSegments; i++) {
 			float t0 = i / (float) segments;
 			float t1 = (i + 1) / (float) segments;
@@ -1010,7 +1050,9 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 					? _tempPosB.set(MathUtils.lerp(a.x, b.x, t1), MathUtils.lerp(a.y, b.y, t1))
 					: CollisionHelper.quadPoint(a, control, b, t1);
 			LColor col = _tempColorA.setColor(e.colorFrom).lerp(e.colorTo, (t0 + t1) * 0.5f, _tempColorB);
-			drawThickLine(g, p0.x + offsetX, p0.y + offsetY, p1.x + offsetX, p1.y + offsetY, e.width, col);
+			drawThickLine(g, p0.x + offsetX, p0.y + offsetY, p1.x + offsetX, p1.y + offsetY, e.width, col, e.dashed,
+					e.dashLength, e.dashGap, accumulatedDistance);
+			accumulatedDistance += segmentLength;
 		}
 	}
 
@@ -1028,6 +1070,8 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 	private void drawFullSingleEdge(GLEx g, float offsetX, float offsetY, Edge e, Vector2f a, Vector2f b,
 			Vector2f control) {
 		int segments = MathUtils.max(6, (int) (a.dst(b) / 12f));
+		float segmentLength = a.dst(b) / segments;
+		float accumulatedDistance = 0f;
 		for (int i = 0; i < segments; i++) {
 			float t0 = i / (float) segments;
 			float t1 = (i + 1) / (float) segments;
@@ -1038,12 +1082,101 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 					? _tempPosB.set(MathUtils.lerp(a.x, b.x, t1), MathUtils.lerp(a.y, b.y, t1))
 					: CollisionHelper.quadPoint(a, control, b, t1);
 			LColor col = _tempColorA.setColor(e.colorFrom).lerp(e.colorTo, (t0 + t1) * 0.5f, _tempColorB);
-			drawThickLine(g, p0.x + offsetX, p0.y + offsetY, p1.x + offsetX, p1.y + offsetY, e.width, col);
+			drawThickLine(g, p0.x + offsetX, p0.y + offsetY, p1.x + offsetX, p1.y + offsetY, e.width, col, e.dashed,
+					e.dashLength, e.dashGap, accumulatedDistance);
+			accumulatedDistance += segmentLength;
 		}
 	}
 
-	private void drawThickLine(GLEx g, float x1, float y1, float x2, float y2, float width, LColor color) {
-		g.drawLine(x1, y1, x2, y2, width, color);
+	protected void drawThickLine(GLEx g, float x1, float y1, float x2, float y2, float width, LColor color) {
+		drawThickLine(g, x1, y1, x2, y2, width, color, _defaultDashed, _defaultDashLength, _defaultDashGap, 0f);
+	}
+
+	protected void drawThickLine(GLEx g, float x1, float y1, float x2, float y2, float width, LColor color,
+			boolean dashed, float dashLength, float dashGap) {
+		drawThickLine(g, x1, y1, x2, y2, width, color, dashed, dashLength, dashGap, 0f);
+	}
+
+	/**
+	 * 曲线绘制用类，支持虚线模式
+	 * 
+	 * @param g           图形上下文
+	 * @param x1          起点X坐标
+	 * @param y1          起点Y坐标
+	 * @param x2          终点X坐标
+	 * @param y2          终点Y坐标
+	 * @param width       线宽
+	 * @param color       颜色
+	 * @param dashed      是否虚线
+	 * @param dashLength  虚线长度
+	 * @param dashGap     虚线间隙
+	 * @param startOffset 从整体路径起点开始的偏移距离
+	 */
+	protected void drawThickLine(GLEx g, float x1, float y1, float x2, float y2, float width, LColor color,
+			boolean dashed, float dashLength, float dashGap, float startOffset) {
+		if (!dashed) {
+			g.drawLine(x1, y1, x2, y2, width, color);
+			return;
+		}
+		float dx = x2 - x1;
+		float dy = y2 - y1;
+		float length = MathUtils.sqrt(dx * dx + dy * dy);
+		if (length < 0.1f) {
+			return;
+		}
+		float nx = dx / length;
+		float ny = dy / length;
+
+		float cycleLength = dashLength + dashGap;
+		if (cycleLength <= 0) {
+			g.drawLine(x1, y1, x2, y2, width, color);
+			return;
+		}
+
+		float initialOffset = startOffset % cycleLength;
+		boolean draw = initialOffset < dashLength;
+		float current = 0f;
+
+		while (current < length) {
+			float remainingSegmentLength = length - current;
+			float distanceInCycle = (startOffset + current) % cycleLength;
+
+			if (draw) {
+				float remainingDash = dashLength - distanceInCycle;
+				if (distanceInCycle >= dashLength) {
+					draw = false;
+					continue;
+				}
+
+				float segmentEnd = current + MathUtils.min(remainingDash, remainingSegmentLength);
+				float sx = x1 + nx * current;
+				float sy = y1 + ny * current;
+				float ex = x1 + nx * segmentEnd;
+				float ey = y1 + ny * segmentEnd;
+
+				g.drawLine(sx, sy, ex, ey, width, color);
+				current = segmentEnd;
+
+				if (segmentEnd >= length) {
+					break;
+				}
+			} else {
+				float remainingGap = cycleLength - distanceInCycle;
+				if (distanceInCycle < dashLength) {
+					draw = true;
+					continue;
+				}
+
+				float segmentSkip = MathUtils.min(remainingGap, remainingSegmentLength);
+				current += segmentSkip;
+
+				if (current >= length) {
+					break;
+				}
+			}
+
+			draw = !draw;
+		}
 	}
 
 	/**
@@ -1861,8 +1994,8 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 			if (this._roll) {
 				this._offset = toRollPosition(this._offset);
 			}
-			float newX = this._objectLocation.x + offsetX + _offset.getX();
-			float newY = this._objectLocation.y + offsetY + _offset.getY();
+			final float newX = this._objectLocation.x + offsetX + _offset.getX();
+			final float newY = this._objectLocation.y + offsetY + _offset.getY();
 			if (update) {
 				g.saveTx();
 				Affine2f tx = g.tx();
@@ -1918,9 +2051,8 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 		}
 
 		if (!_dirtyEdges.isEmpty()) {
-
 			int processed = 0;
-			TArray<String> keys = new TArray<String>();
+			final TArray<String> keys = new TArray<String>();
 			keys.addAll(_dirtyEdges.keys());
 			for (String id : keys) {
 				if (processed >= _maxEdgeProcessPerFrame) {
@@ -1942,15 +2074,15 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 		for (int i = _edges.size - 1; i > -1; i--) {
 			Edge e = _edges.get(i);
 			if (e != null) {
-				TArray<Vector2f> poly = _edgePathCache.get(e.id);
+				final TArray<Vector2f> poly = _edgePathCache.get(e.id);
 				if (poly != null && poly.size >= 2) {
 					drawPolylineWithProgress(g, offsetX, offsetY, e, poly, _nowDelta);
 				} else {
-					Vector2f a = e.from.screenPos;
-					Vector2f b = e.to.screenPos;
-					Vector2f aC = CollisionHelper.clipPointToCircle(b, a, a, e.from.radius);
-					Vector2f bC = CollisionHelper.clipPointToCircle(a, b, b, e.to.radius);
-					Vector2f control = CollisionHelper.defaultQuadControl(aC, bC, e.bezierOffsetRatio);
+					final Vector2f a = e.from.screenPos;
+					final Vector2f b = e.to.screenPos;
+					final Vector2f aC = CollisionHelper.clipPointToCircle(b, a, a, e.from.radius);
+					final Vector2f bC = CollisionHelper.clipPointToCircle(a, b, b, e.to.radius);
+					final Vector2f control = CollisionHelper.defaultQuadControl(aC, bC, e.bezierOffsetRatio);
 					drawSingleEdgeWithProgress(g, offsetX, offsetY, e, aC, bC, control, _nowDelta);
 				}
 			}
@@ -1960,28 +2092,34 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 			if (c != null) {
 				c.draw(g, offsetX, offsetY);
 				if (_showCityNames && c.getName() != null && !c.getName().isEmpty()) {
-					float textX = offsetX + c.screenPos.x - g.getFont().stringWidth(c.getName()) / 2f
+					final float textX = offsetX + c.screenPos.x - g.getFont().stringWidth(c.getName()) / 2f
 							+ _cityNameOffsetX;
-					float textY = offsetY + c.screenPos.y + c.radius + _cityNameOffsetY;
+					final float textY = offsetY + c.screenPos.y + c.radius + _cityNameOffsetY;
 					g.drawString(c.getName(), textX, textY, _cityNameColor);
 				}
 
 			}
 		}
 		if (_selectedCity != null) {
-			Vector2f pos = _selectedCity.screenPos;
-			float radius = _selectedCity.radius * 2 + 4;
-			final float newX = pos.x + offsetX - radius / 2;
-			final float newY = pos.y + offsetY - radius / 2;
-			g.drawDashCircle(newX, newY, radius, 3f, SELECT_HALO_COLOR);
-			float pulseRadius = radius + 8f;
-			g.drawDashCircle(newX - 4, newY - 4, pulseRadius, 3f,
-					SELECT_HALO_COLOR.lerp(LColor.yellow, 0.5f, _tempColorB));
+			drawSelectEffect(g, offsetX, offsetY);
 		}
-
 		if (_drawListener != null) {
 			_drawListener.draw(g, offsetX, offsetY);
 		}
+	}
+
+	protected void drawSelectEffect(GLEx g, float offsetX, float offsetY) {
+		final float pulse = (MathUtils.sin(_nowDelta * 5f) * 4f);
+		final float width = pulse < 0 ? 2 : 3;
+		Vector2f pos = _selectedCity.screenPos;
+		float radius = _selectedCity.radius * 2 + pulse;
+		final float newX = pos.x + offsetX - radius / 2;
+		final float newY = pos.y + offsetY - radius / 2;
+		g.drawDashCircle(newX, newY, radius, width, SELECT_HALO_COLOR);
+		final float pulseRadius = radius + (pulse * 2);
+		g.drawDashCircle(newX - pulse, newY - pulse, pulseRadius, width,
+				SELECT_HALO_COLOR.lerp(LColor.yellow, 0.5f, _tempColorB));
+
 	}
 
 	/**
@@ -2764,7 +2902,7 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 	}
 
 	/**
-	 * 自动为边应用全局默认样式（颜色/宽度/动画）
+	 * 自动为边应用全局默认样式（颜色/宽度/动画/边线样式/虚线与否/虚线每段长度/虚线宽度）
 	 * 
 	 * @param edge
 	 */
@@ -2774,6 +2912,121 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 		edge.width = _defaultEdgeWidth;
 		edge.animationDuration = _defaultEdgeAnimationDuration;
 		edge.edgeType = _defaultEdgeType;
+		edge.dashed = _defaultDashed;
+		edge.dashLength = _defaultDashLength;
+		edge.dashGap = _defaultDashGap;
+	}
+
+	/**
+	 * 设置单条边线的虚线开关
+	 * 
+	 * @param edge
+	 * @param dashed
+	 * @return
+	 */
+	public CityMap setEdgeDashed(Edge edge, boolean dashed) {
+		if (edge == null) {
+			return this;
+		}
+		edge.setDashed(dashed);
+		markEdgeDirty(edge);
+		return this;
+	}
+
+	/**
+	 * 设置单条边的虚线样式
+	 * 
+	 * @param edge
+	 * @param dashLength
+	 * @param dashGap
+	 * @return
+	 */
+	public CityMap setEdgeDashPattern(Edge edge, float dashLength, float dashGap) {
+		if (edge == null) {
+			return this;
+		}
+		edge.setDashPattern(dashLength, dashGap);
+		markEdgeDirty(edge);
+		return this;
+	}
+
+	/**
+	 * 批量设置多条边的虚线
+	 * 
+	 * @param dashed
+	 * @param edges
+	 * @return
+	 */
+	public CityMap setEdgesDashed(boolean dashed, Edge... edges) {
+		if (edges == null || edges.length == 0) {
+			return this;
+		}
+		for (Edge e : edges) {
+			setEdgeDashed(e, dashed);
+		}
+		return this;
+	}
+
+	/**
+	 * 批量设置多条边的虚线样式
+	 * 
+	 * @param dashLength
+	 * @param dashGap
+	 * @param edges
+	 * @return
+	 */
+	public CityMap setEdgesDashPattern(float dashLength, float dashGap, Edge... edges) {
+		if (edges == null || edges.length == 0) {
+			return this;
+		}
+		for (Edge e : edges) {
+			setEdgeDashPattern(e, dashLength, dashGap);
+		}
+		return this;
+	}
+
+	/**
+	 * 设置所有边为虚线/实线
+	 * 
+	 * @param dashed
+	 * @return
+	 */
+	public CityMap setAllEdgesDashed(boolean dashed) {
+		for (Edge e : _edges) {
+			setEdgeDashed(e, dashed);
+		}
+		return this;
+	}
+
+	public boolean isDefaultDashed() {
+		return _defaultDashed;
+	}
+
+	/**
+	 * 设置默认虚线状态是否开启
+	 * 
+	 * @param dashed
+	 * @return
+	 */
+	public CityMap setDefaultDash(boolean dashed) {
+		setDefaultDashStyle(dashed, _defaultDashLength, _defaultDashGap);
+		return this;
+	}
+
+	/**
+	 * 设置全局默认虚线样式
+	 * 
+	 * @param dashed
+	 * @param dashLength
+	 * @param dashGap
+	 * @return
+	 */
+	public CityMap setDefaultDashStyle(boolean dashed, float dashLength, float dashGap) {
+		this._defaultDashed = dashed;
+		this._defaultDashLength = MathUtils.clamp(dashLength, 1f, 50f);
+		this._defaultDashGap = MathUtils.clamp(dashGap, 1f, 50f);
+		batchResetAllEdgesToDefault();
+		return this;
 	}
 
 	/**
@@ -3559,6 +3812,370 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 	 */
 	public CityMap setAllCitiesVisible(boolean visible) {
 		return setCitiesVisible(visible, _cities);
+	}
+
+	/**
+	 * 仅设置指定城市所有边线的颜色
+	 * 
+	 * @param city
+	 * @param colorFrom
+	 * @param colorTo
+	 * @return
+	 */
+	public CityMap setAllEdgesColorForCity(City city, LColor colorFrom, LColor colorTo) {
+		if (city == null) {
+			return this;
+		}
+		for (Edge e : getEdgesByCity(city)) {
+			e.setColorBatch(colorFrom, colorTo);
+			markEdgeDirty(e);
+		}
+		return this;
+	}
+
+	/**
+	 * 仅设置指定城市所有边线的宽度
+	 * 
+	 * @param city
+	 * @param width
+	 * @return
+	 */
+	public CityMap setAllEdgesWidthForCity(City city, float width) {
+		if (city == null) {
+			return this;
+		}
+		for (Edge e : getEdgesByCity(city)) {
+			e.setWidth(width);
+			markEdgeDirty(e);
+		}
+		return this;
+	}
+
+	/**
+	 * 仅设置指定城市所有边线的类型
+	 * 
+	 * @param city
+	 * @param edgeType
+	 * @return
+	 */
+	public CityMap setAllEdgesTypeForCity(City city, EdgeType edgeType) {
+		if (city == null) {
+			return this;
+		}
+		for (Edge e : getEdgesByCity(city)) {
+			e.setEdgeType(edgeType);
+			markEdgeDirty(e);
+		}
+		return this;
+	}
+
+	/**
+	 * 仅设置指定城市所有边线的虚线样式
+	 * 
+	 * @param city
+	 * @param dashed
+	 * @param dashLength
+	 * @param dashGap
+	 * @return
+	 */
+	public CityMap setAllEdgesDashedForCity(City city, boolean dashed, float dashLength, float dashGap) {
+		if (city == null) {
+			return this;
+		}
+		for (Edge e : getEdgesByCity(city)) {
+			e.setDashed(dashed).setDashPattern(dashLength, dashGap);
+			markEdgeDirty(e);
+		}
+		return this;
+	}
+
+	/**
+	 * 仅设置指定城市所有边线的贝塞尔偏移
+	 * 
+	 * @param city
+	 * @param bezierOffset
+	 * @return
+	 */
+	public CityMap setAllEdgesBezierForCity(City city, float bezierOffset) {
+		if (city == null) {
+			return this;
+		}
+		for (Edge e : getEdgesByCity(city)) {
+			e.setBezierOffset(bezierOffset);
+			markEdgeDirty(e);
+		}
+		return this;
+	}
+
+	/**
+	 * 仅设置指定城市所有边线的崎岖参数
+	 * 
+	 * @param city
+	 * @param amplitude
+	 * @param sideOffset
+	 * @param segments
+	 * @return
+	 */
+	public CityMap setAllEdgesRoughForCity(City city, float amplitude, float sideOffset, int segments) {
+		if (city == null) {
+			return this;
+		}
+		for (Edge e : getEdgesByCity(city)) {
+			e.setRoughAmplitude(amplitude).setRoughSideOffset(sideOffset).setRoughSegments(segments);
+			markEdgeDirty(e);
+		}
+		return this;
+	}
+
+	/**
+	 * 设置两个城市之间的特定边线
+	 * 
+	 * @param from
+	 * @param to
+	 * @param colorFrom
+	 * @param colorTo
+	 * @param width
+	 * @param animDuration
+	 * @param edgeType
+	 * @param bezierOffset
+	 * @return
+	 */
+	public CityMap setEdgeStyleBetweenCities(City from, City to, LColor colorFrom, LColor colorTo, float width,
+			float animDuration, EdgeType edgeType, float bezierOffset) {
+		Edge edge = getEdgeBetweenCities(from, to);
+		if (edge == null) {
+			return this;
+		}
+		edge.setColorBatch(colorFrom, colorTo).setWidth(width).setAnimation(animDuration).setEdgeType(edgeType)
+				.setBezierOffset(bezierOffset);
+		markEdgeDirty(edge);
+		return this;
+	}
+
+	/**
+	 * 设置两个ID城市之间的边线样式
+	 * 
+	 * @param fromId
+	 * @param toId
+	 * @param colorFrom
+	 * @param colorTo
+	 * @param width
+	 * @param animDuration
+	 * @param edgeType
+	 * @param bezierOffset
+	 * @return
+	 */
+	public CityMap setEdgeStyleBetweenIds(String fromId, String toId, LColor colorFrom, LColor colorTo, float width,
+			float animDuration, EdgeType edgeType, float bezierOffset) {
+		return setEdgeStyleBetweenCities(getCityById(fromId), getCityById(toId), colorFrom, colorTo, width,
+				animDuration, edgeType, bezierOffset);
+	}
+
+	/**
+	 * 仅设置两个城市之间边线的颜色
+	 * 
+	 * @param from
+	 * @param to
+	 * @param colorFrom
+	 * @param colorTo
+	 * @return
+	 */
+	public CityMap setEdgeColorBetweenCities(City from, City to, LColor colorFrom, LColor colorTo) {
+		Edge edge = getEdgeBetweenCities(from, to);
+		if (edge == null) {
+			return this;
+		}
+		edge.setColorBatch(colorFrom, colorTo);
+		markEdgeDirty(edge);
+		return this;
+	}
+
+	/**
+	 * 仅设置两个城市之间边线的宽度
+	 * 
+	 * @param from
+	 * @param to
+	 * @param width
+	 * @return
+	 */
+	public CityMap setEdgeWidthBetweenCities(City from, City to, float width) {
+		Edge edge = getEdgeBetweenCities(from, to);
+		if (edge == null) {
+			return this;
+		}
+		edge.setWidth(width);
+		markEdgeDirty(edge);
+		return this;
+	}
+
+	/**
+	 * 仅设置两个城市之间边线的虚线样式
+	 * 
+	 * @param from
+	 * @param to
+	 * @param dashed
+	 * @param dashLength
+	 * @param dashGap
+	 * @return
+	 */
+	public CityMap setEdgeDashedBetweenCities(City from, City to, boolean dashed, float dashLength, float dashGap) {
+		Edge edge = getEdgeBetweenCities(from, to);
+		if (edge == null) {
+			return this;
+		}
+		edge.setDashed(dashed).setDashPattern(dashLength, dashGap);
+		markEdgeDirty(edge);
+		return this;
+	}
+
+	/**
+	 * 仅设置两个城市之间边线的贝塞尔偏移
+	 * 
+	 * @param from
+	 * @param to
+	 * @param bezierOffset
+	 * @return
+	 */
+	public CityMap setEdgeBezierBetweenCities(City from, City to, float bezierOffset) {
+		Edge edge = getEdgeBetweenCities(from, to);
+		if (edge == null) {
+			return this;
+		}
+		edge.setBezierOffset(bezierOffset);
+		markEdgeDirty(edge);
+		return this;
+	}
+
+	/**
+	 * 仅设置两个城市之间边线的崎岖参数
+	 * 
+	 * @param from
+	 * @param to
+	 * @param amplitude
+	 * @param sideOffset
+	 * @param segments
+	 * @return
+	 */
+	public CityMap setEdgeRoughBetweenCities(City from, City to, float amplitude, float sideOffset, int segments) {
+		Edge edge = getEdgeBetweenCities(from, to);
+		if (edge == null) {
+			return this;
+		}
+		edge.setRoughAmplitude(amplitude).setRoughSideOffset(sideOffset).setRoughSegments(segments);
+		markEdgeDirty(edge);
+		return this;
+	}
+
+	/**
+	 * 重置指定城市所有边线为全局默认样式
+	 * 
+	 * @param city
+	 * @return
+	 */
+	public CityMap resetAllEdgesForCity(City city) {
+		if (city == null) {
+			return this;
+		}
+		for (Edge e : getEdgesByCity(city)) {
+			applyDefaultEdgeStyle(e);
+			markEdgeDirty(e);
+		}
+		return this;
+	}
+
+	/**
+	 * 重置两个城市之间的边线为全局默认样式
+	 * 
+	 * @param from
+	 * @param to
+	 * @return
+	 */
+	public CityMap resetEdgeBetweenCities(City from, City to) {
+		Edge edge = getEdgeBetweenCities(from, to);
+		if (edge == null) {
+			return this;
+		}
+		applyDefaultEdgeStyle(edge);
+		markEdgeDirty(edge);
+		return this;
+	}
+
+	/**
+	 * 播放指定城市所有边线的动画
+	 * 
+	 * @param city
+	 * @param nowTime
+	 * @return
+	 */
+	public CityMap startAllEdgesAnimationForCity(City city, float nowTime) {
+		if (city == null) {
+			return this;
+		}
+		for (Edge e : getEdgesByCity(city)) {
+			e.startAnimationBatch(nowTime);
+		}
+		return this;
+	}
+
+	/**
+	 * 播放两个城市之间边线的动画
+	 * 
+	 * @param from
+	 * @param to
+	 * @param nowTime
+	 * @return
+	 */
+	public CityMap startEdgeAnimationBetweenCities(City from, City to, float nowTime) {
+		Edge edge = getEdgeBetweenCities(from, to);
+		if (edge == null) {
+			return this;
+		}
+		edge.startAnimationBatch(nowTime);
+		return this;
+	}
+
+	/**
+	 * 为指定城市所有边线设置纯色
+	 * 
+	 * @param city
+	 * @param color
+	 * @return
+	 */
+	public CityMap setAllEdgesSolidColorForCity(City city, LColor color) {
+		return setAllEdgesColorForCity(city, color, color);
+	}
+
+	/**
+	 * 为两个城市之间边线设置纯色
+	 * 
+	 * @param from
+	 * @param to
+	 * @param color
+	 * @return
+	 */
+	public CityMap setEdgeSolidColorBetweenCities(City from, City to, LColor color) {
+		return setEdgeColorBetweenCities(from, to, color, color);
+	}
+
+	/**
+	 * 隐藏指定城市的所有边线
+	 * 
+	 * @param city
+	 * @return
+	 */
+	public CityMap hideAllEdgesForCity(City city) {
+		return setAllEdgesWidthForCity(city, 0f);
+	}
+
+	/**
+	 * 隐藏两个城市之间的边线
+	 * 
+	 * @param from
+	 * @param to
+	 * @return
+	 */
+	public CityMap hideEdgeBetweenCities(City from, City to) {
+		return setEdgeWidthBetweenCities(from, to, 0f);
 	}
 
 	public int getCityEgdeMaxIter() {

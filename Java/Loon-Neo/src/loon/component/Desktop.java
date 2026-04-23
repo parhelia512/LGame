@@ -57,59 +57,26 @@ import loon.utils.reply.Callback;
 
 /**
  * 桌面组件总父类，用来注册，控制，以及渲染所有桌面组件（所有默认支持触屏的组件，被置于此）
- * 
  */
 public final class Desktop implements Visible, ZIndex, IArray, LRelease {
-
-	private boolean _useFrameBufferShaderMask;
-
-	private FBOMask _frameBufferShaderMask;
-	// 改变画面UV斜率
-	private boolean _changeUVTilt = false;
-
-	private BilinearMask _uvMask;
-
-	private float _offsetUVx, _offsetUVy;
-
-	// 是否在整个桌面组件中使用光源
-	private boolean _useLight = false;
-
-	private Light2D _light;
-
-	// 是否使用shadermask改变画面显示效果
-	private boolean _useShaderMask = false;
-
-	private ShaderMask _shaderMask;
 
 	private final DirtyRectList _dirtyList = new DirtyRectList();
 
 	private final Vector2f _touchPoint = new Vector2f();
-
-	private int _indexLayer;
-
+	// 桌面组件名称
+	private final String _desktop_name;
 	// 输入设备监听
 	protected SysInput _sysInput;
-
 	// 当前运行屏幕
 	protected Screen _curScreen;
 
-	private ResizeListener<Desktop> _resizeListener;
+	private boolean _useFrameBufferShaderMask;
+	// 改变画面UV斜率
+	private boolean _changeUVTilt = false;
 
-	private LContainer _contentPane;
-
-	private LComponent _modal;
-
-	private LComponent _hoverComponent;
-
-	private LComponent _selectedComponent;
-
-	private LComponent _clickedComponent;
-
-	private LComponent[] _clickComponents;
-
-	private LToolTip _tooltip;
-
-	private Vector2f _touchOffset = new Vector2f();
+	private boolean _useLight = false;
+	// 是否使用shadermask改变画面显示效果
+	private boolean _useShaderMask = false;
 
 	private boolean _clicked;
 
@@ -119,24 +86,42 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 	// 此项为true时，内置FrameBuffer将被启用,画面会渲染去内置FrameBuffer纹理中
 	private boolean _desktopSavetoFrameBuffer;
 
-	private FrameBuffer _desktopFrameBuffer;
+	private FBOMask _frameBufferShaderMask;
 
-	private final String _desktop_name;
+	private BilinearMask _uvMask;
+
+	private float _offsetUVx, _offsetUVy;
+	// 是否在整个桌面组件中使用光源
+	private Light2D _light;
+
+	private ShaderMask _shaderMask;
+
+	private int _indexLayer;
+
+	private ResizeListener<Desktop> _resizeListener;
+
+	private LContainer _contentPane;
+
+	private LComponent _modal;
+	private LComponent _hoverComponent;
+	private LComponent _selectedComponent;
+	private LComponent _clickedComponent;
+	private LComponent[] _clickComponents;
+
+	private LToolTip _tooltip;
+
+	private Vector2f _touchOffset = new Vector2f();
+
+	private FrameBuffer _desktopFrameBuffer;
+	// 当前触屏状态缓存
+	private int _localTouchPressed = Screen.NO_BUTTON;
+	private int _localTouchReleased = Screen.NO_BUTTON;
 
 	/**
 	 * 空桌面控制
 	 */
 	public Desktop() {
 		this(null, null, 1, 1);
-	}
-
-	/**
-	 * 构造一个可用桌面
-	 * 
-	 * @param screen
-	 */
-	public Desktop(Screen screen) {
-		this(null, screen, LSystem.viewSize.getWidth(), LSystem.viewSize.getHeight());
 	}
 
 	/**
@@ -377,7 +362,6 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 			}
 			i++;
 		}
-
 		return removed;
 	}
 
@@ -581,13 +565,13 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 				_light.setAutoTouchTimer(_sysInput.getTouchX(), _sysInput.getTouchY(), _sysInput.getCurrentTimer());
 				final ShaderMask lightMask = _light.getMask();
 				lightMask.pushBatch(g);
-				this._contentPane.createUI(g);
+				_contentPane.createUI(g);
 				lightMask.popBatch(g);
 			} else {
 				if (_useShaderMask) {
 					_shaderMask.pushBatch(g);
 				}
-				this._contentPane.createUI(g);
+				_contentPane.createUI(g);
 				if (_useShaderMask) {
 					_shaderMask.popBatch(g);
 				}
@@ -635,7 +619,6 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 
 	/**
 	 * 事件监听
-	 * 
 	 */
 	public Desktop processEvents() {
 		processTouchs();
@@ -647,13 +630,21 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 	 * 触发触屏(鼠标)事件
 	 */
 	public Desktop processTouchs() {
+		// 触摸点不在当前Desktop内，直接强制重置状态并返回
+		if (!isTouchInDesktopArea()) {
+			forceReleaseAllTouch();
+			return this;
+		}
 		// 鼠标滑动
 		this.processTouchMotionEvent();
-
-		// 鼠标事件
+		// 同步共享Input状态到本地
+		syncLocalTouchState();
+		// 只有存在按下或经过的组件时，触发鼠标/触屏事件
 		if (this._hoverComponent != null && _hoverComponent.isAllowTouch()) {
 			this.processTouchEvent();
 		}
+		// 空本地事件缓存
+		clearLocalTouchEvent();
 		return this;
 	}
 
@@ -670,6 +661,8 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 
 	/**
 	 * 强行显示提示
+	 * 
+	 * @param comp
 	 */
 	protected void showTooltip(LComponent comp) {
 		if (comp.isTooltip() && _tooltip != null && !_tooltip.isRunning()) {
@@ -695,7 +688,6 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 
 	/**
 	 * 鼠标运动事件
-	 * 
 	 */
 	private void processTouchMotionEvent() {
 		if (_hoverComponent != null && _hoverComponent.isAllowTouch() && _sysInput != null && _sysInput.isMoving()) {
@@ -755,9 +747,9 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 					_hoverComponent.processTouchExited();
 				}
 			}
+			// 强制触发原组件释放
 			if (_hoverComponent != comp) {
-				if (_hoverComponent != null && _hoverComponent.isAllowTouch() && _hoverComponent.isTouchDownClick()
-						&& !_hoverComponent.isPointInUI()) {
+				if (_hoverComponent != null && _hoverComponent.isAllowTouch()) {
 					_hoverComponent.processTouchReleased();
 					_hoverComponent.validatePosition();
 					_hoverComponent.processTouchExited();
@@ -767,30 +759,17 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 		}
 	}
 
-	public LToolTip getToolTip() {
-		return this._tooltip;
-	}
-
-	/**
-	 * 设置全局通用的提示组件
-	 * 
-	 * @param tip
-	 */
-	public Desktop setToolTip(LToolTip tip) {
-		this._contentPane.replace(this._tooltip, tip);
-		this._tooltip = tip;
-		return this;
-	}
-
 	/**
 	 * 鼠标按下事件
-	 * 
 	 */
 	private void processTouchEvent() {
 		if (this._sysInput == null) {
 			return;
 		}
-		final int pressed = this._sysInput.getTouchPressed(), released = this._sysInput.getTouchReleased();
+		// 使用本地缓存状态，不直接读取Input，避免多Desktop共享数据造成污染
+		final int pressed = this._localTouchPressed;
+		final int released = this._localTouchReleased;
+
 		if (pressed > Screen.NO_BUTTON) {
 			final boolean mobile = LSystem.isMobile() || LSystem.isEmulateTouch();
 			if (!mobile) {
@@ -823,22 +802,37 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 			}
 		}
 		if (released > Screen.NO_BUTTON) {
-			if (!_clicked && this._hoverComponent != null && this._hoverComponent.isAllowTouch()) {
+			// 强制执行释放
+			if (this._hoverComponent != null && this._hoverComponent.isAllowTouch()) {
 				this._hoverComponent.validatePosition();
 				this._hoverComponent.processTouchReleased();
 				// 当释放鼠标时，点击事件生效
-				if (this._clickComponents[0] == this._hoverComponent && this._hoverComponent != null
-						&& this._hoverComponent.isAllowTouch()) {
+				if (this._clickComponents[0] == this._hoverComponent) {
 					this._hoverComponent.processTouchClicked();
 				}
 			}
+			_clickComponents[0] = null;
 		}
 		this._clicked = false;
 	}
 
+	public LToolTip getToolTip() {
+		return this._tooltip;
+	}
+
+	/**
+	 * 设置全局通用的提示组件
+	 * 
+	 * @param tip
+	 */
+	public Desktop setToolTip(LToolTip tip) {
+		this._contentPane.replace(this._tooltip, tip);
+		this._tooltip = tip;
+		return this;
+	}
+
 	/**
 	 * 触发键盘事件
-	 * 
 	 */
 	private void processKeyEvent() {
 		if (this._selectedComponent != null && this._selectedComponent.isAllowKey()
@@ -992,20 +986,13 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 		if (comp == null) {
 			return false;
 		}
-
 		if (!comp.isVisible() || !comp.isEnabled() || !comp.isAllowSelectOfSelf) {
 			return false;
 		}
-
-		// 清除最后部分
 		this.deselectComponent();
-
-		// 设定选中状态
 		comp.setSelected(true);
 		comp.setFocusable(true);
-
 		this._selectedComponent = comp;
-
 		return true;
 	}
 
@@ -1026,26 +1013,20 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 		if (comp == null) {
 			return;
 		}
-
 		if (!active) {
 			if (this._hoverComponent == comp) {
 				this.processTouchMotionEvent();
 			}
-
 			if (this._selectedComponent == comp) {
 				this.deselectComponent();
 			}
-
 			this._clickComponents[0] = null;
-
 			if (this._modal == comp) {
 				this._modal = null;
 			}
-
 		} else {
 			this.processTouchMotionEvent();
 		}
-
 		if (comp.isContainer()) {
 			LComponent[] components = ((LContainer) comp)._childs;
 			int size = ((LContainer) comp).getComponentCount();
@@ -1059,7 +1040,6 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 		if (components == null) {
 			return;
 		}
-
 		boolean checkTouchMotion = false;
 		for (int i = 0; i < components.length; i++) {
 			LComponent comp = components[i];
@@ -1071,7 +1051,6 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 			}
 			this._clickComponents[0] = null;
 		}
-
 		if (checkTouchMotion) {
 			this.processTouchMotionEvent();
 		}
@@ -1393,6 +1372,7 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 	}
 
 	public Desktop freeComponent() {
+		forceReleaseAllTouch();
 		this._clicked = false;
 		this._hoverComponent = null;
 		this._selectedComponent = null;
@@ -1539,7 +1519,7 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 	}
 
 	public float getStageY() {
-		return (getX() - getScreenX()) / _contentPane.getScaleY();
+		return (getY() - getScreenY()) / _contentPane.getScaleY();
 	}
 
 	private void addRect(TArray<RectBox> rects, RectBox rect) {
@@ -1821,6 +1801,208 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 			_shaderMask = null;
 		}
 		return this;
+	}
+
+	/**
+	 * 检测触摸点是否在当前Desktop区域内
+	 */
+	private boolean isTouchInDesktopArea() {
+		if (_sysInput == null || !hasContentPane()) {
+			return false;
+		}
+		Vector2f localTouch = getUITouch(_sysInput.getTouchX(), _sysInput.getTouchY(), false);
+		return _contentPane.contains(localTouch.x, localTouch.y);
+	}
+
+	/**
+	 * 同步共享Input状态到本地
+	 */
+	private void syncLocalTouchState() {
+		if (_sysInput == null) {
+			return;
+		}
+		_localTouchPressed = _sysInput.getTouchPressed();
+		_localTouchReleased = _sysInput.getTouchReleased();
+	}
+
+	/**
+	 * 清空本地瞬时触摸事件
+	 */
+	private void clearLocalTouchEvent() {
+		_localTouchPressed = Screen.NO_BUTTON;
+		_localTouchReleased = Screen.NO_BUTTON;
+	}
+
+	/**
+	 * 强制释放所有触摸状
+	 */
+	public void forceReleaseAllTouch() {
+		_localTouchPressed = Screen.NO_BUTTON;
+		_localTouchReleased = Screen.NO_BUTTON;
+		_clicked = false;
+		if (_hoverComponent != null && _hoverComponent.isAllowTouch()) {
+			_hoverComponent.processTouchReleased();
+			_hoverComponent.processTouchExited();
+		}
+		if (_clickedComponent != null && _clickedComponent.isAllowTouch()) {
+			_clickedComponent.processTouchReleased();
+		}
+		_hoverComponent = null;
+		_clickedComponent = null;
+		_clickComponents[0] = null;
+	}
+
+	/**
+	 * 查找指定UI名称的所有组件
+	 * 
+	 * @param <T>
+	 * @param uiName
+	 * @return
+	 */
+	public <T extends LComponent> TArray<LComponent> findComponentsByUIName(String uiName) {
+		TArray<LComponent> result = new TArray<LComponent>();
+		findComponentsByUIName(_contentPane, uiName, result);
+		return result;
+	}
+
+	/**
+	 * 查找指定UI名称的所有组件
+	 * 
+	 * @param <T>
+	 * @param container
+	 * @param uiName
+	 * @param result
+	 */
+	private <T extends LComponent> void findComponentsByUIName(LContainer container, String uiName,
+			TArray<LComponent> result) {
+		if (container == null || container._childs == null) {
+			return;
+		}
+		int size = container._childs.length - 1;
+		for (int i = size; i > -1; i--) {
+			LComponent comp = container._childs[i];
+			if (comp == null) {
+				continue;
+			}
+			if (comp.getUIName().equals(uiName)) {
+				result.add(comp);
+			}
+			if (comp.isContainer()) {
+				findComponentsByUIName((LContainer) comp, uiName, result);
+			}
+		}
+	}
+
+	/**
+	 * 查找当前Desktop容器在指定范围内的所有组件
+	 * 
+	 * @param rect
+	 * @return
+	 */
+	public TArray<LComponent> findComponentsInRect(RectBox rect) {
+		TArray<LComponent> result = new TArray<LComponent>();
+		findComponentsInRect(_contentPane, rect, result);
+		return result;
+	}
+
+	/**
+	 * 查找指定容器在指定范围内的所有组件
+	 * 
+	 * @param container
+	 * @param rect
+	 * @param result
+	 */
+	private void findComponentsInRect(LContainer container, RectBox rect, TArray<LComponent> result) {
+		if (container == null || container._childs == null) {
+			return;
+		}
+		int size = container._childs.length - 1;
+		for (int i = size; i > -1; i--) {
+			LComponent comp = container._childs[i];
+			if (comp == null || !comp.isVisible()) {
+				continue;
+			}
+			if (rect.intersects(comp.getCollisionBox())) {
+				result.add(comp);
+			}
+			if (comp.isContainer()) {
+				findComponentsInRect((LContainer) comp, rect, result);
+			}
+		}
+	}
+
+	/**
+	 * 递归获取所有子组件
+	 */
+	public TArray<LComponent> findAllChildComponents() {
+		TArray<LComponent> result = new TArray<LComponent>();
+		findAllChildComponents(_contentPane, result);
+		return result;
+	}
+
+	/**
+	 * 递归获取所有子组件
+	 * 
+	 * @param container
+	 * @param result
+	 */
+	private void findAllChildComponents(LContainer container, TArray<LComponent> result) {
+		if (container == null || container._childs == null) {
+			return;
+		}
+		int size = container._childs.length - 1;
+		for (int i = size; i > -1; i--) {
+			LComponent comp = container._childs[i];
+			if (comp == null) {
+				continue;
+			}
+			result.add(comp);
+			if (comp.isContainer()) {
+				findAllChildComponents((LContainer) comp, result);
+			}
+		}
+	}
+
+	/**
+	 * 查找指定Z序的顶层组件
+	 * 
+	 * @param z
+	 * @return
+	 */
+	public LComponent findTopComponentByZ(int z) {
+		LComponent target = null;
+		TArray<LComponent> list = findAllChildComponents();
+		for (int i = 0; i < list.size; i++) {
+			LComponent comp = list.get(i);
+			if (comp != null && comp.getZ() == z && (target == null || comp.getZOrder() > target.getZOrder())) {
+				target = comp;
+			}
+		}
+		return target;
+	}
+
+	/**
+	 * 屏幕坐标转Desktop本地坐标
+	 * 
+	 * @param screenX
+	 * @param screenY
+	 * @return
+	 */
+	public Vector2f screenToLocal(float screenX, float screenY) {
+		return getUITouch(screenX, screenY, true);
+	}
+
+	/**
+	 * Desktop本地坐标转屏幕坐
+	 * 
+	 * @param localX
+	 * @param localY
+	 * @return
+	 */
+	public Vector2f localToScreen(float localX, float localY) {
+		Vector2f screen = new Vector2f(localX, localY);
+		screen.subSelf(_touchOffset);
+		return screen;
 	}
 
 	@Override
