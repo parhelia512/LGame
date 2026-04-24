@@ -3002,11 +3002,11 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 	 * @return
 	 */
 
-	public SpriteListener getSprListerner() {
+	public SpriteListener getSpriteListener() {
 		if (_currentSprites == null) {
 			return null;
 		}
-		return _currentSprites.getSprListerner();
+		return _currentSprites.getSpriteListener();
 	}
 
 	/**
@@ -3015,11 +3015,19 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 	 * @param sprListerner
 	 */
 
-	public Screen setSprListerner(SpriteListener sprListerner) {
+	public Screen setSpriteListener(SpriteListener sprListener) {
 		if (_currentSprites == null) {
 			return this;
 		}
-		_currentSprites.setSprListerner(sprListerner);
+		_currentSprites.setSpriteListener(sprListener);
+		return this;
+	}
+
+	public Screen onTriggerCollisions() {
+		if (_currentSprites == null) {
+			return this;
+		}
+		_currentSprites.onTriggerCollisions();
 		return this;
 	}
 
@@ -5784,7 +5792,8 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 
 	private final void offsetTouch(GameTouch e) {
 		if (isTranslate()) {
-			e.offset(_scaleX > 1f ? getX() / _scaleX : getX(), _scaleY > 1f ? getY() / _scaleY : getY());
+			e.offset(_scaleX > 1f ? getX() / _scaleX / LSystem.getScaleWidth() : getX(),
+					_scaleY > 1f ? getY() / _scaleY / LSystem.getScaleHeight() : getY());
 		}
 	}
 

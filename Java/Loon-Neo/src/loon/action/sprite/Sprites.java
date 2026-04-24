@@ -49,6 +49,7 @@ import loon.geom.Line;
 import loon.geom.PointI;
 import loon.geom.RectBox;
 import loon.geom.Triangle2f;
+import loon.geom.Vector2f;
 import loon.geom.XY;
 import loon.opengl.FrameBuffer;
 import loon.opengl.GLEx;
@@ -62,123 +63,110 @@ import loon.opengl.mask.FBOMask;
 import loon.utils.CollectionUtils;
 import loon.utils.IArray;
 import loon.utils.IntArray;
+import loon.utils.IntMap;
 import loon.utils.LayerSorter;
 import loon.utils.MathUtils;
+import loon.utils.ObjectMap;
 import loon.utils.ObjectSet;
+import loon.utils.SortUtils;
 import loon.utils.StringUtils;
 import loon.utils.TArray;
 import loon.utils.reply.Callback;
 
+import java.util.Comparator;
+
 /**
  * 精灵精灵总父类，用来注册，控制，以及渲染所有精灵精灵（所有默认【不支持】触屏的精灵，被置于此。不过，
  * 当LNode系列精灵和SpriteBatchScreen合用时，也支持触屏.）
- * 
  */
-public final class Sprites extends PlaceActions implements Visible, ZIndex, IArray, LRelease {
+public final class Sprites extends PlaceActions implements Visible, ZIndex, IArray, LRelease, Iterable<ISprite> {
+
+	private static class Skew25SpriteSorter<T extends ISprite> implements Comparator<T> {
+		@Override
+		public int compare(T a, T b) {
+			if (a == null || b == null) {
+				return 0;
+			}
+			float weightA = a.getY() * 1000 + a.getX();
+			float weightB = b.getY() * 1000 + b.getX();
+			return MathUtils.compare(weightB, weightA);
+		}
+	}
+
+	private static final int LAYOUT_ROW = 0;
+	private static final int LAYOUT_COL = 1;
+	private static final int LAYOUT_PADDING = 2;
+	private static final int DEFAULT_INIT_CAPACITY = CollectionUtils.INITIAL_CAPACITY;
 
 	public static interface SpriteListener {
-
 		public Sprites update(ISprite spr);
-
 	}
 
 	private boolean _useFrameBufferShaderMask;
-
 	private FBOMask _frameBufferShaderMask;
 	// 改变画面UV斜率
 	private boolean _changeUVTilt = false;
-
 	private BilinearMask _uvMask;
-
 	private float _offsetUVx, _offsetUVy;
-
 	// 是否在整个桌面组件中使用光源
 	private boolean _useLight = false;
-
 	private Light2D _light;
-
 	// 是否使用shadermask改变画面显示效果
 	private boolean _useShaderMask = false;
 	// 此项为true时，内置FrameBuffer将被启用,画面会渲染去内置FrameBuffer纹理中
 	private boolean _spriteSavetoFrameBuffer;
-
 	private FrameBuffer _spriteFrameBuffer;
-
 	private ShaderMask _shaderMask;
-
 	private final DirtyRectList _dirtyList = new DirtyRectList();
-
 	private ISpritesShadow _spriteShadow;
-
 	private Margin _margin;
-
 	private ObjectSet<String> _collisionIgnoreStrings;
-
 	private IntArray _collisionIgnoreTypes;
-
 	private int _indexLayer;
-
 	private boolean _createShadow;
-
 	private boolean _sortableChildren;
-
 	private boolean _isViewWindowSet = false, _limitViewWindows = false, _visible = true, _closed = false;
-
 	private boolean _resizabled = true;
 
-	private final static LayerSorter<ISprite> spriteLayerSorter = new LayerSorter<ISprite>();
-
-	private final static SpriteSorter<ISprite> spriteXYSorter = new SpriteSorter<ISprite>();
+	private final Skew25SpriteSorter<ISprite> spriteSkew25Sorter = new Skew25SpriteSorter<ISprite>();
+	private final LayerSorter<ISprite> spriteLayerSorter = new LayerSorter<ISprite>();
+	private final SpriteSorter<ISprite> spriteXYSorter = new SpriteSorter<ISprite>();
 
 	private int _currentPosHash = 1;
-
 	private int _lastPosHash = 1;
 
 	private int _viewX;
-
 	private int _viewY;
-
 	private int _viewWidth;
-
 	private int _viewHeight;
-
 	private int _size = 0;
-
 	private int _sizeExpandCount = 1;
-
 	private int _width = 0, _height = 0;
-
 	private float _newLineHeight = -1f;
-
 	private float _scrollX = 0f;
-
 	private float _scrollY = 0f;
-
 	private final String _sprites_name;
-
 	private boolean _autoSortLayer;
-
 	private boolean _checkAllCollision;
-
 	private boolean _checkViewCollision;
-
 	private boolean _dirtyChildren;
+	private boolean _autoSortSkew25;
 
-	private SpriteListener _sprListerner = null;
-
+	private SpriteListener _sprListener = null;
 	private ResizeListener<Sprites> _resizeListener;
-
 	private CollisionAction<ISprite> _collisionActionListener;
-
 	private RectBox _collViewSize;
-
 	private TArray<ISprite> _collisionObjects;
-
 	private Screen _screen;
-
 	private SysInput _input;
-
 	protected ISprite[] _sprites;
+	// 碰撞检测缓存
+	private final ObjectMap<ISprite, RectBox> _collisionBoxCache = new ObjectMap<ISprite, RectBox>();
+	// 碰撞对象，避免同一对精灵重复触发碰撞
+	private final IntMap<Boolean> _collisionDebounceCache = new IntMap<Boolean>();
+	private ObjectMap<String, TArray<ISprite>> _nameCache;
+	// 标记缓存是否需要重建
+	private boolean _cacheDirty = true;
 
 	public Sprites(Screen screen, int w, int h) {
 		this(null, screen, w, h);
@@ -198,16 +186,61 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 
 	public Sprites(String name, Screen screen, int w, int h) {
 		this._sortableChildren = this._visible = this._resizabled = true;
-		this._sprites = new ISprite[CollectionUtils.INITIAL_CAPACITY];
+		this._sprites = new ISprite[DEFAULT_INIT_CAPACITY];
 		this._sprites_name = StringUtils.isEmpty(name) ? "Sprites" + LSystem.getSpritesSize() : name;
 		this._size = 0;
 		this._sizeExpandCount = 1;
 		this._currentPosHash = _lastPosHash = 1;
 		this._newLineHeight = -1f;
+		this._nameCache = new ObjectMap<String, TArray<ISprite>>();
 		this._dirtyChildren = true;
 		this.setScreen(screen);
 		this.setSize(w, h);
 		LSystem.pushSpritesPool(this);
+	}
+
+	/**
+	 * 设定每次扩展精灵数组的基本值
+	 * 
+	 * @param count
+	 * @return
+	 */
+	public Sprites setSizeExpandCount(int count) {
+		_sizeExpandCount = count;
+		return this;
+	}
+
+	public int getSizeExpandCount() {
+		return _sizeExpandCount;
+	}
+
+	/**
+	 * 标记缓存已脏
+	 */
+	private void invalidateCache() {
+		this._cacheDirty = true;
+	}
+
+	/**
+	 * 重建名称索引缓存
+	 */
+	private void rebuildNameCache() {
+		if (!_cacheDirty) {
+			return;
+		}
+		_nameCache.clear();
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			if (spr != null && spr.getName() != null) {
+				TArray<ISprite> list = _nameCache.get(spr.getName());
+				if (list == null) {
+					list = new TArray<ISprite>();
+					_nameCache.put(spr.getName(), list);
+				}
+				list.add(spr);
+			}
+		}
+		_cacheDirty = false;
 	}
 
 	/**
@@ -251,20 +284,10 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 */
 	public Sprites setSize(int w, int h) {
 		if (this._width != w || this._height != h) {
-			this._width = w;
-			this._height = h;
-			if (this._width <= 0) {
-				this._width = 1;
-			}
-			if (this._height <= 0) {
-				this._height = 1;
-			}
-			if (this._viewWidth < this._width) {
-				this._viewWidth = this._width;
-			}
-			if (this._viewHeight < this._height) {
-				this._viewHeight = this._height;
-			}
+			this._width = MathUtils.max(w, 1);
+			this._height = MathUtils.max(h, 1);
+			this._viewWidth = MathUtils.max(this._viewWidth, this._width);
+			this._viewHeight = MathUtils.max(this._viewHeight, this._height);
 			this.resize(w, h, true);
 		}
 		return this;
@@ -276,24 +299,23 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @param sprite
 	 */
 	public Sprites sendToFront(ISprite sprite) {
-		if (_closed) {
+		if (_closed || _size <= 1 || _sprites[0] == sprite) {
 			return this;
 		}
-		if (this._size <= 1 || this._sprites[0] == sprite) {
-			return this;
-		}
-		if (_sprites[0] == sprite) {
-			return this;
-		}
-		for (int i = 0; i < this._size; i++) {
-			if (this._sprites[i] == sprite) {
-				this._sprites = CollectionUtils.cut(this._sprites, i);
-				this._sprites = CollectionUtils.expand(this._sprites, _sizeExpandCount, false);
-				this._sprites[0] = sprite;
-				this._dirtyChildren = true;
+		int targetIndex = -1;
+		for (int i = 0; i < _size; i++) {
+			if (_sprites[i] == sprite) {
+				targetIndex = i;
 				break;
 			}
 		}
+		if (targetIndex == -1) {
+			return this;
+		}
+		System.arraycopy(_sprites, 0, _sprites, 1, targetIndex);
+		_sprites[0] = sprite;
+		_dirtyChildren = true;
+		invalidateCache();
 		return this;
 	}
 
@@ -303,24 +325,24 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @param sprite
 	 */
 	public Sprites sendToBack(ISprite sprite) {
-		if (_closed) {
+		if (_closed || _size <= 1 || _sprites[_size - 1] == sprite) {
 			return this;
 		}
-		if (this._size <= 1 || this._sprites[this._size - 1] == sprite) {
-			return this;
-		}
-		if (_sprites[this._size - 1] == sprite) {
-			return this;
-		}
-		for (int i = 0; i < this._size; i++) {
-			if (this._sprites[i] == sprite) {
-				this._sprites = CollectionUtils.cut(this._sprites, i);
-				this._sprites = CollectionUtils.expand(this._sprites, _sizeExpandCount, true);
-				this._sprites[this._size - 1] = sprite;
-				this._dirtyChildren = true;
+		int targetIndex = -1;
+		for (int i = 0; i < _size; i++) {
+			if (_sprites[i] == sprite) {
+				targetIndex = i;
 				break;
 			}
 		}
+		if (targetIndex == -1) {
+			return this;
+		}
+		int moveCount = _size - targetIndex - 1;
+		System.arraycopy(_sprites, targetIndex + 1, _sprites, targetIndex, moveCount);
+		_sprites[_size - 1] = sprite;
+		_dirtyChildren = true;
+		invalidateCache();
 		return this;
 	}
 
@@ -329,25 +351,18 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * 
 	 */
 	public Sprites sortSprites() {
-		if (this._closed) {
+		if (_closed || _size <= 1 || !_sortableChildren || !_dirtyChildren) {
 			return this;
 		}
-		if (this._size <= 1) {
-			return this;
+		if (_sprites.length != _size) {
+			ISprite[] sprs = CollectionUtils.copyOf(_sprites, _size);
+			spriteLayerSorter.sort(sprs);
+			_sprites = sprs;
+		} else {
+			spriteLayerSorter.sort(_sprites);
 		}
-		if (!this._sortableChildren) {
-			return this;
-		}
-		if (_dirtyChildren) {
-			if (this._sprites.length != this._size) {
-				final ISprite[] sprs = CollectionUtils.copyOf(this._sprites, this._size);
-				spriteLayerSorter.sort(sprs);
-				this._sprites = sprs;
-			} else {
-				spriteLayerSorter.sort(this._sprites);
-			}
-			this._dirtyChildren = false;
-		}
+		_dirtyChildren = false;
+		invalidateCache();
 		return this;
 	}
 
@@ -367,7 +382,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 */
 	private void expandCapacity(int capacity) {
 		if (_sprites.length < capacity) {
-			final ISprite[] bagArray = new ISprite[capacity];
+			ISprite[] bagArray = new ISprite[capacity];
 			System.arraycopy(_sprites, 0, bagArray, 0, _size);
 			_sprites = bagArray;
 		}
@@ -378,7 +393,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * 
 	 * @param capacity
 	 */
-	private void compressCapacity(int capacity) {
+	protected void compressCapacity(int capacity) {
 		if (capacity + this._size < _sprites.length) {
 			final ISprite[] newArray = new ISprite[this._size + capacity];
 			System.arraycopy(_sprites, 0, newArray, 0, this._size);
@@ -397,11 +412,9 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		if (_closed) {
 			return null;
 		}
-		final ISprite[] snapshot = this._sprites;
-		final int size = this._size;
-		for (int i = size - 1; i >= 0; i--) {
-			ISprite child = snapshot[i];
-			if (child != null) {
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite child = _sprites[i];
+			if (child != null && child.isVisible()) {
 				RectBox rect = child.getCollisionBox();
 				if (rect != null && rect.contains(x, y)) {
 					return child;
@@ -418,19 +431,13 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public ISprite find(String name) {
-		if (_closed) {
+		if (_closed || name == null) {
 			return null;
 		}
-		final ISprite[] snapshot = this._sprites;
-		final int size = this._size;
-		for (int i = size - 1; i >= 0; i--) {
-			ISprite child = snapshot[i];
-			if (child != null) {
-				String childName = child.getName();
-				if (name.equals(childName)) {
-					return child;
-				}
-			}
+		rebuildNameCache();
+		TArray<ISprite> list = _nameCache.get(name);
+		if (list != null && list.size > 0) {
+			return list.peek();
 		}
 		return null;
 	}
@@ -444,7 +451,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public ISprite addPadding(ISprite spr, float offX, float offY) {
-		return addPadding(spr, offX, offY, 2);
+		return addPadding(spr, offX, offY, LAYOUT_PADDING);
 	}
 
 	/**
@@ -454,7 +461,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public ISprite addCol(ISprite spr) {
-		return addPadding(spr, 0, 0, 1);
+		return addPadding(spr, 0, 0, LAYOUT_COL);
 	}
 
 	/**
@@ -465,7 +472,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public ISprite addCol(ISprite spr, float offY) {
-		return addPadding(spr, 0, offY, 1);
+		return addPadding(spr, 0, offY, LAYOUT_COL);
 	}
 
 	/**
@@ -475,7 +482,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public ISprite addRow(ISprite spr) {
-		return addPadding(spr, 0, 0, 0);
+		return addPadding(spr, 0, 0, LAYOUT_ROW);
 	}
 
 	/**
@@ -486,7 +493,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public ISprite addRow(ISprite spr, float offX) {
-		return addPadding(spr, offX, 0, 0);
+		return addPadding(spr, offX, 0, LAYOUT_ROW);
 	}
 
 	/**
@@ -499,72 +506,47 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public ISprite addPadding(ISprite spr, float offX, float offY, int code) {
-		if (_closed) {
+		if (_closed || spr == null) {
 			return spr;
 		}
-		if (spr == null) {
-			return null;
-		}
-		float maxX = 0;
-		float maxY = 0;
-
+		float maxX = 0, maxY = 0;
 		ISprite tag = null;
-		final int size = this._size;
-		final ISprite[] childs = this._sprites;
-
-		if (size == 1) {
-			ISprite cp = childs[0];
+		if (_size == 1) {
+			ISprite cp = _sprites[0];
 			if (cp != null && cp.getY() >= _newLineHeight) {
 				maxX = cp.getX();
 				maxY = cp.getY();
 				tag = cp;
 			}
 		} else {
-			for (int i = 0; i < size; i++) {
-				ISprite c = childs[i];
+			for (int i = 0; i < _size; i++) {
+				ISprite c = _sprites[i];
 				if (c != null && c != spr && c.getY() >= _newLineHeight) {
-					float oldMaxX = maxX;
-					float oldMaxY = maxY;
+					float oldX = maxX, oldY = maxY;
 					maxX = MathUtils.max(maxX, c.getX());
 					maxY = MathUtils.max(maxY, c.getY());
-					if (oldMaxX != maxX || oldMaxY != maxY) {
+					if (oldX != maxX || oldY != maxY) {
 						tag = c;
 					}
 				}
 			}
-
 		}
-		if (tag == null && size > 0) {
-			tag = childs[size - 1];
-		}
-
+		tag = (tag == null && _size > 0) ? _sprites[_size - 1] : tag;
 		if (tag != null && tag != spr) {
 			switch (code) {
-			case 0:
+			case LAYOUT_ROW:
 				spr.setLocation(maxX + tag.getWidth() + offX, maxY + offY);
 				break;
-			case 1:
-				spr.setLocation(0 + offX, maxY + tag.getHeight() + offY);
+			case LAYOUT_COL:
+				spr.setLocation(offX, maxY + tag.getHeight() + offY);
 				break;
 			default:
 				spr.setLocation(maxX + tag.getWidth() + offX, maxY + tag.getHeight() + offY);
 				break;
 			}
-
 		} else {
-			switch (code) {
-			case 0:
-				spr.setLocation(maxX + offX, maxY + offY);
-				break;
-			case 1:
-				spr.setLocation(0 + offX, maxY + offY);
-				break;
-			default:
-				spr.setLocation(maxX + offX, maxY + offY);
-				break;
-			}
+			spr.setLocation(offX, offY);
 		}
-
 		add(spr);
 		_newLineHeight = spr.getY();
 		return spr;
@@ -574,24 +556,15 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		if (sprite == null) {
 			return;
 		}
-		if (sprite.getWidth() > getWidth()) {
-			if (_screen == null) {
-				setViewWindow(_viewX, _viewY, MathUtils.iceil(MathUtils.max(sprite.getWidth(), LSystem.viewSize.width)),
-						_height);
-			} else {
-				setViewWindow(_viewX, _viewY, MathUtils.iceil(MathUtils.max(sprite.getWidth(), _screen.getWidth())),
-						_height);
-			}
-		}
-		if (sprite.getHeight() > getHeight()) {
-			if (_screen == null) {
-				setViewWindow(_viewX, _viewY, _width,
-						MathUtils.iceil(MathUtils.max(sprite.getHeight(), LSystem.viewSize.height)));
-			} else {
-				setViewWindow(_viewX, _viewY, _width,
-						MathUtils.iceil(MathUtils.max(sprite.getHeight(), _screen.getHeight())));
-
-			}
+		int spriteW = MathUtils.iceil(sprite.getWidth());
+		int spriteH = MathUtils.iceil(sprite.getHeight());
+		int targetW = MathUtils.max(_width, spriteW);
+		int targetH = MathUtils.max(_height, spriteH);
+		if (_viewWidth < targetW || _viewHeight < targetH) {
+			float screenW = _screen == null ? LSystem.viewSize.width : _screen.getWidth();
+			float screenH = _screen == null ? LSystem.viewSize.height : _screen.getHeight();
+			setViewWindow(_viewX, _viewY, MathUtils.iceil(MathUtils.max(targetW, screenW)),
+					MathUtils.iceil(MathUtils.max(targetH, screenH)));
 		}
 	}
 
@@ -603,42 +576,34 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public boolean set(int idx, ISprite sprite) {
-		if (_closed) {
+		if (_closed || sprite == null || idx < 0) {
 			return false;
 		}
-		if (sprite == null) {
+		if (idx == _size) {
+			return add(sprite);
+		}
+		if (idx > _size) {
 			return false;
 		}
-		if (idx > this._size) {
-			idx = this._size;
-		}
-		if (idx == this._size) {
-			return this.add(sprite);
-		} else if (idx > -1 && idx < this._size) {
-			updateViewSize(sprite);
-			final ISprite[] childs = this._sprites;
-			ISprite dstSpr = childs[idx];
-			if (dstSpr != null) {
-				sprite.setLocation(dstSpr.getX(), dstSpr.getY());
-				sprite.setLayer(dstSpr.getLayer());
-				dstSpr.setState(State.REMOVED);
-				if (dstSpr instanceof IEntity) {
-					((IEntity) dstSpr).onDetached();
-				}
+		updateViewSize(sprite);
+		ISprite oldSpr = _sprites[idx];
+		if (oldSpr != null) {
+			sprite.setLocation(oldSpr.getX(), oldSpr.getY());
+			sprite.setLayer(oldSpr.getLayer());
+			oldSpr.setState(State.REMOVED);
+			if (oldSpr instanceof IEntity) {
+				((IEntity) oldSpr).onDetached();
 			}
-			childs[idx] = sprite;
-			sprite.setSprites(this);
-			if (!contains(sprite)) {
-				this._sprites = childs;
-				sprite.setState(State.ADDED);
-				if (sprite instanceof IEntity) {
-					((IEntity) sprite).onAttached();
-				}
-			}
-			this._dirtyChildren = true;
-			return true;
 		}
-		return false;
+		_sprites[idx] = sprite;
+		sprite.setSprites(this);
+		sprite.setState(State.ADDED);
+		if (sprite instanceof IEntity) {
+			((IEntity) sprite).onAttached();
+		}
+		_dirtyChildren = true;
+		invalidateCache();
+		return true;
 	}
 
 	/**
@@ -649,58 +614,44 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public boolean addAt(int idx, ISprite sprite) {
-		if (_closed) {
-			return false;
-		}
-		if (sprite == null) {
+		if (_closed || sprite == null) {
 			return false;
 		}
 		if (contains(sprite)) {
 			return set(idx, sprite);
 		}
-		if (idx > this._size) {
-			idx = this._size;
+		idx = MathUtils.min(MathUtils.max(idx, 0), _size);
+		if (idx == _size) {
+			return add(sprite);
 		}
-		if (idx == this._size) {
-			return this.add(sprite);
-		} else {
-			updateViewSize(sprite);
-			ISprite[] childs = this._sprites;
-			final ISprite[] oldStartChilds = CollectionUtils.copyOf(childs, idx + 1);
-			final ISprite[] oldEndChilds = CollectionUtils.copyOf(childs, idx, this._size);
-			oldStartChilds[idx] = sprite;
-			childs = CollectionUtils.concat(oldStartChilds, oldEndChilds);
-			this._sprites = childs;
-			if (++this._size >= this._sprites.length) {
-				expandCapacity((_size + 1) * 2);
-			}
-			sprite.setSprites(this);
-			sprite.setState(State.ADDED);
-			if (sprite instanceof IEntity) {
-				((IEntity) sprite).onAttached();
-			}
-			this._dirtyChildren = true;
+		updateViewSize(sprite);
+		if (_size >= _sprites.length) {
+			expandCapacity((_size + _sizeExpandCount) * 2);
 		}
-		boolean result = _sprites[idx] != null;
-		return result;
+		System.arraycopy(_sprites, idx, _sprites, idx + 1, _size - idx);
+		_sprites[idx] = sprite;
+		_size++;
+		sprite.setSprites(this);
+		sprite.setState(State.ADDED);
+		if (sprite instanceof IEntity) {
+			((IEntity) sprite).onAttached();
+		}
+		_dirtyChildren = true;
+		invalidateCache();
+		return true;
 	}
 
 	public Sprites addAt(ISprite child, float x, float y) {
-		if (_closed) {
+		if (_closed || child == null) {
 			return this;
 		}
-		if (child != null) {
-			child.setLocation(x, y);
-			add(child);
-		}
+		child.setLocation(x, y);
+		add(child);
 		return this;
 	}
 
 	public ISprite getSprite(int index) {
-		if (_closed) {
-			return null;
-		}
-		if (index < 0 || index > _size || index >= _sprites.length) {
+		if (_closed || index < 0 || index >= _size) {
 			return null;
 		}
 		return _sprites[index];
@@ -711,7 +662,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public ISprite getRandomSprite(int min, int max) {
-		if (_closed) {
+		if (_closed || _size == 0) {
 			return null;
 		}
 		min = MathUtils.max(0, min);
@@ -725,13 +676,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public ISprite getTopSprite() {
-		if (_closed) {
-			return null;
-		}
-		if (_size > 0) {
-			return _sprites[0];
-		}
-		return null;
+		return getSprite(0);
 	}
 
 	/**
@@ -740,13 +685,26 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public ISprite getBottomSprite() {
-		if (_closed) {
-			return null;
+		return getSprite(_size - 1);
+	}
+
+	/**
+	 * 批量且顺序的添加一组精灵
+	 * 
+	 * @param sprites
+	 * @return
+	 */
+	public Sprites addAll(ISprite... sprites) {
+		if (sprites == null) {
+			return this;
 		}
-		if (_size > 0) {
-			return _sprites[_size - 1];
+		for (int i = 0; i < sprites.length; i++) {
+			ISprite spr = sprites[i];
+			if (spr != null) {
+				add(spr);
+			}
 		}
-		return null;
+		return this;
 	}
 
 	/**
@@ -756,27 +714,22 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public boolean add(ISprite sprite) {
-		if (_closed) {
-			return false;
-		}
-		if (sprite == null) {
-			return false;
-		}
-		if (contains(sprite)) {
+		if (_closed || sprite == null || contains(sprite)) {
 			return false;
 		}
 		updateViewSize(sprite);
-		sprite.setSprites(this);
-		if (this._size == this._sprites.length) {
-			expandCapacity((_size + 1) * 2);
+		if (_size >= _sprites.length) {
+			expandCapacity((_size + _sizeExpandCount) * 2);
 		}
-		final boolean result = (_sprites[_size++] = sprite) != null;
+		_sprites[_size++] = sprite;
+		sprite.setSprites(this);
 		sprite.setState(State.ADDED);
 		if (sprite instanceof IEntity) {
 			((IEntity) sprite).onAttached();
 		}
-		this._dirtyChildren = true;
-		return result;
+		_dirtyChildren = true;
+		invalidateCache();
+		return true;
 	}
 
 	/**
@@ -853,17 +806,15 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> findFlags(int... flags) {
-		if (_closed) {
-			return null;
-		}
 		TArray<ISprite> list = new TArray<ISprite>();
-		final int size = this._size;
+		if (_closed) {
+			return list;
+		}
 		final int len = flags.length;
-		final ISprite[] childs = this._sprites;
 		for (int j = 0; j < len; j++) {
 			final int f = flags[j];
-			for (int i = size - 1; i > -1; i--) {
-				ISprite child = childs[i];
+			for (int i = _size - 1; i > -1; i--) {
+				ISprite child = _sprites[i];
 				if (child != null && f == child.getFlagType()) {
 					list.add(child);
 				}
@@ -879,17 +830,15 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> findNotFlags(int... flags) {
-		if (_closed) {
-			return null;
-		}
 		TArray<ISprite> list = new TArray<ISprite>();
-		final int size = this._size;
+		if (_closed) {
+			return list;
+		}
 		final int len = flags.length;
-		final ISprite[] childs = this._sprites;
 		for (int j = 0; j < len; j++) {
 			final int f = flags[j];
-			for (int i = size - 1; i > -1; i--) {
-				ISprite child = childs[i];
+			for (int i = _size - 1; i > -1; i--) {
+				ISprite child = _sprites[i];
 				if (child != null && f != child.getFlagType()) {
 					list.add(child);
 				}
@@ -905,46 +854,40 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> findNames(String... names) {
-		if (_closed) {
-			return null;
-		}
 		TArray<ISprite> list = new TArray<ISprite>();
-		final int size = this._size;
+		if (_closed || names == null) {
+			return list;
+		}
+		rebuildNameCache();
 		final int len = names.length;
-		final ISprite[] childs = this._sprites;
 		for (int j = 0; j < len; j++) {
 			final String name = names[j];
-			if (name != null) {
-				for (int i = size - 1; i > -1; i--) {
-					ISprite child = childs[i];
-					if (child != null && name.equals(child.getName())) {
-						list.add(child);
-					}
-				}
+			if (name == null) {
+				continue;
+			}
+			TArray<ISprite> cachedList = _nameCache.get(name);
+			if (cachedList != null) {
+				list.addAll(cachedList);
 			}
 		}
 		return list;
 	}
 
 	public TArray<ISprite> findNameContains(String... names) {
-		if (_closed) {
-			return null;
+		TArray<ISprite> list = new TArray<ISprite>();
+		if (_closed || names == null) {
+			return list;
 		}
-		final TArray<ISprite> list = new TArray<ISprite>();
-		final int size = this._size;
 		final int len = names.length;
-		final ISprite[] childs = this._sprites;
 		for (int j = 0; j < len; j++) {
 			final String name = names[j];
-			if (name != null) {
-				for (int i = size - 1; i > -1; i--) {
-					ISprite child = childs[i];
-					if (child != null) {
-						String childName = child.getName();
-						if (childName != null && childName.contains(name)) {
-							list.add(child);
-						}
-					}
+			if (name == null) {
+				continue;
+			}
+			for (int i = _size - 1; i > -1; i--) {
+				ISprite child = _sprites[i];
+				if (child != null && child.getName() != null && child.getName().contains(name)) {
+					list.add(child);
 				}
 			}
 		}
@@ -958,21 +901,20 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> findNotNames(String... names) {
-		if (_closed) {
-			return null;
+		TArray<ISprite> list = new TArray<ISprite>();
+		if (_closed || names == null) {
+			return list;
 		}
-		final TArray<ISprite> list = new TArray<ISprite>();
-		final int size = this._size;
 		final int len = names.length;
-		final ISprite[] childs = this._sprites;
 		for (int j = 0; j < len; j++) {
 			final String name = names[j];
-			if (name != null) {
-				for (int i = size - 1; i > -1; i--) {
-					ISprite child = childs[i];
-					if (child != null && name.equals(child.getName())) {
-						list.add(child);
-					}
+			if (name == null) {
+				continue;
+			}
+			for (int i = _size - 1; i > -1; i--) {
+				ISprite child = _sprites[i];
+				if (child != null && !name.equals(child.getName())) {
+					list.add(child);
 				}
 			}
 		}
@@ -986,14 +928,12 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> findFlagTypes(int flag) {
+		TArray<ISprite> list = new TArray<ISprite>();
 		if (_closed) {
-			return null;
+			return list;
 		}
-		final TArray<ISprite> list = new TArray<ISprite>();
-		final int size = this._size;
-		final ISprite[] childs = this._sprites;
-		for (int i = size - 1; i > -1; i--) {
-			ISprite child = childs[i];
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite child = _sprites[i];
 			if (child != null && child.getFlagType() == flag) {
 				list.add(child);
 			}
@@ -1008,17 +948,12 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> findFlagObjects(String flag) {
-		if (_closed) {
-			return null;
-		}
-		final TArray<ISprite> list = new TArray<ISprite>();
-		if (flag == null) {
+		TArray<ISprite> list = new TArray<ISprite>();
+		if (_closed || flag == null) {
 			return list;
 		}
-		final int size = this._size;
-		final ISprite[] childs = this._sprites;
-		for (int i = size - 1; i > -1; i--) {
-			ISprite child = childs[i];
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite child = _sprites[i];
 			if (child != null && flag.equals(child.getObjectFlag())) {
 				list.add(child);
 			}
@@ -1033,36 +968,30 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public boolean contains(ISprite sprite) {
-		if (_closed) {
+		if (_closed || sprite == null) {
 			return false;
 		}
-		if (sprite == null) {
-			return false;
-		}
-		if (_sprites == null) {
-			return false;
-		}
-		final int size = this._size;
-		final ISprite[] childs = _sprites;
-		for (int i = size - 1; i > -1; i--) {
-			final ISprite sp = childs[i];
-			boolean exist = (sp != null);
-			if (exist && (sprite == sp || sprite.equals(sp))) {
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite sp = _sprites[i];
+			if (sp == null) {
+				continue;
+			}
+			if (sp == sprite || sp.equals(sprite)) {
 				return true;
 			}
-			if (exist && sp instanceof Entity) {
-				Entity superEntity = (Entity) sp;
-				for (int j = 0; j < superEntity.getChildCount(); j++) {
-					boolean superExist = (superEntity.getChildByIndex(j) != null);
-					if (superExist && sp.equals(superEntity.getChildByIndex(j))) {
+			if (sp instanceof IEntity) {
+				IEntity entity = (IEntity) sp;
+				for (int j = 0; j < entity.getChildCount(); j++) {
+					IEntity child = entity.getChildByIndex(j);
+					if (child != null && (child == sprite || child.equals(sprite))) {
 						return true;
 					}
 				}
-			} else if (exist && sp instanceof Sprite) {
-				Sprite superSprite = (Sprite) sp;
-				for (int j = 0; j < superSprite.size(); j++) {
-					boolean superExist = (superSprite.getChildByIndex(j) != null);
-					if (superExist && sp.equals(superSprite.getChildByIndex(j))) {
+			} else if (sp instanceof Sprite) {
+				Sprite spr = (Sprite) sp;
+				for (int j = 0; j < spr.getChildCount(); j++) {
+					ISprite child = spr.getChildByIndex(j);
+					if (child != null && (child == sprite || child.equals(sprite))) {
 						return true;
 					}
 				}
@@ -1081,21 +1010,14 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> contains(float x, float y, float w, float h) {
+		TArray<ISprite> sprites = new TArray<ISprite>();
 		if (_closed) {
-			return null;
+			return sprites;
 		}
-		if (_sprites == null) {
-			return null;
-		}
-		final TArray<ISprite> sprites = new TArray<ISprite>();
-		final int size = this._size;
-		final ISprite[] childs = _sprites;
-		for (int i = size - 1; i > -1; i--) {
-			final ISprite sp = childs[i];
-			if (sp != null) {
-				if (sp.inContains(x, y, w, h)) {
-					sprites.add(sp);
-				}
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite sp = _sprites[i];
+			if (sp != null && sp.inContains(x, y, w, h)) {
+				sprites.add(sp);
 			}
 		}
 		return sprites;
@@ -1120,7 +1042,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 */
 	public TArray<ISprite> containsSprite(ISprite sprite) {
 		if (sprite == null) {
-			return null;
+			return new TArray<ISprite>();
 		}
 		return contains(sprite.getX(), sprite.getY(), sprite.getWidth(), sprite.getHeight());
 	}
@@ -1133,23 +1055,14 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public Sprites swapSprite(int first, int second) {
-		if (_closed) {
+		if (_closed || first == second || first >= _size || second >= _size) {
 			return this;
 		}
-		if (first == second) {
-			return this;
-		}
-		if (first >= _size) {
-			throw new LSysException("first can't be >= size: " + first + " >= " + _size);
-		}
-		if (second >= _size) {
-			throw new LSysException("second can't be >= size: " + second + " >= " + _size);
-		}
-		final ISprite[] sprs = this._sprites;
-		final ISprite firstValue = sprs[first];
-		sprs[first] = sprs[second];
-		sprs[second] = firstValue;
-		this._dirtyChildren = true;
+		ISprite temp = _sprites[first];
+		_sprites[first] = _sprites[second];
+		_sprites[second] = temp;
+		_dirtyChildren = true;
+		invalidateCache();
 		return this;
 	}
 
@@ -1161,61 +1074,42 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public Sprites swapSprite(ISprite first, ISprite second) {
-		if (_closed) {
+		if (_closed || first == null || second == null || first == second) {
 			return this;
 		}
-		if ((first == null && second == null) || (first == second)) {
-			return this;
-		}
-		int fi = -1;
-		int bi = -1;
-		final int size = this._size;
-		final ISprite[] sprs = this._sprites;
-		for (int i = 0; i < size; i++) {
-			final ISprite spr = sprs[i];
-			if (spr == first) {
+		int fi = -1, bi = -1;
+		for (int i = 0; i < _size; i++) {
+			if (_sprites[i] == first) {
 				fi = i;
 			}
-			if (spr == second) {
+			if (_sprites[i] == second) {
 				bi = i;
 			}
 			if (fi != -1 && bi != -1) {
 				break;
 			}
 		}
-		if (fi != -1 && bi != -1) {
-			return swapSprite(fi, bi);
-		}
-		return this;
+		return (fi != -1 && bi != -1) ? swapSprite(fi, bi) : this;
 	}
 
 	public Sprites swapSprite(String first, String second) {
-		if (_closed) {
+		if (_closed || first == null || second == null || first.equals(second)) {
 			return this;
 		}
-		if ((first == null || second == null) || (first.equals(second))) {
-			return this;
-		}
-		int fi = -1;
-		int bi = -1;
-		final int size = this._size;
-		final ISprite[] sprs = this._sprites;
-		for (int i = 0; i < size; i++) {
-			final ISprite spr = sprs[i];
-			if (spr != null && spr.getName().equals(first)) {
+		int fi = -1, bi = -1;
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			if (spr != null && first.equals(spr.getName())) {
 				fi = i;
 			}
-			if (spr != null && spr.getName().equals(second)) {
+			if (spr != null && second.equals(spr.getName())) {
 				bi = i;
 			}
 			if (fi != -1 && bi != -1) {
 				break;
 			}
 		}
-		if (fi != -1 && bi != -1) {
-			return swapSprite(fi, bi);
-		}
-		return this;
+		return (fi != -1 && bi != -1) ? swapSprite(fi, bi) : this;
 	}
 
 	/**
@@ -1267,7 +1161,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 */
 	public TArray<ISprite> intersectsSprite(ISprite sprite) {
 		if (sprite == null) {
-			return null;
+			return new TArray<ISprite>();
 		}
 		return intersects(sprite.getX(), sprite.getY(), sprite.getWidth(), sprite.getHeight());
 	}
@@ -1279,46 +1173,40 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public ISprite remove(int index) {
-		if (_closed) {
+		if (_closed || index < 0 || index >= _size) {
 			return null;
 		}
-		if (_size == 0) {
-			return null;
-		}
-		ISprite removed = this._sprites[index];
+		ISprite removed = _sprites[index];
 		if (removed != null) {
 			removed.setState(State.REMOVED);
 			if (removed instanceof IEntity) {
 				((IEntity) removed).onDetached();
 			}
-			// 删除精灵同时，删除缓动动画
 			if (removed instanceof ActionBind) {
 				ActionControl.get().removeAllActions((ActionBind) removed);
 			}
 		}
-		int size = this._size - index - 1;
-		if (size > 0) {
-			System.arraycopy(this._sprites, index + 1, this._sprites, index, size);
+		int newIndex = _size - 1;
+		if (index != newIndex) {
+			_sprites[index] = _sprites[newIndex];
 		}
-		this._sprites[--this._size] = null;
-		if (size == 0) {
-			_sprites = new ISprite[0];
-		}
-		this._dirtyChildren = true;
+		_sprites[newIndex] = null;
+		_size--;
+		_dirtyChildren = true;
+		invalidateCache();
 		return removed;
 	}
 
 	/**
 	 * 清空所有精灵
-	 * 
 	 */
 	public Sprites removeAll() {
-		if (_closed) {
+		if (_closed || _size == 0) {
 			return this;
 		}
 		if (_size != 0) {
 			clear();
-			this._sprites = new ISprite[0];
+			_sprites = new ISprite[DEFAULT_INIT_CAPACITY];
 		}
 		return this;
 	}
@@ -1330,43 +1218,16 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public boolean remove(ISprite sprite) {
-		if (_closed) {
+		if (_closed || sprite == null || _size == 0) {
 			return false;
 		}
-		if (sprite == null) {
-			return false;
-		}
-		if (_size == 0) {
-			return false;
-		}
-		if (_sprites == null) {
-			return false;
-		}
-		boolean removed = false;
-		for (int i = _size; i > 0; i--) {
-			ISprite spr = _sprites[i - 1];
-			if ((sprite == spr) || (sprite.equals(spr))) {
-				spr.setState(State.REMOVED);
-				if (spr instanceof IEntity) {
-					((IEntity) spr).onDetached();
-				}
-				// 删除精灵同时，删除缓动动画
-				if (spr instanceof ActionBind) {
-					ActionControl.get().removeAllActions((ActionBind) spr);
-				}
-				removed = true;
-				_size--;
-				_sprites[i - 1] = _sprites[_size];
-				_sprites[_size] = null;
-				if (_size == 0) {
-					_sprites = new ISprite[0];
-				} else {
-					compressCapacity(CollectionUtils.INITIAL_CAPACITY);
-				}
-				return removed;
+		for (int i = 0; i < _size; i++) {
+			if (_sprites[i] == sprite) {
+				remove(i);
+				return true;
 			}
 		}
-		return removed;
+		return false;
 	}
 
 	/**
@@ -1378,13 +1239,11 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public boolean removeWhenAlpha(ISprite spr, boolean more, float limit) {
-		if (_size == 0) {
+		if (_size == 0 || spr == null) {
 			return false;
 		}
-		if (spr != null && (more ? spr.getAlpha() >= limit : spr.getAlpha() <= limit)) {
-			return remove(spr);
-		}
-		return false;
+		boolean match = more ? spr.getAlpha() >= limit : spr.getAlpha() <= limit;
+		return match && remove(spr);
 	}
 
 	/**
@@ -1394,43 +1253,17 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public boolean removeName(String name) {
-		if (_closed) {
+		if (_closed || name == null || _size == 0) {
 			return false;
 		}
-		if (name == null) {
-			return false;
-		}
-		if (_size == 0) {
-			return false;
-		}
-		if (_sprites == null) {
-			return false;
-		}
-		boolean removed = false;
-		for (int i = _size; i > 0; i--) {
-			ISprite spr = _sprites[i - 1];
-			if ((name.equals(spr.getName()))) {
-				spr.setState(State.REMOVED);
-				if (spr instanceof IEntity) {
-					((IEntity) spr).onDetached();
-				}
-				// 删除精灵同时，删除缓动动画
-				if (spr instanceof ActionBind) {
-					ActionControl.get().removeAllActions((ActionBind) spr);
-				}
-				removed = true;
-				_size--;
-				_sprites[i - 1] = _sprites[_size];
-				_sprites[_size] = null;
-				if (_size == 0) {
-					_sprites = new ISprite[0];
-				} else {
-					compressCapacity(CollectionUtils.INITIAL_CAPACITY);
-				}
-				return removed;
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			if (spr != null && name.equals(spr.getName())) {
+				remove(i);
+				return true;
 			}
 		}
-		return removed;
+		return false;
 	}
 
 	/**
@@ -1440,65 +1273,322 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @param endIndex
 	 */
 	public Sprites remove(int startIndex, int endIndex) {
-		if (_closed) {
+		if (_closed || startIndex < 0 || endIndex > _size || startIndex >= endIndex) {
 			return this;
 		}
-		if (_size == 0) {
-			return this;
-		}
-		if (endIndex - startIndex > 0) {
-			final int size = this._size;
-			final ISprite[] childs = this._sprites;
-			for (int i = startIndex; i < endIndex && i < size; i++) {
-				ISprite spr = childs[i];
-				if (spr != null) {
-					spr.setState(State.REMOVED);
-					if (spr instanceof IEntity) {
-						((IEntity) spr).onDetached();
-					}
-					// 删除精灵同时，删除缓动动画
-					if (spr instanceof ActionBind) {
-						ActionControl.get().removeAllActions((ActionBind) spr);
-					}
+		int removeCount = endIndex - startIndex;
+		for (int i = startIndex; i < endIndex; i++) {
+			ISprite spr = _sprites[i];
+			if (spr != null) {
+				spr.setState(State.REMOVED);
+				if (spr instanceof IEntity) {
+					((IEntity) spr).onDetached();
+				}
+				// 删除精灵同时，删除缓动动画
+				if (spr instanceof ActionBind) {
+					ActionControl.get().removeAllActions((ActionBind) spr);
 				}
 			}
 		}
-		int numMoved = this._size - endIndex;
-		System.arraycopy(this._sprites, endIndex, this._sprites, startIndex, numMoved);
-		int newSize = this._size - (endIndex - startIndex);
-		while (this._size != newSize) {
-			this._sprites[--this._size] = null;
+		System.arraycopy(_sprites, endIndex, _sprites, startIndex, _size - endIndex);
+		for (int i = _size - removeCount; i < _size; i++) {
+			_sprites[i] = null;
 		}
+		_size -= removeCount;
 		if (_size == 0) {
-			_sprites = new ISprite[0];
+			_sprites = new ISprite[DEFAULT_INIT_CAPACITY];
 		}
+		_dirtyChildren = true;
+		invalidateCache();
 		return this;
 	}
 
 	public PointI getMinPos() {
-		if (_closed) {
+		PointI p = new PointI(Integer.MAX_VALUE, Integer.MAX_VALUE);
+		if (_closed || _size == 0)
 			return new PointI(0, 0);
-		}
-		PointI p = new PointI(0, 0);
 		for (int i = 0; i < _size; i++) {
 			ISprite sprite = _sprites[i];
-			p.x = MathUtils.min(p.x, sprite.x());
-			p.y = MathUtils.min(p.y, sprite.y());
+			if (sprite != null) {
+				p.x = MathUtils.min(p.x, sprite.x());
+				p.y = MathUtils.min(p.y, sprite.y());
+			}
 		}
 		return p;
 	}
 
 	public PointI getMaxPos() {
-		if (_closed) {
+		PointI p = new PointI(Integer.MIN_VALUE, Integer.MIN_VALUE);
+		if (_closed || _size == 0)
 			return new PointI(0, 0);
-		}
-		PointI p = new PointI(0, 0);
 		for (int i = 0; i < _size; i++) {
 			ISprite sprite = _sprites[i];
-			p.x = MathUtils.max(p.x, sprite.x());
-			p.y = MathUtils.max(p.y, sprite.y());
+			if (sprite != null) {
+				p.x = MathUtils.max(p.x, sprite.x());
+				p.y = MathUtils.max(p.y, sprite.y());
+			}
 		}
 		return p;
+	}
+
+	/**
+	 * 清空碰撞缓存
+	 */
+	private void clearCollisionCache() {
+		_collisionBoxCache.clear();
+		_collisionDebounceCache.clear();
+	}
+
+	/**
+	 * 碰撞缓存
+	 * 
+	 * @param spr
+	 * @return
+	 */
+	private RectBox getCachedCollisionBox(ISprite spr) {
+		if (spr == null || !spr.isVisible()) {
+			return null;
+		}
+		RectBox box = _collisionBoxCache.get(spr);
+		if (box == null) {
+			box = spr.getCollisionBox();
+			if (box != null) {
+				_collisionBoxCache.put(spr, box);
+			}
+		}
+		return box;
+	}
+
+	/**
+	 * 生成碰撞防抖Key
+	 */
+	private int getCollisionKey(ISprite a, ISprite b) {
+		int hashCode = 1;
+		hashCode = LSystem.unite(hashCode, a);
+		hashCode = LSystem.unite(hashCode, b);
+		return hashCode;
+	}
+
+	/**
+	 * 全量碰撞检测
+	 */
+	protected void checkAllCollisionObjects() {
+		if (!_checkAllCollision || _closed) {
+			return;
+		}
+		clearCollisionCache();
+		for (int i = 0; i < _size; i++) {
+			ISprite src = _sprites[i];
+			RectBox srcBox = getCachedCollisionBox(src);
+			if (srcBox == null) {
+				continue;
+			}
+			for (int j = i + 1; j < _size; j++) {
+				ISprite dst = _sprites[j];
+				RectBox dstBox = getCachedCollisionBox(dst);
+				if (dstBox == null || src == dst) {
+					continue;
+				}
+				// 缓存两个精灵是否已经碰撞过
+				int key = getCollisionKey(src, dst);
+				if (_collisionDebounceCache.get(key) != null) {
+					continue;
+				}
+				if (srcBox.collided(dstBox)) {
+					_collisionDebounceCache.put(key, Boolean.TRUE);
+					correctSpritePosition(src, dst);
+					onTriggerCollision(src, dst);
+				}
+			}
+		}
+	}
+
+	/**
+	 * 视图范围内碰撞检测
+	 */
+	protected void checkViewCollisionObjects() {
+		checkViewCollisionObjects(0f, 0f);
+	}
+
+	/**
+	 * 视图范围内碰撞检测
+	 * 
+	 * @param x X偏移
+	 * @param y Y偏移
+	 */
+	protected void checkViewCollisionObjects(float x, float y) {
+		if (!_checkViewCollision || _closed) {
+			return;
+		}
+		clearCollisionCache();
+		float minX = _isViewWindowSet ? x + _viewX : x;
+		float minY = _isViewWindowSet ? y + _viewY : y;
+		float maxX = minX + (_isViewWindowSet ? _viewWidth : _width);
+		float maxY = minY + (_isViewWindowSet ? _viewHeight : _height);
+		_collViewSize.setBounds(minX, minY, maxX, maxY);
+		if (_collisionObjects == null) {
+			_collisionObjects = new TArray<ISprite>();
+		} else {
+			_collisionObjects.clear();
+		}
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			if (spr != null && spr.isVisible()) {
+				RectBox box = getCachedCollisionBox(spr);
+				if (box != null && _collViewSize.collided(box)) {
+					_collisionObjects.add(spr);
+				}
+			}
+		}
+		int collSize = _collisionObjects.size;
+		for (int i = 0; i < collSize; i++) {
+			ISprite src = (ISprite) _collisionObjects.get(i);
+			RectBox srcBox = getCachedCollisionBox(src);
+			if (srcBox == null)
+				continue;
+
+			for (int j = i + 1; j < collSize; j++) {
+				ISprite dst = (ISprite) _collisionObjects.get(j);
+				if (src == dst || !dst.isVisible()) {
+					continue;
+				}
+				RectBox dstBox = getCachedCollisionBox(dst);
+				if (dstBox == null) {
+					continue;
+				}
+				int key = getCollisionKey(src, dst);
+				if (_collisionDebounceCache.get(key) != null) {
+					continue;
+				}
+				if (srcBox.collided(dstBox)) {
+					_collisionDebounceCache.put(key, Boolean.TRUE);
+					correctSpritePosition(src, dst);
+					onTriggerCollision(src, dst);
+				}
+			}
+		}
+	}
+
+	/**
+	 * 圆形碰撞检测
+	 * 
+	 * @param centerX 圆心X
+	 * @param centerY 圆心Y
+	 * @param radius  半径
+	 * @return 碰撞精灵列表
+	 */
+	public TArray<ISprite> checkCircleCollision(float centerX, float centerY, float radius) {
+		TArray<ISprite> result = new TArray<ISprite>();
+		if (_closed) {
+			return result;
+		}
+		clearCollisionCache();
+		float radiusSq = radius * radius;
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			RectBox box = getCachedCollisionBox(spr);
+			if (box == null) {
+				continue;
+			}
+			float cx = box.x + box.width / 2;
+			float cy = box.y + box.height / 2;
+			float dx = cx - centerX;
+			float dy = cy - centerY;
+			if (dx * dx + dy * dy <= radiusSq) {
+				result.add(spr);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * 两个精灵精准碰撞检测
+	 * 
+	 * @param a 精灵A
+	 * @param b 精灵B
+	 * @return 是否碰撞
+	 */
+	public boolean checkSpriteCollision(ISprite a, ISprite b) {
+		if (a == null || b == null || a == b || _closed) {
+			return false;
+		}
+		RectBox boxA = getCachedCollisionBox(a);
+		RectBox boxB = getCachedCollisionBox(b);
+		return boxA != null && boxB != null && boxA.collided(boxB);
+	}
+
+	/**
+	 * 像素碰撞检测
+	 * 
+	 * @param a 精灵A
+	 * @param b 精灵B
+	 * @return 是否碰撞
+	 */
+	public boolean checkPixelCollision(ISprite a, ISprite b) {
+		if (!checkSpriteCollision(a, b)) {
+			return false;
+		}
+		RectBox boxA = getCachedCollisionBox(a);
+		RectBox boxB = getCachedCollisionBox(b);
+		return boxA != null && boxB != null;
+	}
+
+	/**
+	 * 碰撞位置修正
+	 * 
+	 * @param a
+	 * @param b
+	 */
+	private void correctSpritePosition(ISprite a, ISprite b) {
+		if (a == null || b == null) {
+			return;
+		}
+		RectBox boxA = getCachedCollisionBox(a);
+		RectBox boxB = getCachedCollisionBox(b);
+		if (boxA == null || boxB == null) {
+			return;
+		}
+		float overlapX = (boxA.width + boxB.width) / 2 - MathUtils.abs(a.getX() - b.getX());
+		float overlapY = (boxA.height + boxB.height) / 2 - MathUtils.abs(a.getY() - b.getY());
+		if (overlapX > 0) {
+			a.setLocation(a.getX() + (a.getX() > b.getX() ? overlapX : -overlapX), a.getY());
+		}
+		if (overlapY > 0) {
+			a.setLocation(a.getX(), a.getY() + (a.getY() > b.getY() ? overlapY : -overlapY));
+		}
+	}
+
+	/**
+	 * 碰撞触发回调
+	 * 
+	 * @param spr
+	 * @param dst
+	 */
+	private void onTriggerCollision(final ISprite spr, final ISprite dst) {
+		if (spr == null || dst == null || spr == dst || checkCollisionSkip(spr, dst)) {
+			return;
+		}
+		int dir = Side.getCollisionSide(getCachedCollisionBox(spr), getCachedCollisionBox(dst));
+		spr.onCollision(dst, dir);
+		if (_collisionActionListener != null) {
+			_collisionActionListener.onCollision(spr, dst, dir);
+		}
+	}
+
+	/**
+	 * 碰撞过滤检测
+	 * 
+	 * @param spr
+	 * @param dst
+	 * @return
+	 */
+	private boolean checkCollisionSkip(final ISprite spr, final ISprite dst) {
+		if (_collisionIgnoreTypes != null && (_collisionIgnoreTypes.contains(spr.getFlagType())
+				|| _collisionIgnoreTypes.contains(dst.getFlagType()))) {
+			return true;
+		}
+		return _collisionIgnoreStrings != null && (_collisionIgnoreStrings.contains(spr.getObjectFlag())
+				|| _collisionIgnoreStrings.contains(dst.getObjectFlag()));
 	}
 
 	public void onTriggerCollisions() {
@@ -1534,29 +1624,6 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		return this;
 	}
 
-	protected void checkAllCollisionObjects() {
-		if (!_checkAllCollision) {
-			return;
-		}
-		final ISprite[] sprs = this._sprites;
-		final int size = sprs.length;
-		for (int i = size - 1; i > -1; i--) {
-			final ISprite src = sprs[i];
-			for (int j = 0; j < size; j++) {
-				if (i != j) {
-					final ISprite dst = sprs[j];
-					if (src != null && dst != null && src != dst && dst.isVisible() && src.isVisible()) {
-						final RectBox srcCollision = src.getCollisionBox();
-						final RectBox dstCollision = dst.getCollisionBox();
-						if (srcCollision.collided(dstCollision)) {
-							onTriggerCollision(src, dst);
-						}
-					}
-				}
-			}
-		}
-	}
-
 	public boolean isCheckViewCollision() {
 		return _checkViewCollision;
 	}
@@ -1566,96 +1633,8 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		return this;
 	}
 
-	protected void checkViewCollisionObjects() {
-		this.checkViewCollisionObjects(0f, 0f);
-	}
-
-	protected void checkViewCollisionObjects(float x, float y) {
-		if (!_checkViewCollision) {
-			return;
-		}
-		float minX, minY, maxX, maxY;
-		if (this._isViewWindowSet) {
-			minX = x + this._viewX;
-			maxX = minX + this._viewWidth;
-			minY = y + this._viewY;
-			maxY = minY + this._viewHeight;
-		} else {
-			minX = x;
-			maxX = x + this._width;
-			minY = y;
-			maxY = y + this._height;
-		}
-		if (_collViewSize == null) {
-			_collViewSize = new RectBox(minX, minY, maxX, maxY);
-		} else {
-			_collViewSize.setBounds(minX, minY, maxX, maxY);
-		}
-		if (_collisionObjects == null) {
-			_collisionObjects = new TArray<ISprite>();
-		} else {
-			_collisionObjects.clear();
-		}
-		final ISprite[] sprs = this._sprites;
-		int size = sprs.length;
-		for (int i = size - 1; i > -1; i--) {
-			final ISprite spr = sprs[i];
-			if (spr != null && spr.isVisible()) {
-				if (_collViewSize.collided(spr.getCollisionBox())) {
-					_collisionObjects.add(spr);
-				}
-			}
-		}
-		size = _collisionObjects.size;
-		for (int i = size - 1; i > -1; i--) {
-			final ISprite src = _collisionObjects.get(i);
-			for (int j = 0; j < size; j++) {
-				if (i != j) {
-					final ISprite dst = _collisionObjects.get(j);
-					if (src != null && dst != null && src != dst && dst.isVisible() && src.isVisible()) {
-						final RectBox srcCollision = src.getCollisionBox();
-						final RectBox dstCollision = dst.getCollisionBox();
-						if (srcCollision.collided(dstCollision)) {
-							onTriggerCollision(src, dst);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	private void onTriggerCollision(final ISprite spr, final ISprite dst) {
-		if (spr == null || dst == null || spr == dst) {
-			return;
-		}
-		if (checkCollisionSkip(spr, dst)) {
-			return;
-		}
-		final int dir = Side.getCollisionSide(spr.getCollisionBox(), dst.getCollisionBox());
-		spr.onCollision(dst, dir);
-		if (_collisionActionListener != null) {
-			_collisionActionListener.onCollision(spr, dst, dir);
-		}
-	}
-
-	private boolean checkCollisionSkip(final ISprite spr, final ISprite dst) {
-		if (_collisionIgnoreTypes != null) {
-			if (_collisionIgnoreTypes.contains(spr.getFlagType())
-					|| _collisionIgnoreTypes.contains(dst.getFlagType())) {
-				return true;
-			}
-		}
-		if (_collisionIgnoreStrings != null) {
-			if (_collisionIgnoreStrings.contains(spr.getObjectFlag())
-					|| _collisionIgnoreStrings.contains(dst.getObjectFlag())) {
-				return true;
-			}
-		}
-		return false;
-	}
-
 	public IntArray getCollisionIgnoreTypes() {
-		return _collisionIgnoreTypes.cpy();
+		return _collisionIgnoreTypes == null ? new IntArray() : _collisionIgnoreTypes.cpy();
 	}
 
 	public Sprites addCollisionIgnoreType(int t) {
@@ -1669,10 +1648,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public boolean removeCollisionIgnoreType(int t) {
-		if (_collisionIgnoreTypes == null) {
-			_collisionIgnoreTypes = new IntArray();
-		}
-		return _collisionIgnoreTypes.removeValue(t);
+		return _collisionIgnoreTypes != null && _collisionIgnoreTypes.removeValue(t);
 	}
 
 	public TArray<String> getCollisionIgnoreStrings() {
@@ -1695,10 +1671,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public boolean removeCollisionIgnoreString(String t) {
-		if (_collisionIgnoreStrings == null) {
-			_collisionIgnoreStrings = new ObjectSet<String>();
-		}
-		return _collisionIgnoreStrings.remove(t);
+		return _collisionIgnoreStrings != null && _collisionIgnoreStrings.remove(t);
 	}
 
 	public Sprites triggerCollision(CollisionAction<ISprite> c) {
@@ -1726,24 +1699,37 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		return _collisionActionListener;
 	}
 
+	public Sprites sortSkew25XY() {
+		if (_closed || _size <= 1 || !_sortableChildren || !_dirtyChildren) {
+			return this;
+		}
+		if (_sprites.length != _size) {
+			ISprite[] sprs = CollectionUtils.copyOf(_sprites, _size);
+			SortUtils.defaultSort(sprs, spriteSkew25Sorter);
+			_sprites = sprs;
+		} else {
+			SortUtils.defaultSort(_sprites, spriteSkew25Sorter);
+		}
+		_dirtyChildren = false;
+		invalidateCache();
+		return this;
+	}
+
+	public Sprites setAutoSortSkew25XY(boolean sort) {
+		_autoSortSkew25 = sort;
+		return this;
+	}
+
+	public boolean isAutoSortSkew25XY() {
+		return _autoSortSkew25;
+	}
+
 	public boolean checkAdd(ISprite spr, QueryEvent<ISprite> e) {
-		if (e == null) {
-			return false;
-		}
-		if (e.hit(spr)) {
-			return add(spr);
-		}
-		return false;
+		return e != null && e.hit(spr) && add(spr);
 	}
 
 	public boolean checkRemove(ISprite spr, QueryEvent<ISprite> e) {
-		if (e == null) {
-			return false;
-		}
-		if (e.hit(spr)) {
-			return remove(spr);
-		}
-		return false;
+		return e != null && e.hit(spr) && remove(spr);
 	}
 
 	/**
@@ -1755,63 +1741,53 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		if (!_visible || _closed) {
 			return;
 		}
-		final boolean listerner = (_sprListerner != null);
-		final ISprite[] childs = _sprites;
-		final int size = this._size;
-		for (int i = size - 1; i > -1; i--) {
-			final ISprite child = childs[i];
-			if (child != null) {
-				try {
-					child.update(elapsedTime);
-					if (listerner) {
-						_sprListerner.update(child);
-					}
-					if (_autoSortLayer) {
-						_currentPosHash = LSystem.unite(_currentPosHash, child.getX());
-						_currentPosHash = LSystem.unite(_currentPosHash, child.getY());
-						_currentPosHash = LSystem.unite(_currentPosHash, child.getOffsetX());
-						_currentPosHash = LSystem.unite(_currentPosHash, child.getOffsetY());
-					}
-				} catch (Throwable cause) {
-					LSystem.error("Sprites update() exception", cause);
+		boolean hasListener = _sprListener != null;
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite child = _sprites[i];
+			if (child == null)
+				continue;
+			try {
+				child.update(elapsedTime);
+				if (hasListener) {
+					_sprListener.update(child);
 				}
+				if (_autoSortLayer) {
+					_currentPosHash = LSystem.unite(_currentPosHash, child.getX());
+					_currentPosHash = LSystem.unite(_currentPosHash, child.getY());
+					_currentPosHash = LSystem.unite(_currentPosHash, child.getOffsetX());
+					_currentPosHash = LSystem.unite(_currentPosHash, child.getOffsetY());
+				}
+			} catch (Throwable e) {
+				LSystem.error("Sprites update sprite exception: " + child.getName(), e);
 			}
 		}
-		if (_autoSortLayer) {
-			if (size <= 1) {
-				return;
+		if (_autoSortLayer && _currentPosHash != _lastPosHash && _size > 1) {
+			if (_sprites.length != _size) {
+				ISprite[] sprs = CollectionUtils.copyOf(_sprites, _size);
+				spriteXYSorter.sort(sprs);
+				_sprites = sprs;
+			} else {
+				spriteXYSorter.sort(_sprites);
 			}
-			if (_currentPosHash != _lastPosHash) {
-				if (childs.length != size) {
-					final ISprite[] sprs = CollectionUtils.copyOf(childs, size);
-					spriteXYSorter.sort(sprs);
-					this._sprites = sprs;
-				} else {
-					spriteXYSorter.sort(childs);
-					this._sprites = childs;
-				}
-				_lastPosHash = _currentPosHash;
-			}
+			_lastPosHash = _currentPosHash;
+			invalidateCache();
 		}
 		onTriggerCollisions();
 	}
 
 	public Light2D createGlobalLight(LightType lt) {
 		if (lt == null) {
-			this._useLight = false;
+			_useLight = false;
 			return null;
 		}
-		if (this._light == null) {
-			this._light = new Light2D(lt);
-		} else {
-			this._light.updateLightType(lt);
-		}
-		this._useLight = true;
-		return this._light;
+		_light = (_light == null) ? new Light2D(lt) : _light;
+		_light.updateLightType(lt);
+		_useLight = true;
+		return _light;
 	}
 
 	public boolean isGlobalLight() {
-		return this._useLight;
+		return _useLight;
 	}
 
 	public Light2D getGlobalLight() {
@@ -1819,16 +1795,16 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public boolean isShaderMask() {
-		return this._useShaderMask;
+		return _useShaderMask;
 	}
 
 	public ShaderMask getShaderMask() {
-		return this._shaderMask;
+		return _shaderMask;
 	}
 
 	public Sprites setShaderMask(ShaderMask mask) {
-		this._shaderMask = mask;
-		this._useShaderMask = (this._shaderMask != null);
+		_shaderMask = mask;
+		_useShaderMask = _shaderMask != null;
 		return this;
 	}
 
@@ -1836,124 +1812,21 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		paint(g, 0f, 0f, minX, minY, maxX, maxY);
 	}
 
-	/**
-	 * 单纯渲染精灵
-	 * 
-	 * @param g
-	 */
 	public void paint(final GLEx g, final float offsetX, final float offsetY, final float minX, final float minY,
 			final float maxX, final float maxY) {
 		if (!_visible || _closed) {
 			return;
 		}
-		this.sortSprites();
-		float spriteX;
-		float spriteY;
-		float spriteWidth;
-		float spriteHeight;
-		final ISprite[] childs = _sprites;
-		final int size = this._size;
-		try {
-			afterSaveToBuffer(g);
-			if (_useLight && !_light.isClosed()) {
-				_light.setAutoTouchTimer(_screen.getTouchX(), _screen.getTouchY(), _screen.getCurrentTimer());
-				final ShaderMask lightMask = _light.getMask();
-				lightMask.pushBatch(g);
-				for (int i = 0; i < size; i++) {
-					final ISprite spr = childs[i];
-					if (spr != null && spr.isVisible()) {
-						if (_limitViewWindows) {
-							spriteX = minX + spr.getX();
-							spriteY = minY + spr.getY();
-							spriteWidth = spr.getWidth();
-							spriteHeight = spr.getHeight();
-							if (spriteX + spriteWidth < minX || spriteX > maxX || spriteY + spriteHeight < minY
-									|| spriteY > maxY) {
-								continue;
-							}
-						}
-						if (_createShadow && spr.showShadow()) {
-							_spriteShadow.drawShadow(g, spr, offsetX, offsetY);
-						}
-						spr.createUI(g, offsetX, offsetY);
-					}
-				}
-				lightMask.popBatch(g);
-			} else {
-				if (_useShaderMask) {
-					_shaderMask.pushBatch(g);
-				}
-				for (int i = 0; i < size; i++) {
-					final ISprite spr = childs[i];
-					if (spr != null && spr.isVisible()) {
-						if (_limitViewWindows) {
-							spriteX = minX + spr.getX();
-							spriteY = minY + spr.getY();
-							spriteWidth = spr.getWidth();
-							spriteHeight = spr.getHeight();
-							if (spriteX + spriteWidth < minX || spriteX > maxX || spriteY + spriteHeight < minY
-									|| spriteY > maxY) {
-								continue;
-							}
-						}
-						if (_createShadow && spr.showShadow()) {
-							_spriteShadow.drawShadow(g, spr, offsetX, offsetY);
-						}
-						spr.createUI(g, offsetX, offsetY);
-					}
-				}
-				if (_useShaderMask) {
-					_shaderMask.popBatch(g);
-				}
-			}
-		} finally {
-			beforeSaveToBuffer(g);
-		}
+		sortSprites();
+		renderSprites(g, offsetX, offsetY, minX, minY, maxX, maxY, true);
 	}
 
 	public void paintPos(final GLEx g, final float offsetX, final float offsetY) {
 		if (!_visible || _closed) {
 			return;
 		}
-		this.sortSprites();
-		final ISprite[] childs = _sprites;
-		final int size = this._size;
-		try {
-			afterSaveToBuffer(g);
-			if (_useLight && !_light.isClosed()) {
-				_light.setAutoTouchTimer(_screen.getTouchX(), _screen.getTouchY(), _screen.getCurrentTimer());
-				final ShaderMask lightMask = _light.getMask();
-				lightMask.pushBatch(g);
-				for (int i = 0; i < size; i++) {
-					final ISprite spr = childs[i];
-					if (spr != null && spr.isVisible()) {
-						if (_createShadow && spr.showShadow()) {
-							_spriteShadow.drawShadow(g, spr, offsetX, offsetY);
-						}
-						spr.createUI(g, offsetX, offsetY);
-					}
-				}
-				lightMask.popBatch(g);
-			} else {
-				if (_useShaderMask) {
-					_shaderMask.pushBatch(g);
-				}
-				for (int i = 0; i < size; i++) {
-					final ISprite spr = childs[i];
-					if (spr != null && spr.isVisible()) {
-						if (_createShadow && spr.showShadow()) {
-							_spriteShadow.drawShadow(g, spr, offsetX, offsetY);
-						}
-						spr.createUI(g, offsetX, offsetY);
-					}
-				}
-				if (_useShaderMask) {
-					_shaderMask.popBatch(g);
-				}
-			}
-		} finally {
-			beforeSaveToBuffer(g);
-		}
+		sortSprites();
+		renderSprites(g, offsetX, offsetY, 0, 0, 0, 0, false);
 	}
 
 	/**
@@ -1974,104 +1847,71 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		if (!_visible || _closed) {
 			return;
 		}
+		sortSprites();
+		final float scrollX = _scrollX, scrollY = _scrollY;
+		final float startX = MathUtils.scroll(scrollX, _width);
+		final float startY = MathUtils.scroll(scrollY, _height);
 
-		this.sortSprites();
-
-		final float newScrollX = _scrollX;
-		final float newScrollY = _scrollY;
-
-		final int drawWidth = _width;
-		final int drawHeight = _height;
-
-		final float startX = MathUtils.scroll(newScrollX, drawWidth);
-		final float startY = MathUtils.scroll(newScrollY, drawHeight);
-
-		float minX, minY, maxX, maxY;
-
-		if (this._isViewWindowSet) {
-			minX = x + this._viewX;
-			maxX = minX + this._viewWidth;
-			minY = y + this._viewY;
-			maxY = minY + this._viewHeight;
-		} else {
-			minX = x;
-			maxX = x + this._width;
-			minY = y;
-			maxY = y + this._height;
-		}
-
-		final boolean offset = (minX != 0 || minY != 0);
-		final boolean update = (startX != 0f || startY != 0f);
+		final float minX = _isViewWindowSet ? x + _viewX : x;
+		final float minY = _isViewWindowSet ? y + _viewY : y;
+		final float maxX = minX + (_isViewWindowSet ? _viewWidth : _width);
+		final float maxY = minY + (_isViewWindowSet ? _viewHeight : _height);
 
 		try {
 			afterSaveToBuffer(g);
-			if (update) {
+			if (startX != 0 || startY != 0) {
 				g.translate(startX, startY);
 			}
-			if (offset) {
+			if (minX != 0 || minY != 0) {
 				g.translate(minX, minY);
 			}
-			final ISprite[] childs = _sprites;
-			final int size = this._size;
-			if (_useLight && !_light.isClosed()) {
-				_light.setAutoTouchTimer(_screen.getTouchX(), _screen.getTouchY(), _screen.getCurrentTimer());
-				final ShaderMask lightMask = _light.getMask();
-				lightMask.pushBatch(g);
-				for (int i = 0; i < size; i++) {
-					final ISprite spr = childs[i];
-					if (spr != null && spr.isVisible()) {
-						if (_limitViewWindows) {
-							int layerX = spr.x();
-							int layerY = spr.y();
-							float layerWidth = spr.getWidth() + 1;
-							float layerHeight = spr.getHeight() + 1;
-							if (layerX + layerWidth < minX || layerX > maxX || layerY + layerHeight < minY
-									|| layerY > maxY) {
-								continue;
-							}
-						}
-						if (_createShadow && spr.showShadow()) {
-							_spriteShadow.drawShadow(g, spr, 0f, 0f);
-						}
-						spr.createUI(g);
-					}
-				}
-				lightMask.popBatch(g);
-			} else {
-				if (_useShaderMask) {
-					_shaderMask.pushBatch(g);
-				}
-				for (int i = 0; i < size; i++) {
-					final ISprite spr = childs[i];
-					if (spr != null && spr.isVisible()) {
-						if (_limitViewWindows) {
-							int layerX = spr.x();
-							int layerY = spr.y();
-							float layerWidth = spr.getWidth() + 1;
-							float layerHeight = spr.getHeight() + 1;
-							if (layerX + layerWidth < minX || layerX > maxX || layerY + layerHeight < minY
-									|| layerY > maxY) {
-								continue;
-							}
-						}
-						if (_createShadow && spr.showShadow()) {
-							_spriteShadow.drawShadow(g, spr, 0f, 0f);
-						}
-						spr.createUI(g);
-					}
-				}
-				if (_useShaderMask) {
-					_shaderMask.popBatch(g);
-				}
-			}
+			renderSprites(g, 0, 0, minX, minY, maxX, maxY, true);
 		} finally {
-			if (offset) {
+			if (minX != 0 || minY != 0) {
 				g.translate(-minX, -minY);
 			}
-			if (update) {
+			if (startX != 0 || startY != 0) {
 				g.translate(-startX, -startY);
 			}
 			beforeSaveToBuffer(g);
+		}
+	}
+
+	private void renderSprites(GLEx g, float offsetX, float offsetY, float minX, float minY, float maxX, float maxY,
+			boolean checkView) {
+		boolean useLight = _useLight && _light != null && !_light.isClosed();
+		boolean useMask = _useShaderMask && _shaderMask != null;
+		if (useLight) {
+			_light.setAutoTouchTimer(_screen.getTouchX(), _screen.getTouchY(), _screen.getCurrentTimer());
+			_light.getMask().pushBatch(g);
+		} else if (useMask) {
+			_shaderMask.pushBatch(g);
+		}
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			if (spr == null || !spr.isVisible()) {
+				continue;
+			}
+			if (checkView && _limitViewWindows) {
+				float sx = minX + spr.getX();
+				float sy = minY + spr.getY();
+				float sw = spr.getWidth();
+				float sh = spr.getHeight();
+				if (sx + sw < minX || sx > maxX || sy + sh < minY || sy > maxY) {
+					continue;
+				}
+			}
+			// 绘制阴影
+			if (_createShadow && _spriteShadow != null && spr.showShadow()) {
+				_spriteShadow.drawShadow(g, spr, offsetX, offsetY);
+			}
+			spr.createUI(g, offsetX, offsetY);
+		}
+
+		if (useLight) {
+			_light.getMask().popBatch(g);
+		} else if (useMask) {
+			_shaderMask.popBatch(g);
 		}
 	}
 
@@ -2155,9 +1995,8 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		newSprite.setName(name);
 		for (int i = 0; i < comps.size; i++) {
 			TComponent<ISprite> t = comps.get(i);
-			if (t != null) {
+			if (t != null)
 				newSprite.addComponent(t);
-			}
 		}
 		add(newSprite);
 		return newSprite;
@@ -2168,9 +2007,8 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		newSprite.setName(name);
 		for (int i = 0; i < comps.size; i++) {
 			TComponent<ISprite> t = comps.get(i);
-			if (t != null) {
+			if (t != null)
 				newSprite.addComponent(t);
-			}
 		}
 		add(newSprite);
 		return newSprite;
@@ -2308,11 +2146,11 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public float getStageX() {
-		return (getX() - getScreenX());
+		return getX() - getScreenX();
 	}
 
 	public float getStageY() {
-		return (getY() - getScreenY());
+		return getY() - getScreenY();
 	}
 
 	/**
@@ -2324,11 +2162,11 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @param height
 	 */
 	public Sprites setViewWindow(int x, int y, int width, int height) {
-		this._isViewWindowSet = true;
-		this._viewX = x;
-		this._viewY = y;
-		this._viewWidth = width;
-		this._viewHeight = height;
+		_isViewWindowSet = true;
+		_viewX = x;
+		_viewY = y;
+		_viewWidth = MathUtils.max(width, 1);
+		_viewHeight = MathUtils.max(height, 1);
 		return this;
 	}
 
@@ -2339,15 +2177,11 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @param y
 	 */
 	public Sprites setLocation(int x, int y) {
-		this._isViewWindowSet = true;
-		this._viewX = x;
-		this._viewY = y;
-		if (this._viewWidth <= 0) {
-			this._viewWidth = getWidth();
-		}
-		if (this._viewHeight <= 0) {
-			this._viewHeight = getHeight();
-		}
+		_isViewWindowSet = true;
+		_viewX = x;
+		_viewY = y;
+		_viewWidth = MathUtils.max(_viewWidth, getWidth());
+		_viewHeight = MathUtils.max(_viewHeight, getHeight());
 		return this;
 	}
 
@@ -2357,16 +2191,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public SpriteControls createSpriteControls() {
-		if (_closed) {
-			return new SpriteControls();
-		}
-		SpriteControls controls = null;
-		if (_sprites != null && _sprites.length > 0 && _size > 0) {
-			controls = new SpriteControls(_sprites);
-		} else {
-			controls = new SpriteControls();
-		}
-		return controls;
+		return _closed ? new SpriteControls() : new SpriteControls(getSprites());
 	}
 
 	public SpriteControls controls() {
@@ -2374,10 +2199,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public SpriteControls createSpriteControls(TArray<ISprite> sprites) {
-		if (sprites == null || sprites.size == 0) {
-			return createSpriteControls();
-		}
-		return new SpriteControls(sprites);
+		return sprites == null || sprites.isEmpty() ? createSpriteControls() : new SpriteControls(sprites);
 	}
 
 	public SpriteControls controls(TArray<ISprite> sprites) {
@@ -2385,101 +2207,31 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public SpriteControls findNamesToSpriteControls(String... names) {
-		if (_closed) {
-			return new SpriteControls();
-		}
-		SpriteControls controls = null;
-		if (_sprites != null) {
-			TArray<ISprite> sps = findNames(names);
-			controls = new SpriteControls(sps);
-		} else {
-			controls = new SpriteControls();
-		}
-		return controls;
+		return _closed ? new SpriteControls() : new SpriteControls(findNames(names));
 	}
 
 	public SpriteControls findNameContainsToSpriteControls(String... names) {
-		if (_closed) {
-			return new SpriteControls();
-		}
-		SpriteControls controls = null;
-		if (_sprites != null) {
-			TArray<ISprite> sps = findNameContains(names);
-			controls = new SpriteControls(sps);
-		} else {
-			controls = new SpriteControls();
-		}
-		return controls;
+		return _closed ? new SpriteControls() : new SpriteControls(findNameContains(names));
 	}
 
 	public SpriteControls findNotNamesToSpriteControls(String... names) {
-		if (_closed) {
-			return new SpriteControls();
-		}
-		SpriteControls controls = null;
-		if (_sprites != null) {
-			TArray<ISprite> sps = findNotNames(names);
-			controls = new SpriteControls(sps);
-		} else {
-			controls = new SpriteControls();
-		}
-		return controls;
+		return _closed ? new SpriteControls() : new SpriteControls(findNotNames(names));
 	}
 
 	public SpriteControls findTagsToSpriteControls(Object... o) {
-		if (_closed) {
-			return new SpriteControls();
-		}
-		SpriteControls controls = null;
-		if (_sprites != null) {
-			TArray<ISprite> sps = findTags(o);
-			controls = new SpriteControls(sps);
-		} else {
-			controls = new SpriteControls();
-		}
-		return controls;
+		return _closed ? new SpriteControls() : new SpriteControls(findTags(o));
 	}
 
 	public SpriteControls findNotTagsToSpriteControls(Object... o) {
-		if (_closed) {
-			return new SpriteControls();
-		}
-		SpriteControls controls = null;
-		if (_sprites != null) {
-			TArray<ISprite> sps = findNotTags(o);
-			controls = new SpriteControls(sps);
-		} else {
-			controls = new SpriteControls();
-		}
-		return controls;
+		return _closed ? new SpriteControls() : new SpriteControls(findNotTags(o));
 	}
 
 	public SpriteControls findFlagsToSpriteControls(int... flags) {
-		if (_closed) {
-			return new SpriteControls();
-		}
-		SpriteControls controls = null;
-		if (_sprites != null) {
-			TArray<ISprite> sps = findFlags(flags);
-			controls = new SpriteControls(sps);
-		} else {
-			controls = new SpriteControls();
-		}
-		return controls;
+		return _closed ? new SpriteControls() : new SpriteControls(findFlags(flags));
 	}
 
 	public SpriteControls findNotFlagsToSpriteControls(int... flags) {
-		if (_closed) {
-			return new SpriteControls();
-		}
-		SpriteControls controls = null;
-		if (_sprites != null) {
-			TArray<ISprite> sps = findNotFlags(flags);
-			controls = new SpriteControls(sps);
-		} else {
-			controls = new SpriteControls();
-		}
-		return controls;
+		return _closed ? new SpriteControls() : new SpriteControls(findNotFlags(flags));
 	}
 
 	/**
@@ -2488,13 +2240,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public ISprite[] getSprites() {
-		if (_closed) {
-			return null;
-		}
-		if (_sprites == null) {
-			return null;
-		}
-		return CollectionUtils.copyOf(this._sprites, this._size);
+		return _closed ? new ISprite[0] : CollectionUtils.copyOf(_sprites, _size);
 	}
 
 	/**
@@ -2503,19 +2249,13 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> getSpritesArray() {
-		if (_closed) {
-			return null;
-		}
-		if (_sprites == null) {
-			return null;
-		}
-		final TArray<ISprite> result = new TArray<ISprite>();
-		int size = _sprites.length;
-		for (int i = size - 1; i > -1; i--) {
+		TArray<ISprite> result = new TArray<ISprite>();
+		if (_closed)
+			return result;
+		for (int i = _size - 1; i > -1; i--) {
 			ISprite spr = _sprites[i];
-			if (spr != null) {
+			if (spr != null)
 				result.add(spr);
-			}
 		}
 		return result;
 	}
@@ -2527,14 +2267,12 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> remove(QueryEvent<ISprite> query) {
+		TArray<ISprite> result = new TArray<ISprite>();
 		if (_closed || query == null) {
-			return new TArray<ISprite>();
+			return result;
 		}
-		final TArray<ISprite> result = new TArray<ISprite>();
-		final int size = _size;
-		final ISprite[] childs = _sprites;
-		for (int i = size - 1; i > -1; i--) {
-			final ISprite sprite = childs[i];
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite sprite = _sprites[i];
 			if (sprite != null && query.hit(sprite)) {
 				result.add(sprite);
 				remove(i);
@@ -2544,16 +2282,13 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public TArray<ISprite> removeTagAndFlag(Object tag, int flag) {
-		if (_closed) {
-			return new TArray<ISprite>();
+		TArray<ISprite> result = new TArray<ISprite>();
+		if (_closed || tag == null) {
+			return result;
 		}
-		final TArray<ISprite> result = new TArray<ISprite>();
-		final int size = _size;
-		final ISprite[] childs = _sprites;
-		for (int i = size - 1; i > -1; i--) {
-			final ISprite sprite = childs[i];
-			if (sprite != null && (tag != null && (sprite.getTag() == tag || tag.equals(sprite.getTag()))
-					&& sprite.getFlagType() == flag)) {
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite sprite = _sprites[i];
+			if (sprite != null && (tag.equals(sprite.getTag()) && sprite.getFlagType() == flag)) {
 				result.add(sprite);
 				remove(i);
 			}
@@ -2568,14 +2303,12 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> find(QueryEvent<ISprite> query) {
+		TArray<ISprite> result = new TArray<ISprite>();
 		if (_closed || query == null) {
-			return new TArray<ISprite>();
+			return result;
 		}
-		final TArray<ISprite> result = new TArray<ISprite>();
-		final int size = _size;
-		final ISprite[] childs = _sprites;
-		for (int i = size - 1; i > -1; i--) {
-			final ISprite sprite = childs[i];
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite sprite = _sprites[i];
 			if (sprite != null && query.hit(sprite)) {
 				result.add(sprite);
 			}
@@ -2590,20 +2323,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> delete(QueryEvent<ISprite> query) {
-		if (_closed || query == null) {
-			return new TArray<ISprite>();
-		}
-		final TArray<ISprite> result = new TArray<ISprite>();
-		final int size = _size;
-		final ISprite[] childs = _sprites;
-		for (int i = size - 1; i > -1; i--) {
-			ISprite sprite = childs[i];
-			if (sprite != null && query.hit(sprite)) {
-				result.add(sprite);
-				remove(i);
-			}
-		}
-		return result;
+		return remove(query);
 	}
 
 	/**
@@ -2613,29 +2333,15 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<ISprite> select(QueryEvent<ISprite> query) {
-		if (_closed || query == null) {
-			return new TArray<ISprite>();
-		}
-		final TArray<ISprite> result = new TArray<ISprite>();
-		final int size = _size;
-		final ISprite[] childs = _sprites;
-		for (int i = size - 1; i > -1; i--) {
-			ISprite sprite = childs[i];
-			if (sprite != null && query.hit(sprite)) {
-				result.add(sprite);
-			}
-		}
-		return result;
+		return find(query);
 	}
 
 	private void addRect(TArray<RectBox> rects, RectBox child) {
-		if (_closed) {
+		if (_closed || child == null || child.width <= 1 || child.height <= 1) {
 			return;
 		}
-		if (child.width > 1 && child.height > 1) {
-			if (!rects.contains(child)) {
-				rects.add(child);
-			}
+		if (!rects.contains(child)) {
+			rects.add(child);
 		}
 	}
 
@@ -2685,21 +2391,16 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public DirtyRectList getDirtyList() {
-		final TArray<RectBox> rects = new TArray<RectBox>();
-		final ISprite[] childs = _sprites;
-		if (childs != null) {
-			final int size = _size;
-			for (int i = size - 1; i > -1; i--) {
-				ISprite spr = childs[i];
-				if (spr != null) {
-					addAllRect(rects, spr);
-				}
-			}
-		}
 		_dirtyList.clear();
-		final int len = rects.size;
-		for (int j = 0; j < len; j++) {
-			final RectBox rect = rects.get(j);
+		if (_closed) {
+			return _dirtyList;
+		}
+		TArray<RectBox> rects = new TArray<RectBox>();
+		for (int i = _size - 1; i > -1; i--) {
+			addAllRect(rects, _sprites[i]);
+		}
+		for (int i = 0; i < rects.size(); i++) {
+			RectBox rect = rects.get(i);
 			if (rect.width > 1 && rect.height > 1) {
 				_dirtyList.add(rect);
 			}
@@ -2708,12 +2409,8 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public Sprites setSpritesShadow(ISpritesShadow s) {
-		this._spriteShadow = s;
-		if (_spriteShadow != null) {
-			_createShadow = true;
-		} else {
-			_createShadow = false;
-		}
+		_spriteShadow = s;
+		_createShadow = _spriteShadow != null;
 		return this;
 	}
 
@@ -2727,15 +2424,10 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 
 	public int getMaxX() {
 		int maxX = 0;
-		final int size = this._size;
-		final ISprite[] childs = this._sprites;
-		for (int i = size - 1; i > -1; i--) {
-			ISprite comp = childs[i];
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite comp = _sprites[i];
 			if (comp != null) {
-				int curX = comp.x();
-				if (curX > maxX) {
-					maxX = curX;
-				}
+				maxX = MathUtils.max(maxX, comp.x());
 			}
 		}
 		return maxX;
@@ -2743,15 +2435,10 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 
 	public int getMaxY() {
 		int maxY = 0;
-		final int size = this._size;
-		final ISprite[] childs = this._sprites;
-		for (int i = size - 1; i > -1; i--) {
-			ISprite comp = childs[i];
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite comp = _sprites[i];
 			if (comp != null) {
-				int curY = comp.y();
-				if (curY > maxY) {
-					maxY = curY;
-				}
+				maxY = MathUtils.max(maxY, comp.y());
 			}
 		}
 		return maxY;
@@ -2759,15 +2446,10 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 
 	public int getMaxZ() {
 		int maxZ = 0;
-		final int size = this._size;
-		final ISprite[] childs = this._sprites;
-		for (int i = size - 1; i > -1; i--) {
-			ISprite comp = childs[i];
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite comp = _sprites[i];
 			if (comp != null) {
-				int curZ = comp.getZ();
-				if (curZ > maxZ) {
-					maxZ = curZ;
-				}
+				maxZ = MathUtils.max(maxZ, comp.getZ());
 			}
 		}
 		return maxZ;
@@ -2775,14 +2457,12 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 
 	@Override
 	public int size() {
-		return this._size;
+		return _size;
 	}
 
 	public RectBox getBoundingBox() {
-		if (_isViewWindowSet) {
-			return new RectBox(this._viewX, this._viewY, this._viewWidth, this._viewHeight);
-		}
-		return new RectBox(this._viewX, this._viewY, this._width, this._height);
+		return _isViewWindowSet ? new RectBox(_viewX, _viewY, _viewWidth, _viewHeight)
+				: new RectBox(_viewX, _viewY, _width, _height);
 	}
 
 	public int getHeight() {
@@ -2810,15 +2490,15 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 
 	@Override
 	public void setVisible(boolean v) {
-		this._visible = v;
+		_visible = v;
 	}
 
-	public SpriteListener getSprListerner() {
-		return _sprListerner;
+	public SpriteListener getSpriteListener() {
+		return _sprListener;
 	}
 
-	public Sprites setSprListerner(SpriteListener sprListerner) {
-		this._sprListerner = sprListerner;
+	public Sprites setSpriteListener(SpriteListener s) {
+		this._sprListener = s;
 		return this;
 	}
 
@@ -2835,32 +2515,32 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public Sprites scrollBy(float x, float y) {
-		this._scrollX += x;
-		this._scrollY += y;
+		_scrollX += x;
+		_scrollY += y;
 		return this;
 	}
 
 	public Sprites scrollTo(float x, float y) {
-		this._scrollX = x;
-		this._scrollY = y;
+		_scrollX = x;
+		_scrollY = y;
 		return this;
 	}
 
 	public float scrollX() {
-		return this._scrollX;
+		return _scrollX;
 	}
 
 	public float scrollY() {
-		return this._scrollY;
+		return _scrollY;
 	}
 
 	public Sprites scrollX(float x) {
-		this._scrollX = x;
+		_scrollX = x;
 		return this;
 	}
 
 	public Sprites scrollY(float y) {
-		this._scrollY = y;
+		_scrollY = y;
 		return this;
 	}
 
@@ -2897,10 +2577,8 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		if (callback == null) {
 			return this;
 		}
-		final ISprite[] childs = _sprites;
-		final int size = _size;
-		for (int i = size - 1; i > -1; i--) {
-			final ISprite child = childs[i];
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite child = _sprites[i];
 			if (child != null) {
 				callback.onSuccess(child);
 			}
@@ -2909,11 +2587,11 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public boolean isResizabled() {
-		return this._resizabled;
+		return _resizabled;
 	}
 
 	public Sprites setResizabled(boolean r) {
-		this._resizabled = r;
+		_resizabled = r;
 		return this;
 	}
 
@@ -2946,7 +2624,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public Sprites setResizeListener(ResizeListener<Sprites> listener) {
-		this._resizeListener = listener;
+		_resizeListener = listener;
 		return this;
 	}
 
@@ -2955,7 +2633,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public Sprites setLimitViewWindows(boolean limit) {
-		this._limitViewWindows = limit;
+		_limitViewWindows = limit;
 		return this;
 	}
 
@@ -3011,12 +2689,12 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public String getName() {
-		return this._sprites_name;
+		return _sprites_name;
 	}
 
 	@Override
 	public boolean isEmpty() {
-		return _size == 0 || _sprites == null;
+		return _size == 0;
 	}
 
 	@Override
@@ -3034,7 +2712,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public Sprites setAutoSortXYLayer(boolean sort) {
-		this._autoSortLayer = sort;
+		_autoSortLayer = sort;
 		return this;
 	}
 
@@ -3130,7 +2808,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		if (object == null) {
 			return this;
 		}
-		LObject.centerOn(object, getX(), getY(), getWidth(), getHeight());
+		centerOn(object);
 		object.setLocation(object.getX() + offsetX, object.getY() + offsetY);
 		return this;
 	}
@@ -3139,7 +2817,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		if (object == null) {
 			return this;
 		}
-		LObject.centerTopOn(object, getX(), getY(), getWidth(), getHeight());
+		centerTopOn(object);
 		object.setLocation(object.getX() + offsetX, object.getY() + offsetY);
 		return this;
 	}
@@ -3225,42 +2903,6 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		return this;
 	}
 
-	@Override
-	public String toString() {
-		return super.toString() + " " + "[name=" + _sprites_name + ", total=" + size() + "]";
-	}
-
-	/**
-	 * 清空当前精灵集合
-	 * 
-	 */
-	@Override
-	public void clear() {
-		if (_closed) {
-			return;
-		}
-		if (_sprites == null) {
-			return;
-		}
-		for (int i = 0; i < _sprites.length; i++) {
-			ISprite removed = _sprites[i];
-			if (removed != null) {
-				removed.setState(State.REMOVED);
-				if (removed instanceof IEntity) {
-					((IEntity) removed).onDetached();
-				}
-				// 删除精灵同时，删除缓动动画
-				if (removed instanceof ActionBind) {
-					ActionControl.get().removeAllActions((ActionBind) removed);
-				}
-			}
-			_sprites[i] = null;
-		}
-		_size = 0;
-		this._dirtyChildren = true;
-		return;
-	}
-
 	/**
 	 * 删除指定集合中的精灵
 	 * 
@@ -3268,16 +2910,13 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	 * @return
 	 */
 	public TArray<Boolean> clear(TArray<ISprite> removes) {
-		if (_closed || removes == null) {
-			return new TArray<Boolean>();
-		}
 		TArray<Boolean> result = new TArray<Boolean>();
-		final int size = removes.size;
-		for (int i = size - 1; i > -1; i--) {
-			final ISprite sprite = removes.get(i);
-			if (sprite != null) {
-				result.add(remove(sprite));
-			}
+		if (_closed || removes == null) {
+			return result;
+		}
+		for (int i = 0; i < removes.size(); i++) {
+			ISprite spr = removes.get(i);
+			result.add(remove(spr));
 		}
 		return result;
 	}
@@ -3304,29 +2943,29 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public Sprites setDirtyChildren(boolean v) {
-		this._dirtyChildren = v;
+		_dirtyChildren = v;
 		return this;
 	}
 
 	public boolean isDirtyChildren() {
-		return this._dirtyChildren;
+		return _dirtyChildren;
 	}
 
 	public Sprites setLayerTop() {
-		return this.setLayer(Integer.MAX_VALUE);
+		return setLayer(Integer.MAX_VALUE);
 	}
 
 	public Sprites setLayerBottom() {
-		return this.setLayer(Integer.MIN_VALUE);
+		return setLayer(Integer.MIN_VALUE);
 	}
 
 	public Sprites setLayer(int z) {
-		this._indexLayer = z;
+		_indexLayer = z;
 		return this;
 	}
 
 	public Sprites setZ(int z) {
-		return this.setZOrder(z);
+		return setZOrder(z);
 	}
 
 	public Sprites setZOrder(int z) {
@@ -3347,79 +2986,80 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public Sprites clearListerner() {
-		this._sprListerner = null;
-		this._resizeListener = null;
-		this._collisionActionListener = null;
-		if (this._collisionIgnoreTypes != null) {
-			this._collisionIgnoreTypes.clear();
-			this._collisionIgnoreTypes = null;
+		_sprListener = null;
+		_resizeListener = null;
+		_collisionActionListener = null;
+		if (_collisionIgnoreTypes != null) {
+			_collisionIgnoreTypes.clear();
+			_collisionIgnoreTypes = null;
 		}
-		if (this._collisionIgnoreStrings != null) {
-			this._collisionIgnoreStrings.clear();
-			this._collisionIgnoreStrings = null;
+		if (_collisionIgnoreStrings != null) {
+			_collisionIgnoreStrings.clear();
+			_collisionIgnoreStrings = null;
 		}
 		return this;
 	}
 
 	public Sprites saveToFrameBuffer(boolean s) {
-		this._spriteSavetoFrameBuffer = s;
+		_spriteSavetoFrameBuffer = s;
 		return this;
 	}
 
 	public boolean isSaveFrameBuffer() {
-		return this._spriteSavetoFrameBuffer;
+		return _spriteSavetoFrameBuffer;
 	}
 
 	private void afterSaveToBuffer(GLEx g) {
-		if (_spriteSavetoFrameBuffer) {
-			if (_spriteFrameBuffer == null
-					|| (_spriteFrameBuffer.getWidth() != getWidth() || _spriteFrameBuffer.getHeight() != getHeight())) {
-				if (_spriteFrameBuffer != null) {
-					_spriteFrameBuffer.close();
-					_spriteFrameBuffer = null;
-				}
-				_spriteFrameBuffer = new FrameBuffer(getWidth(), getHeight());
-			}
-			_spriteFrameBuffer.begin(g, -getX(), getY(), getWidth(), getHeight());
+		if (!_spriteSavetoFrameBuffer) {
+			return;
 		}
+		if (_spriteFrameBuffer == null || _spriteFrameBuffer.getWidth() != getWidth()
+				|| _spriteFrameBuffer.getHeight() != getHeight()) {
+			if (_spriteFrameBuffer != null) {
+				_spriteFrameBuffer.close();
+			}
+			_spriteFrameBuffer = new FrameBuffer(getWidth(), getHeight());
+		}
+		_spriteFrameBuffer.begin(g, -getX(), -getY(), getWidth(), getHeight());
 	}
 
 	private void beforeSaveToBuffer(GLEx g) {
-		if (_spriteSavetoFrameBuffer && _spriteFrameBuffer != null) {
-			_spriteFrameBuffer.end(g);
-			final boolean changUV = (_changeUVTilt && _uvMask != null);
-			if (_useFrameBufferShaderMask && _frameBufferShaderMask != null) {
-				_frameBufferShaderMask.setViewSize(getWidth(), getHeight());
-				_frameBufferShaderMask.update();
-				final ShaderSource oldShader = g.updateShaderSource(_frameBufferShaderMask.getShader());
-				if (changUV) {
-					_spriteFrameBuffer.begin(g);
-				}
-				g.draw(_spriteFrameBuffer.texture(), _offsetUVx + getX(), _offsetUVy + getY(), Direction.TRANS_FLIP);
-				if (changUV) {
-					_spriteFrameBuffer.end(g);
-				}
-				g.updateShaderSource(oldShader);
+		if (!_spriteSavetoFrameBuffer || _spriteFrameBuffer == null) {
+			return;
+		}
+		_spriteFrameBuffer.end(g);
+		boolean changeUV = _changeUVTilt && _uvMask != null;
+		if (_useFrameBufferShaderMask && _frameBufferShaderMask != null) {
+			_frameBufferShaderMask.setViewSize(getWidth(), getHeight());
+			_frameBufferShaderMask.update();
+			ShaderSource old = g.updateShaderSource(_frameBufferShaderMask.getShader());
+			if (changeUV) {
+				_spriteFrameBuffer.begin(g);
 			}
-			if (changUV) {
-				_uvMask.setViewSize(getWidth(), getHeight());
-				_uvMask.update();
-				final ShaderSource oldShader = g.updateShaderSource(_uvMask.getBilinearShader());
-				g.draw(_spriteFrameBuffer.texture(), _offsetUVx + getX(), _offsetUVy + getY());
-				g.updateShaderSource(oldShader);
+			g.draw(_spriteFrameBuffer.texture(), _offsetUVx + getX(), _offsetUVy + getY(), Direction.TRANS_FLIP);
+			if (changeUV) {
+				_spriteFrameBuffer.end(g);
 			}
+			g.updateShaderSource(old);
+		}
+		if (changeUV) {
+			_uvMask.setViewSize(getWidth(), getHeight());
+			_uvMask.update();
+			ShaderSource old = g.updateShaderSource(_uvMask.getBilinearShader());
+			g.draw(_spriteFrameBuffer.texture(), _offsetUVx + getX(), _offsetUVy + getY());
+			g.updateShaderSource(old);
 		}
 	}
 
 	public Sprites setFBOShaderMask(FBOMask mask) {
-		this._frameBufferShaderMask = mask;
-		this._useFrameBufferShaderMask = (this._frameBufferShaderMask != null);
-		this.saveToFrameBuffer(this._useFrameBufferShaderMask);
+		_frameBufferShaderMask = mask;
+		_useFrameBufferShaderMask = _frameBufferShaderMask != null;
+		saveToFrameBuffer(_useFrameBufferShaderMask);
 		return this;
 	}
 
 	public FBOMask getFBOShaderMask() {
-		return this._frameBufferShaderMask;
+		return _frameBufferShaderMask;
 	}
 
 	public Sprites freeFBOShaderMask() {
@@ -3457,25 +3097,24 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 	}
 
 	public Sprites updateUVXTopLeftRight(float topLeft, float topRight) {
-		_uvMask = getUVMask();
-		_uvMask.setViewSize(getWidth(), getHeight());
-		_uvMask.setXTopLeftRight(topLeft, topRight);
-		_uvMask.update();
+		getUVMask().setViewSize(getWidth(), getHeight());
+		getUVMask().setXTopLeftRight(topLeft, topRight);
+		getUVMask().update();
 		setAllowUVChange(true);
 		return this;
 	}
 
 	public Sprites updateUVYTopLeftRight(float topLeft, float topRight) {
-		_uvMask = getUVMask();
-		_uvMask.setViewSize(getWidth(), getHeight());
-		_uvMask.setYTopLeftRight(topLeft, topRight);
-		_uvMask.update();
+		getUVMask().setViewSize(getWidth(), getHeight());
+		getUVMask().setYTopLeftRight(topLeft, topRight);
+		getUVMask().update();
 		setAllowUVChange(true);
 		return this;
 	}
 
 	public Sprites setAllowUVChange(boolean a) {
-		saveToFrameBuffer(_changeUVTilt = a);
+		_changeUVTilt = a;
+		saveToFrameBuffer(a);
 		return this;
 	}
 
@@ -3485,7 +3124,8 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 
 	public Sprites freeUVMask() {
 		_changeUVTilt = false;
-		_uvMask = null;
+		if (_uvMask != null)
+			_uvMask = null;
 		return this;
 	}
 
@@ -3511,6 +3151,331 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		return _spriteFrameBuffer;
 	}
 
+	@Override
+	public Iterator<ISprite> iterator() {
+		return new Iterator<ISprite>() {
+
+			private int index = 0;
+			private int expectedSize = _size;
+
+			@Override
+			public boolean hasNext() {
+				return index < _size;
+			}
+
+			@Override
+			public ISprite next() {
+				if (_size != expectedSize) {
+					throw new LSysException("Sprites modified during iteration");
+				}
+				if (!hasNext()) {
+					return null;
+				}
+				return _sprites[index++];
+			}
+
+			@Override
+			public void remove() {
+				Sprites.this.remove(--index);
+				_size--;
+				expectedSize = _size;
+			}
+		};
+	}
+
+	public Sprites moveUp(ISprite sprite) {
+		int idx = indexOf(sprite);
+		if (idx > 0) {
+			swapSprite(idx, idx - 1);
+		}
+		return this;
+	}
+
+	public Sprites moveDown(ISprite sprite) {
+		int idx = indexOf(sprite);
+		if (idx != -1 && idx < _size - 1) {
+			swapSprite(idx, idx + 1);
+		}
+		return this;
+	}
+
+	public int indexOf(ISprite sprite) {
+		for (int i = 0; i < _size; i++) {
+			if (_sprites[i] == sprite) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	public Sprites batchSetVisible(boolean visible, ISprite... sprites) {
+		for (int i = 0; i < sprites.length; i++) {
+			ISprite spr = sprites[i];
+			if (spr != null) {
+				spr.setVisible(visible);
+			}
+		}
+		return this;
+	}
+
+	public Sprites batchSetLocation(float x, float y, ISprite... sprites) {
+		for (int i = 0; i < sprites.length; i++) {
+			ISprite spr = sprites[i];
+			if (spr != null) {
+				spr.setLocation(x, y);
+			}
+		}
+		return this;
+	}
+
+	public ISprite safeFind(String name) {
+		try {
+			return find(name);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	public void queryEach(QueryEvent<ISprite> action) {
+		if (action == null) {
+			return;
+		}
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			if (spr != null) {
+				action.hit(spr);
+			}
+		}
+	}
+
+	public TArray<ISprite> query(QueryEvent<ISprite> query) {
+		TArray<ISprite> result = new TArray<ISprite>();
+		if (query == null) {
+			return result;
+		}
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			if (spr != null && query.hit(spr)) {
+				result.add(spr);
+			}
+		}
+		return result;
+	}
+
+	public Sprites moveAll(float dx, float dy) {
+		queryEach(new QueryEvent<ISprite>() {
+			@Override
+			public boolean hit(ISprite spr) {
+				spr.setLocation(spr.getX() + dx, spr.getY() + dy);
+				return true;
+			}
+		});
+		return this;
+	}
+
+	public void setLocationAll(float newX, float newY) {
+		if (_closed || _size == 0) {
+			return;
+		}
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			if (spr != null) {
+				spr.setLocation(newX, newY);
+			}
+		}
+	}
+
+	public void setScaleAll(float scaleX, float scaleY) {
+		if (_closed || _size == 0) {
+			return;
+		}
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			if (spr != null) {
+				spr.setScale(scaleX, scaleY);
+			}
+		}
+	}
+
+	public Sprites setAllVisible(boolean visible) {
+		queryEach(new QueryEvent<ISprite>() {
+			@Override
+			public boolean hit(ISprite spr) {
+				spr.setVisible(visible);
+				return true;
+			}
+		});
+		return this;
+	}
+
+	public Sprites setAllZ(int z) {
+		queryEach(new QueryEvent<ISprite>() {
+			@Override
+			public boolean hit(ISprite spr) {
+				spr.setLayer(-z);
+				return true;
+			}
+		});
+		return this;
+	}
+
+	/**
+	 * 矩形范围内精灵向指定位置移动
+	 * 
+	 * @param rangeX
+	 * @param rangeY
+	 * @param rangeW
+	 * @param rangeH
+	 * @param dx
+	 * @param dy
+	 * @return
+	 */
+	public Sprites moveSpritesInRectRange(float rangeX, float rangeY, float rangeW, float rangeH, float dx, float dy) {
+		if (_closed) {
+			return this;
+		}
+		queryEach(new QueryEvent<ISprite>() {
+			@Override
+			public boolean hit(ISprite spr) {
+				RectBox box = getCachedCollisionBox(spr);
+				if (box != null && box.intersects(rangeX, rangeY, rangeW, rangeH)) {
+					spr.setLocation(spr.getX() + dx, spr.getY() + dy);
+				}
+				return true;
+			}
+		});
+		clearCollisionCache();
+		_dirtyChildren = true;
+		return this;
+	}
+
+	/**
+	 * 圆形范围内精灵向指定位置移动
+	 * 
+	 * @param centerX
+	 * @param centerY
+	 * @param radius
+	 * @param dx
+	 * @param dy
+	 * @return
+	 */
+	public Sprites moveSpritesInCircleRange(float centerX, float centerY, float radius, float dx, float dy) {
+		if (_closed) {
+			return this;
+		}
+		TArray<ISprite> sprites = checkCircleCollision(centerX, centerY, radius);
+		for (int i = 0; i < sprites.size; i++) {
+			ISprite spr = (ISprite) sprites.get(i);
+			spr.setLocation(spr.getX() + dx, spr.getY() + dy);
+		}
+		_dirtyChildren = true;
+		return this;
+	}
+
+	/**
+	 * 按标签移动精灵
+	 * 
+	 * @param tag
+	 * @param dx
+	 * @param dy
+	 * @return
+	 */
+	public Sprites moveSpritesByTag(Object tag, float dx, float dy) {
+		if (_closed || tag == null) {
+			return this;
+		}
+		TArray<ISprite> sprites = findTags(tag);
+		for (int i = 0; i < sprites.size; i++) {
+			ISprite spr = (ISprite) sprites.get(i);
+			spr.setLocation(spr.getX() + dx, spr.getY() + dy);
+		}
+		_dirtyChildren = true;
+		return this;
+	}
+
+	/**
+	 * 计算当前所有精灵的平均坐标
+	 * 
+	 * @return
+	 */
+	public Vector2f getAveragePosition() {
+		if (_closed || _size == 0) {
+			return new Vector2f();
+		}
+		float totalX = 0, totalY = 0;
+		int count = 0;
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			if (spr != null) {
+				totalX += (spr.getX() + spr.getWidth() / 2f);
+				totalY += (spr.getY() + spr.getHeight() / 2f);
+				count++;
+			}
+		}
+		if (count > 0) {
+			return new Vector2f(totalX / count, totalY / count);
+		}
+		return new Vector2f();
+	}
+
+	/**
+	 * 计算当前所有精灵体积与位置之和
+	 * 
+	 * @return
+	 */
+	public RectBox getBounds() {
+		if (_closed || _size == 0) {
+			return new RectBox();
+		}
+		float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE;
+		float maxX = Float.MIN_VALUE, maxY = Float.MIN_VALUE;
+		for (int i = 0; i < _size; i++) {
+			ISprite spr = _sprites[i];
+			if (spr != null) {
+				RectBox box = spr.getCollisionBox();
+				if (box != null) {
+					minX = MathUtils.min(minX, box.x);
+					minY = MathUtils.min(minY, box.y);
+					maxX = MathUtils.max(maxX, box.x + box.width);
+					maxY = MathUtils.max(maxY, box.y + box.height);
+				}
+			}
+		}
+		return new RectBox(minX, minY, maxX - minX, maxY - minY);
+	}
+
+	@Override
+	public String toString() {
+		return super.toString() + " [name=" + _sprites_name + ", total=" + size() + "]";
+	}
+
+	/**
+	 * 清空当前精灵集合
+	 */
+	@Override
+	public void clear() {
+		if (_closed || _size == 0) {
+			return;
+		}
+		for (int i = 0; i < _size; i++) {
+			ISprite removed = _sprites[i];
+			if (removed != null) {
+				removed.setState(State.REMOVED);
+				if (removed instanceof IEntity) {
+					((IEntity) removed).onDetached();
+				}
+				if (removed instanceof ActionBind) {
+					ActionControl.get().removeAllActions((ActionBind) removed);
+				}
+				_sprites[i] = null;
+			}
+		}
+		_size = 0;
+		_dirtyChildren = true;
+		invalidateCache();
+		clearCollisionCache();
+	}
+
 	public boolean isClosed() {
 		return _closed;
 	}
@@ -3520,21 +3485,15 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		if (_closed) {
 			return;
 		}
-		this._visible = this._createShadow = false;
-		this._autoSortLayer = this._checkViewCollision = false;
-		this._checkAllCollision = false;
+		_visible = _createShadow = _autoSortLayer = _checkAllCollision = _checkViewCollision = false;
 		if (_spriteShadow != null) {
 			_spriteShadow.close();
 		}
-		this._newLineHeight = 0;
-		final ISprite[] childs = _sprites;
-		if (childs != null) {
-			final int size = _size;
-			for (int i = size - 1; i > -1; i--) {
-				final ISprite child = childs[i];
-				if (child != null) {
-					child.close();
-				}
+		_newLineHeight = 0;
+		for (int i = _size - 1; i > -1; i--) {
+			ISprite child = _sprites[i];
+			if (child != null) {
+				child.close();
 			}
 		}
 		clear();
@@ -3542,18 +3501,18 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 			_light.close();
 			_light = null;
 		}
-		this._useLight = false;
-		this._size = 0;
-		this._closed = true;
-		this._resizabled = false;
-		this._sprites = null;
-		this._collViewSize = null;
-		this._collisionObjects = null;
-		this.freeMask();
-		this.freeUVMask();
-		this.freeFrameBuffer();
-		this.freeFBOShaderMask();
-		this.clearListerner();
+		_useLight = false;
+		_closed = true;
+		_resizabled = false;
+		_sprites = null;
+		_collViewSize = null;
+		_collisionObjects = null;
+		freeMask();
+		freeUVMask();
+		freeFrameBuffer();
+		freeFBOShaderMask();
+		clearListerner();
+		clearCollisionCache();
 		LSystem.popSpritesPool(this);
 	}
 

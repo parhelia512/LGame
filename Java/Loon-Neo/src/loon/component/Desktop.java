@@ -510,7 +510,9 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 			LComponent component = components[i];
 			if (component != null && component.intersects(x, y)) {
 				component.update(0);
-				component.processTouchReleased();
+				if (component.isTouchDownClick()) {
+					component.processTouchReleased();
+				}
 				component.processTouchClicked();
 			}
 		}
@@ -733,7 +735,7 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 					if (comp.isTooltip() && _tooltip != null) {
 						_tooltip.setToolTipComponent(comp);
 					}
-					_hoverComponent.processTouchExited();
+					exitHoverComponent(_hoverComponent);
 					if (typeButton != -1) {
 						comp.processTouchEntered();
 					}
@@ -744,7 +746,7 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 				}
 				if (_hoverComponent != null && _hoverComponent.isAllowTouch()) {
 					_hoverComponent.validatePosition();
-					_hoverComponent.processTouchExited();
+					exitHoverComponent(_hoverComponent);
 				}
 			}
 			// 强制触发原组件释放
@@ -752,9 +754,19 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 				if (_hoverComponent != null && _hoverComponent.isAllowTouch()) {
 					_hoverComponent.processTouchReleased();
 					_hoverComponent.validatePosition();
-					_hoverComponent.processTouchExited();
+					exitHoverComponent(_hoverComponent);
 				}
 				_hoverComponent = comp;
+			}
+		}
+	}
+
+	public void exitHoverComponent(LComponent hover) {
+		if (hover != null) {
+			hover.processTouchExited();
+			hover.setSelected(false);
+			if (_clickedComponent == hover) {
+				_clickedComponent = null;
 			}
 		}
 	}
@@ -807,8 +819,8 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 				this._hoverComponent.validatePosition();
 				this._hoverComponent.processTouchReleased();
 				// 当释放鼠标时，点击事件生效
-				if (this._clickComponents[0] == this._hoverComponent) {
-					this._hoverComponent.processTouchClicked();
+				if (_hoverComponent != null && this._clickComponents[0] == this._hoverComponent) {
+					_hoverComponent.processTouchClicked();
 				}
 			}
 			_clickComponents[0] = null;
@@ -1842,7 +1854,7 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 		_clicked = false;
 		if (_hoverComponent != null && _hoverComponent.isAllowTouch()) {
 			_hoverComponent.processTouchReleased();
-			_hoverComponent.processTouchExited();
+			exitHoverComponent(_hoverComponent);
 		}
 		if (_clickedComponent != null && _clickedComponent.isAllowTouch()) {
 			_clickedComponent.processTouchReleased();

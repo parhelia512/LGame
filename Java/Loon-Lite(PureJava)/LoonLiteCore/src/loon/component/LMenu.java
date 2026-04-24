@@ -61,9 +61,7 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 	}
 
 	private static class ClickMenu implements Updateable {
-
 		private MenuItemClick click;
-
 		private MenuItem item;
 
 		ClickMenu(MenuItemClick c, MenuItem i) {
@@ -81,15 +79,30 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 				}
 			}
 		}
+	}
 
+	public static class MenuItemConfig {
+		public String label;
+		public String texturePath;
+		public LTexture texture;
+		public MenuItemClick click;
+		public float offsetX;
+		public float offsetY;
+
+		public MenuItemConfig(String label) {
+			this.label = label;
+		}
+
+		public MenuItemConfig(String label, MenuItemClick click) {
+			this.label = label;
+			this.click = click;
+		}
 	}
 
 	public static class MenuItem implements LRelease {
-
 		protected LTexture _texture;
 		protected LMenu _parent;
 		protected String _label;
-
 		protected String _varName;
 		private float _x;
 		private float _y;
@@ -102,15 +115,11 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 		public float offsetY;
 		public float labelOffsetX;
 		public float labelOffsetY;
-
 		private RectBox _itemrect;
-
 		protected boolean _keep = false;
-
 		private boolean _visible = true;
 		private boolean _clicked = false;
 		private boolean _localpos = false, _localsize = false;
-
 		private IFont _font;
 		private MenuItemClick _itemclick;
 
@@ -152,16 +161,8 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 			this._y = y;
 			this.itemWidth = w;
 			this.itemHeight = h;
-			if (w < 1 && h < 1) {
-				this._localsize = true;
-			} else {
-				this._localsize = false;
-			}
-			if (x < 1 && y < 1) {
-				this._localpos = true;
-			} else {
-				this._localpos = false;
-			}
+			this._localsize = !(w < 1 && h < 1);
+			this._localpos = !(x < 1 && y < 1);
 			this._parent = parent;
 			if (_parent != null) {
 				_parent.add(this);
@@ -224,87 +225,83 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 		}
 
 		public void draw(GLEx g, Vector2f pos, boolean isDown, boolean isDrag, boolean checked) {
-			if (!_visible) {
+			if (!_visible || g == null) {
 				return;
 			}
+
 			final IFont font = _font == null ? g.getFont() : _font;
-			if (this._parent != null) {
-				if (!_localpos) {
-					this._x = (this._parent._cellWidth * this.xslot + this._parent._cellWidth / this.itemWidth
-							+ this.xslot * this._parent._paddingx) - this._parent._item_left_offset;
-					this._y = (this._parent._cellHeight * this.yslot + this._parent._cellHeight / this.itemHeight
-							+ this.yslot * this._parent._paddingy);
+			if (this._parent == null) {
+				drawStandaloneItem(g, font, pos, isDown, isDrag, checked);
+				return;
+			}
 
-					if (_x > Float.MAX_VALUE) {
-						_x = 0;
-					} else if (_x < Float.MIN_VALUE) {
-						_x = 0;
-					}
-					if (_y > Float.MAX_VALUE) {
-						_y = 0;
-					} else if (_y < Float.MIN_VALUE) {
-						_y = 0;
-					}
-				}
-				if (_parent._moveType == LMenu.MOVE_RIGHT) {
-					float posX = _parent.getScreenRight() - _parent._main_panel_size;
-					this._x = posX + _x;
-				}
-				if (!_localsize) {
-					if (!this._keep || _texture == null) {
-						this.itemWidth = this._parent._cellWidth;
-						this.itemHeight = this._parent._cellHeight;
-					} else {
-						this.itemWidth = this._texture.getWidth();
-						this.itemHeight = this._texture.getHeight();
-					}
-				}
-				if (pos != null && bounds().contains(pos.x, pos.y) && checked) {
-					if ((isDown && !isDrag) && checked && (!this._clicked)) {
-						ClickMenu menu = new ClickMenu(this._itemclick, this);
-						LSystem.load(menu);
-						this._clicked = true;
-					}
-				}
-				if (!checked) {
-					this._clicked = false;
-				}
-				if (_texture != null) {
-					g.draw(this._texture, this._x + _parent._leftOffsetMoveMenu + offsetX,
-							this._y + this._parent._paddingy + this._parent.scroll + offsetY, this.itemWidth,
-							this.itemHeight, this._clicked ? LColor.gray : _parent._component_baseColor);
-				}
-				if (this._label != null) {
-					font.drawString(g, _label,
-							(this._x + _parent._leftOffsetMoveMenu + (itemWidth / 2 - font.stringWidth(_label) / 2))
-									+ offsetX + labelOffsetX,
-							(this._y + this._parent._paddingy + this._parent.scroll - font.getAscent() - 2) + offsetY
-									+ labelOffsetY,
-							this._clicked ? LColor.gray : _parent._fontColor);
-				}
+			if (!_localpos) {
+				this._x = (this._parent._cellWidth * this.xslot + this._parent._cellWidth / this.itemWidth
+						+ this.xslot * this._parent._paddingx) - this._parent._item_left_offset;
+				this._y = (this._parent._cellHeight * this.yslot + this._parent._cellHeight / this.itemHeight
+						+ this.yslot * this._parent._paddingy);
+			}
 
-			} else {
-				if (_parent != null) {
-					if (bounds().contains(_parent.getTouchX(), _parent.getTouchY()) && checked) {
-						if ((isDown && !isDrag) && checked && (!this._clicked)) {
-							ClickMenu menu = new ClickMenu(this._itemclick, this);
-							LSystem.load(menu);
-							this._clicked = true;
-						}
-					}
+			if (_parent._moveType == LMenu.MOVE_RIGHT) {
+				float posX = _parent.getScreenRight() - _parent._main_panel_size - _parent.getScreenLeft();
+				this._x = posX + _x;
+			}
+
+			if (!_localsize) {
+				this.itemWidth = (!this._keep || _texture == null) ? this._parent._cellWidth : this._texture.getWidth();
+				this.itemHeight = (!this._keep || _texture == null) ? this._parent._cellHeight
+						: this._texture.getHeight();
+			}
+
+			handleItemClick(pos, isDown, isDrag, checked);
+
+			drawItemContent(g, font, checked);
+		}
+
+		private void drawStandaloneItem(GLEx g, IFont font, Vector2f pos, boolean isDown, boolean isDrag,
+				boolean checked) {
+			if (pos != null && bounds().contains(pos.x, pos.y) && checked) {
+				if ((isDown && !isDrag) && !this._clicked) {
+					LSystem.load(new ClickMenu(this._itemclick, this));
+					this._clicked = true;
 				}
-				if (!checked) {
-					this._clicked = false;
-				}
-				if (_texture != null) {
-					g.draw(this._texture, this._x + offsetX, this._y + offsetY, this.itemWidth, this.itemHeight);
-				}
-				if (this._label != null) {
-					font.drawString(g, this._label,
-							(this._x + (itemWidth / 2 - font.stringWidth(_label) / 2 - font.getAscent())) + offsetX
-									+ labelOffsetX,
-							(this._y - 2) + offsetY + labelOffsetY);
-				}
+			}
+			if (!checked)
+				this._clicked = false;
+			if (_texture != null)
+				g.draw(this._texture, this._x + offsetX, this._y + offsetY, this.itemWidth, this.itemHeight);
+			if (this._label != null) {
+				font.drawString(g, this._label,
+						(this._x + (itemWidth / 2 - font.stringWidth(_label) / 2 - font.getAscent())) + offsetX
+								+ labelOffsetX,
+						(this._y - 2) + offsetY + labelOffsetY);
+			}
+		}
+
+		private void handleItemClick(Vector2f pos, boolean isDown, boolean isDrag, boolean checked) {
+			if (pos == null || !checked) {
+				this._clicked = false;
+				return;
+			}
+			if (bounds().contains(pos.x, pos.y) && (isDown && !isDrag) && !this._clicked) {
+				LSystem.load(new ClickMenu(this._itemclick, this));
+				this._clicked = true;
+			}
+		}
+
+		private void drawItemContent(GLEx g, IFont font, boolean checked) {
+			if (_texture != null) {
+				g.draw(this._texture, this._x + _parent._leftOffsetMoveMenu + offsetX,
+						this._y + this._parent._paddingy + this._parent.scroll + offsetY, this.itemWidth,
+						this.itemHeight, this._clicked ? LColor.gray : _parent._component_baseColor);
+			}
+			if (this._label != null) {
+				font.drawString(g, _label,
+						(this._x + _parent._leftOffsetMoveMenu + (itemWidth / 2 - font.stringWidth(_label) / 2))
+								+ offsetX + labelOffsetX,
+						(this._y + this._parent._paddingy + this._parent.scroll - font.getAscent() - 2) + offsetY
+								+ labelOffsetY,
+						this._clicked ? LColor.gray : _parent._fontColor);
 			}
 		}
 
@@ -321,26 +318,12 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 		}
 
 		public RectBox bounds() {
-			if (_parent._moveType == LMenu.MOVE_LEFT) {
-				if (_itemrect == null) {
-					_itemrect = new RectBox(this._x + _parent._leftOffsetMoveMenu + offsetX,
-							this._y + this._parent._paddingy + this._parent.scroll + offsetY, this.itemWidth,
-							this.itemHeight);
-				} else {
-					_itemrect.setBounds(this._x + _parent._leftOffsetMoveMenu + offsetX,
-							this._y + this._parent._paddingy + this._parent.scroll + offsetY, this.itemWidth,
-							this.itemHeight);
-				}
-			} else if (_parent._moveType == LMenu.MOVE_RIGHT) {
-				if (_itemrect == null) {
-					_itemrect = new RectBox(this._x + _parent._leftOffsetMoveMenu + offsetX,
-							this._y + this._parent._paddingy + this._parent.scroll + offsetY, this.itemWidth,
-							this.itemHeight);
-				} else {
-					_itemrect.setBounds(this._x + _parent._leftOffsetMoveMenu + offsetX,
-							this._y + this._parent._paddingy + this._parent.scroll + offsetY, this.itemWidth,
-							this.itemHeight);
-				}
+			float rectX = this._x + _parent._leftOffsetMoveMenu + offsetX;
+			float rectY = this._y + this._parent._paddingy + this._parent.scroll + offsetY;
+			if (_itemrect == null) {
+				_itemrect = new RectBox(rectX, rectY, this.itemWidth, this.itemHeight);
+			} else {
+				_itemrect.setBounds(rectX, rectY, this.itemWidth, this.itemHeight);
 			}
 			return _itemrect;
 		}
@@ -382,24 +365,27 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 		}
 	}
 
-	private boolean _mouseSelect = false;
+	public final static int MOVE_LEFT = 0;
 
-	private boolean _tabOpening;
-
-	private boolean _panelOpening;
-
-	private boolean _clickedMenu;
+	public final static int MOVE_RIGHT = 1;
 
 	protected float _leftOffsetMoveMenu;
 
+	private boolean _mouseSelect = false;
+	private boolean _tabOpening;
+	private boolean _panelOpening;
+	private boolean _clickedMenu;
+
 	private IFont _font;
+
 	private float _width;
 	private float _main_panel_size;
 	private float _tabY;
-	private LColor _fontColor = LColor.white;
 
+	private LColor _fontColor = LColor.white;
 	private LTexture _mainpanel;
 	private LTexture _tab;
+
 	private boolean _active, _supportScroll;
 
 	private RectBox _mainRec;
@@ -407,6 +393,7 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 
 	public int xslot;
 	public int yslot;
+
 	public float scroll;
 	public float maxscroll;
 	public float scrollspeed = 25f;
@@ -418,22 +405,14 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 	private float _paddingx = 2f;
 	private float _paddingy = 50f;
 	private float _alphaMenu = 0.7f;
-	private float _menuSpeed = 1.5f;
+	private float _menuSpeed = 1f;
 	private float _offsetMenuTextX;
 	private float _offsetMenuTextY;
 
-	public final static int MOVE_LEFT = 0;
-
-	public final static int MOVE_RIGHT = 1;
-
 	private int _item_left_offset = 10;
-
 	private int _item_top_offset = 0;
-
 	private int _tabWidth, _tabHeight;
-
 	private int _moveType = MOVE_RIGHT;
-
 	private int _rows = 1;
 
 	private TArray<MenuItem> _items = new TArray<MenuItem>(10);
@@ -441,8 +420,8 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 	private String _tablabel;
 
 	private boolean _itemClicked;
-
 	private boolean _defUI;
+	private boolean _autoLayout = false;
 
 	public LMenu(int move_type, String label) {
 		this(move_type, SkinManager.get().getMenuSkin().getFont(), label, 100, 50);
@@ -502,11 +481,7 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 		this._mainpanel = main;
 		this._tabWidth = width;
 		this._tabHeight = height;
-		if (mainsize > 0) {
-			this._main_panel_size = mainsize;
-		} else {
-			this._main_panel_size = getScreenWidth() / 4;
-		}
+		this._main_panel_size = mainsize > 0 ? mainsize : getScreenWidth() / 4;
 		this._main_panel_size += this._cellWidth + this._paddingx;
 		this._component_baseColor = LColor.white.cpy();
 		this._defUI = defUI;
@@ -524,7 +499,7 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 				_tabRec.setBounds(this._width, getTaby(), _tabWidth, _tabHeight);
 			}
 		} else if (_moveType == MOVE_RIGHT) {
-			float posX = this.getScreenRight() - this._width - this._tabWidth;
+			float posX = this.getScreenRight() - this._width - this._tabWidth - getScreenLeft();
 			if (_tabRec == null) {
 				_tabRec = new RectBox(posX, getTaby(), _tabWidth, _tabHeight);
 			} else {
@@ -542,7 +517,7 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 				_mainRec.setBounds(getDesktopLeft(), getDesktopTop(), this._width, getScreenHeight());
 			}
 		} else if (_moveType == MOVE_RIGHT) {
-			float posX = this.getScreenRight() - this._width;
+			float posX = this.getScreenRight() - this._width - getScreenLeft();
 			if (_mainRec == null) {
 				_mainRec = new RectBox(posX, getDesktopTop(), this._width, getScreenHeight());
 			} else {
@@ -565,35 +540,40 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 	}
 
 	public MenuItem add(String label, MenuItemClick click) {
-		return add(new LMenu.MenuItem(this, SkinManager.get().getMenuSkin().getTabTexture(), label, click));
+		return add(new MenuItem(this, SkinManager.get().getMenuSkin().getTabTexture(), label, click));
 	}
 
 	public MenuItem add(String label, String file, MenuItemClick click) {
-		return add(new LMenu.MenuItem(this, LSystem.loadTexture(file), label, click));
+		return add(new MenuItem(this, LSystem.loadTexture(file), label, click));
 	}
 
 	public MenuItem add(String label, LTexture texture, MenuItemClick click) {
-		return add(new LMenu.MenuItem(this, texture, label, click));
+		return add(new MenuItem(this, texture, label, click));
 	}
 
 	public MenuItem add(String label, LTexture texture, float x, float y, MenuItemClick click) {
-		return add(new LMenu.MenuItem(this, texture, false, label, x, y, click));
+		return add(new MenuItem(this, texture, false, label, x, y, click));
 	}
 
 	public MenuItem add(String label, LTexture texture, float x, float y, float w, float h, MenuItemClick click) {
-		return add(new LMenu.MenuItem(_font, this, texture, false, label, x, y, w, h, click));
+		return add(new MenuItem(_font, this, texture, false, label, x, y, w, h, click));
 	}
 
 	public MenuItem add(MenuItem item) {
-		if (this.xslot > this._main_panel_size / (this._cellWidth + this._paddingx * 2)) {
-			this.xslot = 1;
-			this.yslot += 1;
-			this._rows += 1;
+		if (_autoLayout) {
+			autoLayoutSingleItem(item);
+		} else {
+			if (this.xslot > this._main_panel_size / (this._cellWidth + this._paddingx * 2)) {
+				this.xslot = 1;
+				this.yslot += 1;
+				this._rows += 1;
+			}
+			item.xslot = this.xslot;
+			item.yslot = this.yslot;
+			this.xslot += 1;
 		}
-		item.xslot = this.xslot;
-		item.yslot = this.yslot;
 		this._items.add(item);
-		this.xslot += 1;
+
 		return item;
 	}
 
@@ -602,11 +582,10 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 	}
 
 	public MenuItem getItem(String name) {
-		if (name == null) {
+		if (name == null || _items.isEmpty()) {
 			return null;
 		}
-		for (int i = _items.size - 1; i > -1; i--) {
-			MenuItem item = _items.get(i);
+		for (MenuItem item : _items) {
 			if (item != null && name.equals(item._varName)) {
 				return item;
 			}
@@ -615,21 +594,23 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 	}
 
 	public TArray<MenuItem> getItems(String name) {
-		if (name == null) {
-			return null;
+		if (name == null || _items.isEmpty()) {
+			return new TArray<MenuItem>();
 		}
-		final TArray<MenuItem> items = new TArray<MenuItem>();
-		for (MenuItem item : items) {
+		TArray<MenuItem> result = new TArray<MenuItem>();
+		for (MenuItem item : _items) {
 			if (item != null && name.equals(item._varName)) {
-				items.add(item);
+				result.add(item);
 			}
 		}
-		return items;
+		return result;
 	}
 
 	public boolean isItemClicked() {
-		for (int i = _items.size - 1; i > -1; i--) {
-			MenuItem item = _items.get(i);
+		if (_items.isEmpty()) {
+			return false;
+		}
+		for (MenuItem item : _items) {
 			if (item != null && item.isClicked()) {
 				return true;
 			}
@@ -639,68 +620,73 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 
 	@Override
 	public void createUI(GLEx g, int x, int y) {
+		if (g == null || !isVisible()) {
+			return;
+		}
 		final float oldAlpha = g.alpha();
 		try {
 			final boolean down = SysTouch.isDown();
 			final boolean drag = SysTouch.isDrag();
-			final boolean checked = (down || drag);
+			final boolean checked = down || drag;
+			Vector2f touchPos = checked ? getUITouchXY() : null;
+
 			switch (_moveType) {
 			case MOVE_LEFT:
-				if ((_selected == this) || (_selected == null)) {
-					g.draw(this._tab, this._width, getTaby(), _tabWidth, _tabHeight,
-							_component_baseColor.setAlpha(_alphaMenu));
-					if (_tablabel != null) {
-						_font.drawString(g, this._tablabel,
-								this._width + (_tabWidth / 2f - _font.stringWidth(_tablabel) / 2f) + _offsetMenuTextX,
-								getTaby() + getScreenY() + (_tabHeight - _font.getHeight()) / 2f + _offsetMenuTextY,
-								_fontColor);
-					}
-				}
-				if ((this._active) || (this._width > 0)) {
-					g.draw(_mainpanel, getScreenX(), getScreenY(), this._width, getScreenHeight(),
-							_component_baseColor);
-					if (MathUtils.equal(this._width, this._main_panel_size)) {
-						final TArray<MenuItem> list = this._items;
-						final int size = list.size;
-						for (int i = 0; i < size; i++) {
-							MenuItem item = list.get(i);
-							if (item != null) {
-								item.draw(g, checked ? getUITouchXY() : null, down, drag, checked);
-							}
-						}
-					}
-				}
+				drawLeftMenu(g, down, drag, checked, touchPos);
 				break;
 			case MOVE_RIGHT:
-				if ((_selected == this) || (_selected == null)) {
-					float posX = this.getScreenRight() - this._width - this._tabWidth;
-					g.draw(this._tab, posX, getTaby() + getScreenY(), _tabWidth, _tabHeight,
-							_component_baseColor.setAlpha(_alphaMenu));
-					if (_tablabel != null) {
-						_font.drawString(g, this._tablabel,
-								posX + (_tabWidth / 2 - _font.stringWidth(_tablabel) / 2) + _offsetMenuTextX,
-								getTaby() + (_tabHeight - _font.getHeight()) / 2f + _offsetMenuTextY, _fontColor);
-					}
-				}
-				if ((this._active) || (this._width > 0)) {
-					float posX = this.getScreenRight() - this._width;
-					g.draw(_mainpanel, posX, getScreenY(), this._width, getScreenHeight(), _component_baseColor);
-					if (MathUtils.equal(this._width, this._main_panel_size)) {
-						final TArray<MenuItem> list = this._items;
-						final int size = list.size;
-						for (int i = 0; i < size; i++) {
-							MenuItem item = list.get(i);
-							if (item != null) {
-								item.draw(g, checked ? getUITouchXY() : null, down, drag, checked);
-							}
-						}
-					}
-				}
+				drawRightMenu(g, down, drag, checked, touchPos);
 				break;
 			}
-			checkTouchExitMenu();
+
 		} finally {
 			g.setAlpha(oldAlpha);
+			checkTouchExitMenu();
+		}
+	}
+
+	private void drawLeftMenu(GLEx g, boolean down, boolean drag, boolean checked, Vector2f touchPos) {
+		if ((_selected == this || _selected == null)) {
+			g.draw(_tab, _width, getTaby(), _tabWidth, _tabHeight, _component_baseColor.setAlpha(_alphaMenu));
+			if (_tablabel != null) {
+				_font.drawString(g, _tablabel,
+						_width + (_tabWidth / 2f - _font.stringWidth(_tablabel) / 2f) + _offsetMenuTextX,
+						getTaby() + getScreenY() + (_tabHeight - _font.getHeight()) / 2f + _offsetMenuTextY,
+						_fontColor);
+			}
+		}
+		if (_active || _width > 0) {
+			g.draw(_mainpanel, getScreenX(), getScreenY(), _width, getScreenHeight(), _component_baseColor);
+			drawMenuItems(g, touchPos, down, drag, checked);
+		}
+	}
+
+	private void drawRightMenu(GLEx g, boolean down, boolean drag, boolean checked, Vector2f touchPos) {
+		if ((_selected == this || _selected == null)) {
+			float posX = getScreenRight() - _width - _tabWidth - getScreenLeft();
+			g.draw(_tab, posX, getTaby() + getScreenY(), _tabWidth, _tabHeight,
+					_component_baseColor.setAlpha(_alphaMenu));
+			if (_tablabel != null) {
+				_font.drawString(g, _tablabel,
+						posX + (_tabWidth / 2 - _font.stringWidth(_tablabel) / 2) + _offsetMenuTextX,
+						getTaby() + (_tabHeight - _font.getHeight()) / 2f + _offsetMenuTextY, _fontColor);
+			}
+		}
+		if (_active || _width > 0) {
+			float posX = getScreenRight() - _width - getScreenLeft();
+			g.draw(_mainpanel, posX, getScreenY(), _width, getScreenHeight(), _component_baseColor);
+			drawMenuItems(g, touchPos, down, drag, checked);
+		}
+	}
+
+	private void drawMenuItems(GLEx g, Vector2f touchPos, boolean down, boolean drag, boolean checked) {
+		if (!MathUtils.equal(_width, _main_panel_size) || _items.isEmpty()) {
+			return;
+		}
+		for (MenuItem item : _items) {
+			if (item != null) {
+				item.draw(g, touchPos, down, drag, checked);
+			}
 		}
 	}
 
@@ -711,76 +697,84 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 		}
 		checkTouchDownMenuTabPanel();
 		super.update(elapsedTime);
-		final float delta = (Duration.toS(elapsedTime)) * (LSystem.getFPS() / _menuSpeed);
-		if (!this._active) {
-			if (_tabOpening && (_selected == null)) {
-				this._active = true;
-				this._mouseSelect = true;
-				if (_selected == null) {
-					_selected = this;
-				}
-			}
-			if (this._width > 0) {
-				this._width -= 0.3f * this._width * delta;
-			}
-			if (this._width <= 0) {
-				this._width = 0;
-			}
+		final float delta = Duration.toS(elapsedTime) * (LSystem.getFPS() / _menuSpeed);
+		if (!_active) {
+			handleMenuClose(delta);
 		} else {
-			this._mouseSelect = true;
-			if (_selected == this) {
-				final float menuCellHeight = this._paddingy + this._cellHeight;
-				this.maxscroll = (menuCellHeight * this._rows);
-				if (this.scroll > this.maxscroll) {
-					this.scroll = this.maxscroll;
-				}
-				if (this.scroll < -this.maxscroll) {
-					this.scroll = -this.maxscroll;
-				}
-				final float halfmenuHeight = MathUtils.abs(getScreenTop() - menuCellHeight / 2f);
-				if (this.scroll > 0f && this.scroll > halfmenuHeight) {
-					this.scroll = halfmenuHeight;
-				} else if (this.scroll < 0f) {
-					final float upScroll = MathUtils.abs(scroll);
-					final float upMaxScroll = MathUtils.abs((maxscroll - this.getDesktopBottom()) + menuCellHeight);
-					if (upScroll > upMaxScroll) {
-						this.scroll = -upMaxScroll;
-					}
-				}
-				if (isMenuOpening()) {
-					if (this._width < this._main_panel_size)
-						this._width += 0.3F * (this._main_panel_size - this._width) * delta;
-					else {
-						this._width = this._main_panel_size;
-					}
-					if (this._width > this._main_panel_size - 2) {
-						this._width = this._main_panel_size;
-					}
-					if (_input.isMoving() && _supportScroll) {
-						if (_input.getTouchDY() > 5) {
-							this.scroll -= this.scrollspeed * delta;
-						} else if (_input.getTouchDY() < -5) {
-							this.scroll += this.scrollspeed * delta;
-						}
-					}
-				} else {
-					if (_selected == this) {
-						_selected = null;
-					}
-					this._active = false;
-					this._mouseSelect = false;
-				}
+			handleMenuOpen(delta);
+		}
+	}
+
+	private void handleMenuClose(float delta) {
+		if (_tabOpening && _selected == null) {
+			_active = true;
+			_mouseSelect = true;
+			_selected = this;
+		}
+		if (_width > 0) {
+			_width -= 0.3f * _width * delta;
+			_width = MathUtils.max(0, _width);
+		}
+	}
+
+	private void handleMenuOpen(float delta) {
+		_mouseSelect = true;
+		if (_selected == null) {
+			_selected = this;
+		}
+		updateScrollLogic();
+		if (isMenuOpening()) {
+			updateMenuWidth(delta);
+			handleScrollInput(delta);
+		} else {
+			resetMenuState();
+		}
+	}
+
+	private void updateScrollLogic() {
+		float menuCellHeight = _paddingy + _cellHeight;
+		maxscroll = menuCellHeight * _rows;
+		scroll = MathUtils.clamp(scroll, -maxscroll, maxscroll);
+
+		float halfmenuHeight = MathUtils.abs(getScreenTop() - menuCellHeight / 2f);
+		if (scroll > halfmenuHeight)
+			scroll = halfmenuHeight;
+
+		float upMaxScroll = MathUtils.abs((maxscroll - getDesktopBottom()) + menuCellHeight);
+		if (scroll < 0 && MathUtils.abs(scroll) > upMaxScroll)
+			scroll = -upMaxScroll;
+	}
+
+	private void updateMenuWidth(float delta) {
+		if (_width < _main_panel_size) {
+			_width += 0.3F * (_main_panel_size - _width) * delta;
+		}
+		_width = MathUtils.min(_width, _main_panel_size);
+	}
+
+	private void handleScrollInput(float delta) {
+		if (_supportScroll && _input.isMoving()) {
+			if (_input.getTouchDY() > 5) {
+				scroll -= scrollspeed * delta;
+			} else if (_input.getTouchDY() < -5) {
+				scroll += scrollspeed * delta;
 			}
 		}
 	}
 
+	private void resetMenuState() {
+		_selected = null;
+		_active = false;
+		_mouseSelect = false;
+	}
+
 	public boolean touchTab() {
-		final Vector2f pos = getUITouchXY();
+		Vector2f pos = getUITouchXY();
 		return touchTab(pos.x, pos.y);
 	}
 
 	public boolean touchPanel() {
-		final Vector2f pos = getUITouchXY();
+		Vector2f pos = getUITouchXY();
 		return touchPanel(pos.x, pos.y);
 	}
 
@@ -789,6 +783,7 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 	}
 
 	public boolean touchPanel(float x, float y) {
+
 		return panelbounds(_moveType).contains(x, y);
 	}
 
@@ -805,7 +800,7 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 	}
 
 	public boolean isNotInMenuTouchClick() {
-		final Vector2f pos = getUITouchXY();
+		Vector2f pos = getUITouchXY();
 		return isClickDown() && !isDesktopClicked() && !isSelected() && !getCollisionBox().contains(pos.x, pos.y);
 	}
 
@@ -825,25 +820,23 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 		if (_clickedMenu) {
 			return;
 		}
-		if (this._moveType == MOVE_LEFT && isDoClickMenuTab()) {
-			_clickedMenu = true;
-		} else if (!isMenuOpening() && isClickDown()) {
-			_clickedMenu = true;
-		}
+		_clickedMenu = (_moveType == MOVE_LEFT && isDoClickMenuTab()) || (!isMenuOpening() && isClickDown());
 		if (_clickedMenu) {
-			final Vector2f pos = getUITouchXY();
+			Vector2f pos = getUITouchXY();
 			_tabOpening = touchTab(pos.x, pos.y);
-			_panelOpening = touchPanel(pos.x, pos.y);
+			_panelOpening = _tabOpening;
 		}
 	}
 
 	protected void checkTouchExitMenu() {
 		if (isDoClickItem()) {
-			_panelOpening = touchPanel();
-			if (!_panelOpening) {
-				_itemClicked = isItemClicked();
-				if (!_itemClicked && isNotInMenuTouchClick()) {
-					_tabOpening = _panelOpening = false;
+			if (MathUtils.equal(_width, _main_panel_size)) {
+				_panelOpening = touchPanel();
+				if (!_panelOpening) {
+					_itemClicked = isItemClicked();
+					if (!_itemClicked && isNotInMenuTouchClick()) {
+						_tabOpening = _panelOpening = false;
+					}
 				}
 			}
 		}
@@ -891,6 +884,7 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 
 	public float getScroll() {
 		return scroll;
+
 	}
 
 	public LMenu setScroll(float scroll) {
@@ -1048,7 +1042,7 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 	}
 
 	public LMenu setOffsetMenuTextY(float y) {
-		this._offsetMenuTextX = y;
+		this._offsetMenuTextY = y;
 		return this;
 	}
 
@@ -1059,6 +1053,61 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 	public LMenu setLeftOffsetMoveMenu(float left) {
 		this._leftOffsetMoveMenu = left;
 		return this;
+	}
+
+	public LMenu setAutoLayout(boolean enable) {
+		this._autoLayout = enable;
+		if (enable) {
+			autoLayoutMenuItems();
+		}
+		return this;
+	}
+
+	private void autoLayoutSingleItem(MenuItem item) {
+		float maxColumn = _main_panel_size / (_cellWidth + _paddingx * 2);
+		if (this.xslot >= maxColumn) {
+			this.xslot = 0;
+			this.yslot++;
+			this._rows = yslot + 1;
+		}
+		item.xslot = this.xslot++;
+		item.yslot = this.yslot;
+	}
+
+	public void autoLayoutMenuItems() {
+		if (_items.isEmpty()) {
+			return;
+		}
+		resetLayout();
+		for (MenuItem item : _items) {
+			if (item != null) {
+				autoLayoutSingleItem(item);
+			}
+		}
+	}
+
+	private void resetLayout() {
+		this.xslot = 0;
+		this.yslot = 0;
+		this._rows = 1;
+	}
+
+	public TArray<MenuItem> addAutoMenuItems(String... labels) {
+		TArray<MenuItem> items = new TArray<>();
+		for (String label : labels) {
+			items.add(add(label));
+		}
+		return items;
+	}
+
+	public TArray<MenuItem> addMenuItems(MenuItemConfig... configs) {
+		TArray<MenuItem> items = new TArray<MenuItem>();
+		for (MenuItemConfig config : configs) {
+			MenuItem item = add(config.label, config.texture, config.click);
+			item.offset(config.offsetX, config.offsetY);
+			items.add(item);
+		}
+		return items;
 	}
 
 	@Override
@@ -1090,11 +1139,9 @@ public class LMenu extends LComponent implements FontSet<LMenu> {
 
 	@Override
 	public void destory() {
-		for (int i = 0, size = _items.size; i < size; i++) {
-			MenuItem item = _items.get(i);
+		for (MenuItem item : _items) {
 			if (item != null) {
 				item.close();
-				item = null;
 			}
 		}
 		_items.clear();
