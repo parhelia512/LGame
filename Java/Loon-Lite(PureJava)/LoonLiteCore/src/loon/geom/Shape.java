@@ -918,6 +918,7 @@ public abstract class Shape implements Serializable, IArray, XY, SetXY {
 	    this.x = x;
 	    trianglesDirty = true;
 	}
+	
 	@Override
 	public void setY(float y) {
 	    if (MathUtils.equal(this.y, y)) {

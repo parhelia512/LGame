@@ -28,6 +28,7 @@ import loon.LTexture;
 import loon.LTextures;
 import loon.PlayerUtils;
 import loon.Screen;
+import loon.Stage;
 import loon.action.ActionBind;
 import loon.action.ActionTween;
 import loon.action.collision.CollisionHelper;
@@ -2407,10 +2408,12 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 		return MathUtils.iceil((y - _objectLocation.y) / _scaleY);
 	}
 
+	@Override
 	public int offsetXPixel(float x) {
 		return MathUtils.iceil((x - _offset.x - _objectLocation.x) / _scaleX);
 	}
 
+	@Override
 	public int offsetYPixel(float y) {
 		return MathUtils.iceil((y - _offset.y - _objectLocation.y) / _scaleY);
 	}
@@ -2426,12 +2429,33 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 		return new Vector2f(getScreenPixelX(x), getScreenPixelY(y));
 	}
 
+	@Override
 	public float getScreenPixelX(float x) {
 		return (x + _objectLocation.x + _offset.x) / _scaleX;
 	}
 
+	@Override
 	public float getScreenPixelY(float y) {
 		return (y + _objectLocation.y + _offset.y) / _scaleY;
+	}
+
+	@Override
+	public ISprite getObject(float x, float y) {
+		ISprite sprite = null;
+		if (_mapSprites != null) {
+			sprite = _mapSprites.find(MathUtils.ifloor(x), MathUtils.ifloor(y));
+		}
+		if (sprite == null && _screenSprites != null) {
+			sprite = _screenSprites.find(MathUtils.ifloor(x), MathUtils.ifloor(y));
+		}
+		if (sprite == null && getScreen() != null) {
+			sprite = getScreen().getSprites().find(MathUtils.ifloor(x), MathUtils.ifloor(y));
+		}
+		if (sprite == null && getScreen() != null && (getScreen() instanceof Stage)) {
+			Stage stage = (Stage) getScreen();
+			sprite = stage.findObject(MathUtils.ifloor(x), MathUtils.ifloor(y));
+		}
+		return sprite;
 	}
 
 	public Vector2f getScreenNScalePixel(XY pos) {

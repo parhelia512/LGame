@@ -21,63 +21,45 @@
 package loon.action.collision;
 
 import loon.geom.Vector2f;
+import loon.utils.MathUtils;
 
-public class IncrementalForce implements Force {
+public class TimedForce implements Force {
 
-	private boolean _finished;
+	private final String id;
+	private final Vector2f vecPerSecond;
+	private final long durationMs;
+	private long elapsedMs = 0;
+	private boolean finished = false;
 
-	private final Vector2f _direction;
-
-	private final String _identifier;
-
-	private float _currentIncrement;
-
-	private final float _increment;
-
-	private final float _limit;
-
-	private Vector2f _current;
-
-	public IncrementalForce(String i, Vector2f d, float inc, float limit) {
-		this._identifier = i;
-		this._direction = d;
-		this._increment = inc;
-		this._limit = limit;
-		this._current = d;
+	public TimedForce(String id, float fxPerSec, float fyPerSec, long durationMs) {
+		this.id = id == null ? "TimedForce" : id;
+		this.vecPerSecond = Vector2f.at(fxPerSec, fyPerSec);
+		this.durationMs = MathUtils.max(1, durationMs);
 	}
 
 	@Override
 	public String identifier() {
-		return _identifier;
+		return id;
 	}
 
 	@Override
-	public void update(long e) {
-		if (_currentIncrement >= _limit) {
-			_finished = true;
+	public void update(long elapsedTime) {
+		if (finished) {
 			return;
 		}
-		_currentIncrement += _increment;
-		_current = _direction.mul(_currentIncrement, _current);
+		elapsedMs += elapsedTime;
+		if (elapsedMs >= durationMs) {
+			finished = true;
+		}
 	}
 
 	@Override
 	public Vector2f direction() {
-		return _current;
-	}
-
-	public IncrementalForce reset() {
-		_currentIncrement = 1;
-		_finished = false;
-		return this;
-	}
-
-	public void setFinished(boolean f) {
-		_finished = f;
+		return finished ? Vector2f.at(0f, 0f) : vecPerSecond;
 	}
 
 	@Override
 	public boolean isFinished() {
-		return _finished;
+		return finished;
 	}
 }

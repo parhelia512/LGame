@@ -24,6 +24,8 @@ import loon.geom.Vector2f;
 
 public class IncrementalForce implements Force {
 
+	private boolean _finished;
+
 	private final Vector2f _direction;
 
 	private final String _identifier;
@@ -52,6 +54,7 @@ public class IncrementalForce implements Force {
 	@Override
 	public void update(long e) {
 		if (_currentIncrement >= _limit) {
+			_finished = true;
 			return;
 		}
 		_currentIncrement += _increment;
@@ -65,7 +68,16 @@ public class IncrementalForce implements Force {
 
 	public IncrementalForce reset() {
 		_currentIncrement = 1;
+		_finished = false;
 		return this;
 	}
 
+	public void setFinished(boolean f) {
+		_finished = f;
+	}
+
+	@Override
+	public boolean isFinished() {
+		return _finished;
+	}
 }

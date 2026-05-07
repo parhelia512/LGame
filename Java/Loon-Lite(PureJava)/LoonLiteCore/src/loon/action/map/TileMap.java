@@ -28,6 +28,7 @@ import loon.LTexture;
 import loon.LTextures;
 import loon.PlayerUtils;
 import loon.Screen;
+import loon.Stage;
 import loon.action.ActionBind;
 import loon.action.ActionTween;
 import loon.action.map.Field2D.MapSwitchMaker;
@@ -61,8 +62,6 @@ import loon.utils.TArray;
  */
 public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized, ISprite {
 
-	private int lastOffsetX, lastOffsetY;
-
 	private int firstTileX;
 
 	private int firstTileY;
@@ -70,10 +69,6 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 	private int lastTileX;
 
 	private int lastTileY;
-
-	private float lastTileScaleX = 0f;
-
-	private float lastTileScaleY = 0f;
 
 	public DrawListener<TileMap> _drawListener;
 
@@ -184,8 +179,6 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 			this._offset = field2d.getOffset();
 		}
 		this._texturePack = new LTexturePack();
-		this.lastOffsetX = -1;
-		this.lastOffsetY = -1;
 		this._scaleX = this._scaleY = 1f;
 		this._active = true;
 		this._dirty = true;
@@ -480,96 +473,55 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 
 		if (_texturePack.size() > 0) {
 
-			this._dirty = this._dirty || !_texturePack.existCache();
-
-			if (!_dirty && lastOffsetX == offsetX && lastOffsetY == offsetY && lastTileScaleX == _scaleX
-					&& lastTileScaleY == _scaleY) {
-
-				_texturePack.postCache();
-
-				if (_playAnimation) {
-					final int tileWidth = _field2d.getTileWidth();
-					final int tileHeight = _field2d.getTileHeight();
-					final int[][] maps = _field2d.getThisMap();
-					for (int i = firstTileX; i < lastTileX; i++) {
-						for (int j = firstTileY; j < lastTileY; j++) {
-							if (i > -1 && j > -1 && i < _field2d.getWidth() && j < _field2d.getHeight()) {
-								int id = maps[j][i];
-								final float posX = _field2d.tilesToWidthPixels(i) + offsetX;
-								final float posY = _field2d.tilesToHeightPixels(j) + offsetY;
-								final TArray<TileImpl> tiles = _arrays;
-								final int size = tiles.size;
-								for (int n = 0; n < size; n++) {
-									TileImpl tile = tiles.get(n);
-									if (tile.isAnimation() && tile.getId() == id) {
-										g.draw(tile.getAnimation().getSpriteImage(), posX * _scaleX, posY * _scaleY,
-												tileWidth * _scaleX, tileHeight * _scaleY, _baseColor);
-									}
-								}
-							}
-						}
-					}
-				}
-			} else {
-				if (_arrays.size == 0) {
-					throw new LSysException("Not to add any tiles !");
-				}
-
-				_texturePack.glBegin();
-
-				firstTileX = _field2d.pixelsToTilesWidth(-offsetX * _scaleX);
-				firstTileY = _field2d.pixelsToTilesHeight(-offsetY * _scaleY);
-
-				lastTileX = firstTileX + _field2d.pixelsToTilesWidth(_pixelInWidth * _scaleX) + 4;
-				lastTileX = MathUtils.min(lastTileX, _field2d.getWidth());
-				lastTileY = firstTileY + _field2d.pixelsToTilesHeight(_pixelInHeight * _scaleY) + 4;
-				lastTileY = MathUtils.min(lastTileY, _field2d.getHeight());
-				final int width = _field2d.getWidth();
-				final int height = _field2d.getHeight();
-				final int tileWidth = _field2d.getTileWidth();
-				final int tileHeight = _field2d.getTileHeight();
-				final int[][] maps = _field2d.getThisMap();
-				for (int i = firstTileX; i < lastTileX; i++) {
-					for (int j = firstTileY; j < lastTileY; j++) {
-						if (i > -1 && j > -1 && i < width && j < height) {
-							int id = maps[j][i];
-							final float posX = _field2d.tilesToWidthPixels(i) + offsetX;
-							final float posY = _field2d.tilesToHeightPixels(j) + offsetY;
-							final TArray<TileImpl> tiles = _arrays;
-							final int size = tiles.size;
-							final float newPosX = posX * _scaleX;
-							final float newPosY = posY * _scaleY;
-							for (int n = 0; n < size; n++) {
-								TileImpl tile = tiles.get(n);
-								if (_playAnimation) {
-									if (tile.getId() == id) {
-										if (tile.isAnimation()) {
-											g.draw(tile.getAnimation().getSpriteImage(), newPosX, newPosY,
-													tileWidth * _scaleX, tileHeight * _scaleY, _baseColor);
-										} else {
-											_texturePack.draw(tile.getImgId(), newPosX, newPosY, tileWidth * _scaleX,
-													tileHeight * _scaleY, _baseColor);
-										}
-									}
-								} else if (tile.getId() == id) {
-									_texturePack.draw(tile.getImgId(), newPosX, newPosY, tileWidth * _scaleX,
-											tileHeight * _scaleY);
-								}
-							}
-						}
-					}
-				}
-
-				_texturePack.glEnd();
-				_texturePack.saveCache();
-
-				lastOffsetX = offsetX;
-				lastOffsetY = offsetY;
-				lastTileScaleX = _scaleX;
-				lastTileScaleY = _scaleY;
-
-				_dirty = false;
+			if (_arrays.size == 0) {
+				throw new LSysException("Not to add any tiles !");
 			}
+
+			firstTileX = _field2d.pixelsToTilesWidth(-offsetX * _scaleX);
+			firstTileY = _field2d.pixelsToTilesHeight(-offsetY * _scaleY);
+
+			lastTileX = firstTileX + _field2d.pixelsToTilesWidth(_pixelInWidth * _scaleX) + 4;
+			lastTileX = MathUtils.min(lastTileX, _field2d.getWidth());
+			lastTileY = firstTileY + _field2d.pixelsToTilesHeight(_pixelInHeight * _scaleY) + 4;
+			lastTileY = MathUtils.min(lastTileY, _field2d.getHeight());
+			final int width = _field2d.getWidth();
+			final int height = _field2d.getHeight();
+			final int tileWidth = _field2d.getTileWidth();
+			final int tileHeight = _field2d.getTileHeight();
+			final int[][] maps = _field2d.getThisMap();
+			for (int i = firstTileX; i < lastTileX; i++) {
+				for (int j = firstTileY; j < lastTileY; j++) {
+					if (i > -1 && j > -1 && i < width && j < height) {
+						int id = maps[j][i];
+						final float posX = _field2d.tilesToWidthPixels(i) + offsetX;
+						final float posY = _field2d.tilesToHeightPixels(j) + offsetY;
+						final TArray<TileImpl> tiles = _arrays;
+						final int size = tiles.size;
+						final float newPosX = posX * _scaleX;
+						final float newPosY = posY * _scaleY;
+						for (int n = 0; n < size; n++) {
+							TileImpl tile = tiles.get(n);
+							if (_playAnimation) {
+								if (tile.getId() == id) {
+									if (tile.isAnimation()) {
+										g.draw(tile.getAnimation().getSpriteImage(), newPosX, newPosY,
+												tileWidth * _scaleX, tileHeight * _scaleY, _baseColor);
+									} else {
+										_texturePack.draw(tile.getImgId(), newPosX, newPosY, tileWidth * _scaleX,
+												tileHeight * _scaleY, _baseColor);
+									}
+								}
+							} else if (tile.getId() == id) {
+								_texturePack.draw(tile.getImgId(), newPosX, newPosY, tileWidth * _scaleX,
+										tileHeight * _scaleY);
+							}
+						}
+					}
+				}
+			}
+
+			_dirty = false;
+
 		}
 
 		if (_drawListener != null) {
@@ -1288,10 +1240,12 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 		return MathUtils.iceil((y - _objectLocation.y) / _scaleY);
 	}
 
+	@Override
 	public int offsetXPixel(float x) {
 		return MathUtils.iceil((x - _offset.x - _objectLocation.x) / _scaleX);
 	}
 
+	@Override
 	public int offsetYPixel(float y) {
 		return MathUtils.iceil((y - _offset.y - _objectLocation.y) / _scaleY);
 	}
@@ -1307,12 +1261,33 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 		return new Vector2f(getScreenPixelX(x), getScreenPixelY(y));
 	}
 
+	@Override
 	public float getScreenPixelX(float x) {
 		return (x + _objectLocation.x + _offset.x) / _scaleX;
 	}
 
+	@Override
 	public float getScreenPixelY(float y) {
 		return (y + _objectLocation.y + _offset.y) / _scaleY;
+	}
+
+	@Override
+	public ISprite getObject(float x, float y) {
+		ISprite sprite = null;
+		if (_mapSprites != null) {
+			sprite = _mapSprites.find(MathUtils.ifloor(x), MathUtils.ifloor(y));
+		}
+		if (sprite == null && _screenSprites != null) {
+			sprite = _screenSprites.find(MathUtils.ifloor(x), MathUtils.ifloor(y));
+		}
+		if (sprite == null && getScreen() != null) {
+			sprite = getScreen().getSprites().find(MathUtils.ifloor(x), MathUtils.ifloor(y));
+		}
+		if (sprite == null && getScreen() != null && (getScreen() instanceof Stage)) {
+			Stage stage = (Stage) getScreen();
+			sprite = stage.findObject(MathUtils.ifloor(x), MathUtils.ifloor(y));
+		}
+		return sprite;
 	}
 
 	public Vector2f getScreenNScalePixel(XY pos) {
@@ -1787,11 +1762,8 @@ public class TileMap extends LObject<ISprite> implements TileMapCollision, Sized
 		}
 		_resizeListener = null;
 		_collSpriteListener = null;
-		lastOffsetX = lastOffsetY = 0;
 		firstTileX = firstTileY = 0;
 		lastTileX = lastTileY = 0;
-		lastTileScaleX = 0f;
-		lastTileScaleY = 0f;
 		removeActionEvents(this);
 	}
 

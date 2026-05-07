@@ -24,6 +24,8 @@ import loon.geom.Vector2f;
 
 public class ConstantForce implements Force {
 
+	private boolean _finished;
+
 	private final Vector2f _direction;
 
 	private final String _identifier;
@@ -40,11 +42,21 @@ public class ConstantForce implements Force {
 
 	@Override
 	public void update(long e) {
+		_finished = true;
 	}
 
 	@Override
 	public Vector2f direction() {
 		return _direction;
+	}
+
+	public void setFinished(boolean f) {
+		_finished = f;
+	}
+
+	@Override
+	public boolean isFinished() {
+		return _finished;
 	}
 
 }

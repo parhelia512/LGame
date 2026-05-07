@@ -22,62 +22,41 @@ package loon.action.collision;
 
 import loon.geom.Vector2f;
 
-public class IncrementalForce implements Force {
+public class InstantForce implements Force {
 
-	private boolean _finished;
+	private final String id;
+	private final Vector2f vec;
+	private boolean consumed = false;
 
-	private final Vector2f _direction;
-
-	private final String _identifier;
-
-	private float _currentIncrement;
-
-	private final float _increment;
-
-	private final float _limit;
-
-	private Vector2f _current;
-
-	public IncrementalForce(String i, Vector2f d, float inc, float limit) {
-		this._identifier = i;
-		this._direction = d;
-		this._increment = inc;
-		this._limit = limit;
-		this._current = d;
+	public InstantForce(String id, float fx, float fy) {
+		this.id = id == null ? "InstantForce" : id;
+		this.vec = Vector2f.at(fx, fy);
 	}
 
 	@Override
 	public String identifier() {
-		return _identifier;
+		return id;
 	}
 
 	@Override
-	public void update(long e) {
-		if (_currentIncrement >= _limit) {
-			_finished = true;
-			return;
-		}
-		_currentIncrement += _increment;
-		_current = _direction.mul(_currentIncrement, _current);
+	public void update(long elapsedTime) {
+		consumed = true;
 	}
 
 	@Override
 	public Vector2f direction() {
-		return _current;
+		if (consumed) {
+			return Vector2f.at(0f, 0f);
+		}
+		return vec;
 	}
 
-	public IncrementalForce reset() {
-		_currentIncrement = 1;
-		_finished = false;
-		return this;
-	}
-
-	public void setFinished(boolean f) {
-		_finished = f;
+	public boolean isConsumed() {
+		return consumed;
 	}
 
 	@Override
 	public boolean isFinished() {
-		return _finished;
+		return consumed;
 	}
 }

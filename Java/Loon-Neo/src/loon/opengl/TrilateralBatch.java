@@ -31,6 +31,14 @@ import loon.LSystem;
 
 public final class TrilateralBatch extends BaseBatch {
 
+	private final static float getABGRFloat(int tint) {
+		int r = (tint >>> 16) & 0xFF;
+		int g = (tint >>> 8) & 0xFF;
+		int b = tint & 0xFF;
+		int abgr = (255 << 24) | (b << 16) | (g << 8) | r;
+		return NumberUtils.intBitsToFloat(abgr);
+	}
+
 	private final static String BATCHNAME = "trilbatch";
 
 	private final Matrix4 _viewMatrix;
@@ -86,30 +94,30 @@ public final class TrilateralBatch extends BaseBatch {
 	}
 
 	private void preloadPalette() {
-		colorCache.put(0x00000000, NumberUtils.intBitsToFloat(0x00000000));
-		colorCache.put(0xFFFFFFFF, NumberUtils.intBitsToFloat(0xFFFFFFFF));
-		colorCache.put(0xFF000000, NumberUtils.intBitsToFloat(0xFF000000));
-		colorCache.put(0xFFFF0000, NumberUtils.intBitsToFloat(0xFFFF0000));
-		colorCache.put(0xFF00FF00, NumberUtils.intBitsToFloat(0xFF00FF00));
-		colorCache.put(0xFF0000FF, NumberUtils.intBitsToFloat(0xFF0000FF));
-		colorCache.put(0xFF808080, NumberUtils.intBitsToFloat(0xFF808080));
-		colorCache.put(0xFFFFFF00, NumberUtils.intBitsToFloat(0xFFFFFF00));
-		colorCache.put(0xFF800080, NumberUtils.intBitsToFloat(0xFF800080));
-		colorCache.put(0xFFFFA500, NumberUtils.intBitsToFloat(0xFFFFA500));
-		colorCache.put(0xFFFF6666, NumberUtils.intBitsToFloat(0xFFFF6666));
-		colorCache.put(0xFF66FF66, NumberUtils.intBitsToFloat(0xFF66FF66));
-		colorCache.put(0xFF6666FF, NumberUtils.intBitsToFloat(0xFF6666FF));
-		colorCache.put(0xFFFFFF66, NumberUtils.intBitsToFloat(0xFFFFFF66));
-		colorCache.put(0xFFAA66FF, NumberUtils.intBitsToFloat(0xFFAA66FF));
-		colorCache.put(0xFFFFCC66, NumberUtils.intBitsToFloat(0xFFFFCC66));
-		colorCache.put(0xFF800000, NumberUtils.intBitsToFloat(0xFF800000));
-		colorCache.put(0xFF006400, NumberUtils.intBitsToFloat(0xFF006400));
-		colorCache.put(0xFF000080, NumberUtils.intBitsToFloat(0xFF000080));
-		colorCache.put(0xFF808000, NumberUtils.intBitsToFloat(0xFF808000));
-		colorCache.put(0xFF4B0082, NumberUtils.intBitsToFloat(0xFF4B0082));
-		colorCache.put(0xFF8B4500, NumberUtils.intBitsToFloat(0xFF8B4500));
-		colorCache.put(0xFF123456, NumberUtils.intBitsToFloat(0xFF123456));
-		colorCache.put(0xFF654321, NumberUtils.intBitsToFloat(0xFF654321));
+		colorCache.put(0x00000000, getABGRFloat(0x00000000));
+		colorCache.put(0xFFFFFFFF, getABGRFloat(0xFFFFFFFF));
+		colorCache.put(0xFF000000, getABGRFloat(0xFF000000));
+		colorCache.put(0xFFFF0000, getABGRFloat(0xFFFF0000));
+		colorCache.put(0xFF00FF00, getABGRFloat(0xFF00FF00));
+		colorCache.put(0xFF0000FF, getABGRFloat(0xFF0000FF));
+		colorCache.put(0xFF808080, getABGRFloat(0xFF808080));
+		colorCache.put(0xFFFFFF00, getABGRFloat(0xFFFFFF00));
+		colorCache.put(0xFF800080, getABGRFloat(0xFF800080));
+		colorCache.put(0xFFFFA500, getABGRFloat(0xFFFFA500));
+		colorCache.put(0xFFFF6666, getABGRFloat(0xFFFF6666));
+		colorCache.put(0xFF66FF66, getABGRFloat(0xFF66FF66));
+		colorCache.put(0xFF6666FF, getABGRFloat(0xFF6666FF));
+		colorCache.put(0xFFFFFF66, getABGRFloat(0xFFFFFF66));
+		colorCache.put(0xFFAA66FF, getABGRFloat(0xFFAA66FF));
+		colorCache.put(0xFFFFCC66, getABGRFloat(0xFFFFCC66));
+		colorCache.put(0xFF800000, getABGRFloat(0xFF800000));
+		colorCache.put(0xFF006400, getABGRFloat(0xFF006400));
+		colorCache.put(0xFF000080, getABGRFloat(0xFF000080));
+		colorCache.put(0xFF808000, getABGRFloat(0xFF808000));
+		colorCache.put(0xFF4B0082, getABGRFloat(0xFF4B0082));
+		colorCache.put(0xFF8B4500, getABGRFloat(0xFF8B4500));
+		colorCache.put(0xFF123456, getABGRFloat(0xFF123456));
+		colorCache.put(0xFF654321, getABGRFloat(0xFF654321));
 	}
 
 	private final float toFloatColor(int tint) {

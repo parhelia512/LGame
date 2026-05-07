@@ -22,41 +22,46 @@ package loon.action.collision;
 
 import loon.geom.Vector2f;
 
-public class ConstantForce implements Force {
+public class ContinuousForce implements Force {
 
-	private boolean _finished;
+	private final String id;
+	private final Vector2f vecPerSecond;
+	private boolean active = true;
 
-	private final Vector2f _direction;
-
-	private final String _identifier;
-
-	public ConstantForce(String i, Vector2f d) {
-		this._identifier = i;
-		this._direction = d;
+	public ContinuousForce(String id, float fxPerSec, float fyPerSec) {
+		this.id = id == null ? "ContinuousForce" : id;
+		this.vecPerSecond = Vector2f.at(fxPerSec, fyPerSec);
 	}
 
 	@Override
 	public String identifier() {
-		return _identifier;
+		return id;
 	}
 
 	@Override
-	public void update(long e) {
-		_finished = true;
+	public void update(long elapsedTime) {
+		// 持续生效，除非外部stop
+	}
+
+	public void setVector(float fxPerSec, float fyPerSec) {
+		this.vecPerSecond.set(fxPerSec, fyPerSec);
 	}
 
 	@Override
 	public Vector2f direction() {
-		return _direction;
-	}
-
-	public void setFinished(boolean f) {
-		_finished = f;
+		return active ? vecPerSecond : Vector2f.at(0f, 0f);
 	}
 
 	@Override
 	public boolean isFinished() {
-		return _finished;
+		return !active;
 	}
 
+	public void stop() {
+		active = false;
+	}
+
+	public boolean isActive() {
+		return active;
+	}
 }

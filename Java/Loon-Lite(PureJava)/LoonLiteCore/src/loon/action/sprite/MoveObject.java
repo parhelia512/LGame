@@ -515,10 +515,8 @@ public class MoveObject extends ActionObject {
 		if (_findPath == null) {
 			return this;
 		}
-		synchronized (_findPath) {
-			if (_findPath != null) {
-				_findPath.clear();
-			}
+		if (_findPath != null) {
+			_findPath.clear();
 		}
 		this.moveObject(x, y);
 		this._isClicked = false;
@@ -549,118 +547,115 @@ public class MoveObject extends ActionObject {
 				_isClicked = false;
 				return;
 			}
-
-			synchronized (_findPath) {
-				if (_endX == _startX && _endY == _startY) {
-					if (_findPath != null) {
-						if (_findPath.size > 1) {
-							Vector2f moveStart = _findPath.get(0);
-							Vector2f moveEnd = _findPath.get(1);
-							_startX = tiles.tilesToPixelsX(moveStart.x());
-							_startY = tiles.tilesToPixelsY(moveStart.y());
-							_endX = moveEnd.x() * tiles.getTileWidth();
-							_endY = moveEnd.y() * tiles.getTileHeight();
-							setDirection(Field2D.getDirection(_startX, _startY, _endX, _endY));
-							_findPath.removeIndex(0);
-						} else {
-							_findPath.clear();
-						}
+			if (_endX == _startX && _endY == _startY) {
+				if (_findPath != null) {
+					if (_findPath.size > 1) {
+						Vector2f moveStart = _findPath.get(0);
+						Vector2f moveEnd = _findPath.get(1);
+						_startX = tiles.tilesToPixelsX(moveStart.x());
+						_startY = tiles.tilesToPixelsY(moveStart.y());
+						_endX = moveEnd.x() * tiles.getTileWidth();
+						_endY = moveEnd.y() * tiles.getTileHeight();
+						setDirection(Field2D.getDirection(_startX, _startY, _endX, _endY));
+						_findPath.removeIndex(0);
+					} else {
+						_findPath.clear();
 					}
 				}
-				switch (getDirection()) {
-				case Config.TUP:
-					_startY -= getMoveSpeed();
-					if (_startY < _endY) {
-						_startY = _endY;
-					}
-					break;
-				case Config.TDOWN:
-					_startY += getMoveSpeed();
-					if (_startY > _endY) {
-						_startY = _endY;
-					}
-					break;
-				case Config.TLEFT:
-					_startX -= getMoveSpeed();
-					if (_startX < _endX) {
-						_startX = _endX;
-					}
-					break;
-				case Config.TRIGHT:
-					_startX += getMoveSpeed();
-					if (_startX > _endX) {
-						_startX = _endX;
-					}
-					break;
-				case Config.UP:
-					_startX += getMoveSpeed();
-					_startY -= getMoveSpeed();
-					if (_startX > _endX) {
-						_startX = _endX;
-					}
-					if (_startY < _endY) {
-						_startY = _endY;
-					}
-					break;
-				case Config.DOWN:
-					_startX -= getMoveSpeed();
-					_startY += getMoveSpeed();
-					if (_startX < _endX) {
-						_startX = _endX;
-					}
-					if (_startY > _endY) {
-						_startY = _endY;
-					}
-					break;
-				case Config.LEFT:
-					_startX -= getMoveSpeed();
-					_startY -= getMoveSpeed();
-					if (_startX < _endX) {
-						_startX = _endX;
-					}
-					if (_startY < _endY) {
-						_startY = _endY;
-					}
-					break;
-				case Config.RIGHT:
-					_startX += getMoveSpeed();
-					_startY += getMoveSpeed();
-					if (_startX > _endX) {
-						_startX = _endX;
-					}
-					if (_startY > _endY) {
-						_startY = _endY;
-					}
-					break;
-				}
-
-				final Vector2f tile = _isCheckCollision ? tiles.getTileCollision(this, _startX, _startY) : null;
-
-				if (tile != null) {
-					int sx = tiles.tilesToPixelsX(tile.x);
-					int sy = tiles.tilesToPixelsY(tile.y);
-					if (sx > 0) {
-						sx = (int) (sx - getWidth());
-						_groundedLeftRight = true;
-					} else if (sx < 0) {
-						sx = tiles.tilesToPixelsX(tile.x);
-						_groundedLeftRight = true;
-					}
-					if (sy > 0) {
-						sy = (int) (sy - getHeight());
-						_groundedTopBottom = true;
-					} else if (sy < 0) {
-						sy = tiles.tilesToPixelsY(tile.y);
-						_groundedTopBottom = true;
-					}
-				} else {
-					freeGround();
-					moveObject(_startX, _startY);
-				}
-
 			}
-			updateDirection(getDirection());
+			switch (getDirection()) {
+			case Config.TUP:
+				_startY -= getMoveSpeed();
+				if (_startY < _endY) {
+					_startY = _endY;
+				}
+				break;
+			case Config.TDOWN:
+				_startY += getMoveSpeed();
+				if (_startY > _endY) {
+					_startY = _endY;
+				}
+				break;
+			case Config.TLEFT:
+				_startX -= getMoveSpeed();
+				if (_startX < _endX) {
+					_startX = _endX;
+				}
+				break;
+			case Config.TRIGHT:
+				_startX += getMoveSpeed();
+				if (_startX > _endX) {
+					_startX = _endX;
+				}
+				break;
+			case Config.UP:
+				_startX += getMoveSpeed();
+				_startY -= getMoveSpeed();
+				if (_startX > _endX) {
+					_startX = _endX;
+				}
+				if (_startY < _endY) {
+					_startY = _endY;
+				}
+				break;
+			case Config.DOWN:
+				_startX -= getMoveSpeed();
+				_startY += getMoveSpeed();
+				if (_startX < _endX) {
+					_startX = _endX;
+				}
+				if (_startY > _endY) {
+					_startY = _endY;
+				}
+				break;
+			case Config.LEFT:
+				_startX -= getMoveSpeed();
+				_startY -= getMoveSpeed();
+				if (_startX < _endX) {
+					_startX = _endX;
+				}
+				if (_startY < _endY) {
+					_startY = _endY;
+				}
+				break;
+			case Config.RIGHT:
+				_startX += getMoveSpeed();
+				_startY += getMoveSpeed();
+				if (_startX > _endX) {
+					_startX = _endX;
+				}
+				if (_startY > _endY) {
+					_startY = _endY;
+				}
+				break;
+			}
+
+			final Vector2f tile = _isCheckCollision ? tiles.getTileCollision(this, _startX, _startY) : null;
+
+			if (tile != null) {
+				int sx = tiles.tilesToPixelsX(tile.x);
+				int sy = tiles.tilesToPixelsY(tile.y);
+				if (sx > 0) {
+					sx = (int) (sx - getWidth());
+					_groundedLeftRight = true;
+				} else if (sx < 0) {
+					sx = tiles.tilesToPixelsX(tile.x);
+					_groundedLeftRight = true;
+				}
+				if (sy > 0) {
+					sy = (int) (sy - getHeight());
+					_groundedTopBottom = true;
+				} else if (sy < 0) {
+					sy = tiles.tilesToPixelsY(tile.y);
+					_groundedTopBottom = true;
+				}
+			} else {
+				freeGround();
+				moveObject(_startX, _startY);
+			}
+
 		}
+		updateDirection(getDirection());
 	}
 
 	protected float getMoveSpeed() {

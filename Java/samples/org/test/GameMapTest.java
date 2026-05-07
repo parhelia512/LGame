@@ -30,6 +30,7 @@ import loon.action.map.TileMap;
 import loon.action.sprite.ActionObject;
 import loon.action.sprite.Animation;
 import loon.action.sprite.JumpObject;
+import loon.action.sprite.LineObject;
 import loon.canvas.LColor;
 import loon.component.LPad;
 import loon.events.ActionKey;
@@ -190,6 +191,25 @@ public class GameMapTest extends Stage {
 		// 让地图跟随指定对象产生移动（无论插入有多少张数组地图，此跟随默认对所有地图生效）
 		// 另外请注意，此处能产生跟随的对像是任意LObject，并不局限于游戏角色。
 		follow(hero);
+
+		// 创建绳索对象，默认隐藏状态跟随主角，使用indexMap作为地图，此类用于构建近似蜘蛛侠的蜘蛛丝飞跃与回弹特效
+		LineObject rope = new LineObject(hero, indexMap);
+		// 使用默认模式为拉自己随绳索移动
+		rope.setDefaultPullSelfToTarget();
+		// 这是设置模式，设置拉力大小，速度，至少移动几格停止，参数关系着拉力与回弹幅度，基本上参数越大越乱跳，越小越像坐电梯
+		// rope.setPullParams(1200, 600, 2);
+		// 设置为让我方角色向目标移动
+		// rope.setPullMode(LineObject.PullMode.PULL_SELF_TO_TARGET);
+		// 使用弹力模式
+		// rope.setContinuousForceMode(true);
+		// 添加绳索对象
+		add(rope);
+
+		// 绑定按键触发发射绳索
+		up((x, y) -> {
+			// 发射绳索和绑定的精灵到指定位置上去
+			rope.fireOwnerTo(x, y);
+		});
 
 		// 监听跳跃事件
 		hero.listener = (x, y) -> {

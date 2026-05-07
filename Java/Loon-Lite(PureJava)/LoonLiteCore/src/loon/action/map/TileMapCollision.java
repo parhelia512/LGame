@@ -21,6 +21,7 @@
 package loon.action.map;
 
 import loon.LObject;
+import loon.action.sprite.ISprite;
 import loon.geom.Vector2f;
 
 /**
@@ -37,6 +38,16 @@ public interface TileMapCollision {
 	int pixelsToTilesWidth(float x);
 
 	int pixelsToTilesHeight(float y);
+
+	public ISprite getObject(float x, float y);
+
+	public int offsetXPixel(float x);
+
+	public int offsetYPixel(float y);
+
+	public float getScreenPixelX(float x);
+
+	public float getScreenPixelY(float y);
 
 	boolean isHit(int px, int py);
 

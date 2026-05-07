@@ -29,6 +29,7 @@ import loon.LTextures;
 import loon.action.ActionBind;
 import loon.action.map.Field2D;
 import loon.action.map.TileMapCollision;
+import loon.action.sprite.ISprite;
 import loon.events.ChangeEvent;
 import loon.geom.PointF;
 import loon.geom.RectBox;
@@ -275,6 +276,31 @@ public class LDTKTileLayer extends LDTKLayer implements TileMapCollision, Change
 
 	public Vector2f getPixelOffset(float x, float y) {
 		return _pixelOffset.set(x, y).addSelf(_pixelOffsetX + _offset.x(), _pixelOffsetY + _offset.y());
+	}
+
+	@Override
+	public int offsetXPixel(float x) {
+		return MathUtils.iceil((x - _offset.x - _pixelOffsetX));
+	}
+
+	@Override
+	public int offsetYPixel(float y) {
+		return MathUtils.iceil((y - _offset.y - _pixelOffsetY));
+	}
+
+	@Override
+	public float getScreenPixelX(float x) {
+		return (x + _pixelOffsetX + _offset.x);
+	}
+
+	@Override
+	public float getScreenPixelY(float y) {
+		return (y + _pixelOffsetY + _offset.y);
+	}
+
+	@Override
+	public ISprite getObject(float x, float y) {
+		return null;
 	}
 
 	public boolean hasPixelsCollision(float x, float y) {

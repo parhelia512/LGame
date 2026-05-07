@@ -30,4 +30,6 @@ public interface Force {
 
 	Vector2f direction();
 
+	boolean isFinished();
+
 }

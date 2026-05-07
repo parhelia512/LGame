@@ -34,6 +34,7 @@ import loon.utils.MathUtils;
 import loon.utils.StrBuilder;
 import loon.utils.StringUtils;
 import loon.utils.TArray;
+import loon.utils.timer.Duration;
 
 /**
  * 和瓦片地图绑定的动作对象,用来抽象一些简单的ACT地图中精灵动作
@@ -111,6 +112,10 @@ public abstract class ActionObject extends Entity implements Config {
 	private boolean _canAirDash = true;
 	private boolean _canWallJump = true;
 	private boolean _isHovering = false;
+	// 禁止控制功能
+	private boolean _controlEnabled = true;
+	// 拖拽状态
+	private boolean _isPullingState = false;
 
 	private final TArray<ActionStateListener> _listeners = new TArray<ActionStateListener>();
 
@@ -140,8 +145,70 @@ public abstract class ActionObject extends Entity implements Config {
 		resetVelocity();
 	}
 
+	public void moveLocation(Vector2f pos) {
+		if (pos == null) {
+			return;
+		}
+		moveLocation(pos.getX(), pos.getY());
+	}
+
+	public void moveLocation(float targetX, float targetY) {
+		Vector2f safePos = getValidMovePosition(targetX, targetY);
+		setLocation(safePos.x, safePos.y);
+	}
+
+	protected Vector2f getValidMovePosition(float targetX, float targetY) {
+		float finalX = targetX;
+		float finalY = targetY;
+		if (tiles != null) {
+			float mapMinX = 0;
+			float mapMinY = 0;
+			float mapMaxX = tiles.getWidth() - getWidth() - 1;
+			float mapMaxY = tiles.getHeight() - getHeight() - 1;
+			finalX = MathUtils.clamp(finalX, mapMinX, mapMaxX);
+			finalY = MathUtils.clamp(finalY, mapMinY, mapMaxY);
+		}
+		if (tiles != null) {
+			Vector2f collideTile = tiles.getTileCollision(this, finalX, getY());
+			if (collideTile != null) {
+				if (finalX > getX()) {
+					finalX = tiles.tilesToPixelsX(collideTile.x) - getWidth();
+				} else {
+					finalX = tiles.tilesToPixelsX(collideTile.x + 1);
+				}
+			}
+		}
+		if (tiles != null) {
+			float footCheckX = finalX + getWidth() * 0.5f;
+			Vector2f collideTile = tiles.getTileCollision(this, footCheckX, finalY);
+			if (collideTile != null) {
+				if (finalY > getY()) {
+					finalY = tiles.tilesToPixelsY(collideTile.y) - getHeight();
+				} else {
+					finalY = tiles.tilesToPixelsY(collideTile.y + 1);
+				}
+			}
+		}
+		if (tiles != null && enableContinuousCollision) {
+			if (MathUtils.abs(targetX - getX()) > getWidth() * 0.5f) {
+				Vector2f midTile = tiles.getTileCollision(this, finalX + (targetX - getX()) * 0.5f, finalY);
+				if (midTile != null) {
+					finalX = getX();
+				}
+			}
+			if (MathUtils.abs(targetY - getY()) > getHeight() * 0.5f) {
+				Vector2f midTile = tiles.getTileCollision(this, finalX, finalY + (targetY - getY()) * 0.5f);
+				if (midTile != null) {
+					finalY = getY();
+				}
+			}
+		}
+		return _tempResult.set(finalX, finalY);
+	}
+
 	@Override
 	void onProcess(long elapsedTime) {
+		final float dt = Duration.toS(elapsedTime);
 		if (!isStaticObject()) {
 			if (!_spawnCorrected && tiles != null) {
 				correctSpawnPosition();
@@ -151,25 +218,42 @@ public abstract class ActionObject extends Entity implements Config {
 				resetVelocity();
 				for (int i = 0; i < _forces.size; i++) {
 					Force force = _forces.get(i);
-					if (force != null) {
-						force.update(elapsedTime);
-						addVelocity(force.direction());
+					if (force == null) {
+						continue;
+					}
+					force.update(elapsedTime);
+					Vector2f dir = force.direction();
+					if (dir != null) {
+						addVelocity(dir.x * dt, dir.y * dt);
 					}
 				}
-				setLocation(getX() + velocityX, getY() + velocityY);
+				moveLocation(getX() + velocityX, getY() + velocityY);
 			}
 			_flipElapsed += elapsedTime;
 			updateWallClimb();
 			updateCeilingWalk();
 			updateActorState();
 		}
+
 		limitVelocity();
 		cleanMicroVelocity();
+
 		if (animation != null) {
 			animation.update(elapsedTime);
 			LTexture texture = animation.getSpriteImage();
 			if (texture != null) {
 				_image = texture;
+			}
+		}
+		for (int i = _forces.size - 1; i >= 0; i--) {
+			Force f = _forces.get(i);
+			if (f == null) {
+				_forces.removeIndex(i);
+				continue;
+			}
+			if (f.isFinished()) {
+				_forces.removeIndex(i);
+				continue;
 			}
 		}
 		onPostProcess(elapsedTime);
@@ -212,11 +296,11 @@ public abstract class ActionObject extends Entity implements Config {
 		float cy = getCenterY();
 		if (tiles.getTileCollision(this, cx, getY() - 1) != null) {
 			float ty = tiles.tilesToPixelsY(tiles.pixelsToTilesHeight(getY()));
-			setLocation(getX(), ty + 2);
+			moveLocation(getX(), ty + 2);
 		}
 		if (tiles.getTileCollision(this, cx, cy) != null) {
 			float ty = tiles.tilesToPixelsY(tiles.pixelsToTilesHeight(getY() + getHeight()));
-			setLocation(getX(), ty - getHeight() - 1);
+			moveLocation(getX(), ty - getHeight() - 1);
 		}
 	}
 
@@ -605,7 +689,7 @@ public abstract class ActionObject extends Entity implements Config {
 	}
 
 	public ActionObject updateLocation() {
-		this.setLocation(getLocation().add(this._currentSide.updatePostion()));
+		this.moveLocation(getLocation().add(this._currentSide.updatePostion()));
 		return this;
 	}
 
@@ -809,7 +893,7 @@ public abstract class ActionObject extends Entity implements Config {
 	public ActionObject limitPosition(float minX, float minY, float maxX, float maxY) {
 		float x = MathUtils.clamp(getX(), minX, maxX);
 		float y = MathUtils.clamp(getY(), minY, maxY);
-		setLocation(x, y);
+		moveLocation(x, y);
 		return this;
 	}
 
@@ -1076,6 +1160,35 @@ public abstract class ActionObject extends Entity implements Config {
 		if (_groundedTopBottom) {
 			_canWallJump = true;
 		}
+	}
+
+	public boolean isControlEnabled() {
+		return _controlEnabled;
+	}
+
+	public ActionObject setControlEnabled(boolean enabled) {
+		this._controlEnabled = enabled;
+		return this;
+	}
+
+	public void enterPulling() {
+		if (!_isPullingState) {
+			_isPullingState = true;
+			setControlEnabled(false);
+			currentState = ActorState.HIT_STUN;
+		}
+	}
+
+	public void exitPulling() {
+		if (_isPullingState) {
+			_isPullingState = false;
+			setControlEnabled(true);
+			currentState = ActorState.IDLE;
+		}
+	}
+
+	public boolean isPulling() {
+		return _isPullingState;
 	}
 
 	@Override

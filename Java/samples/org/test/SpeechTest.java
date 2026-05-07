@@ -33,7 +33,7 @@ public class SpeechTest extends Stage {
 	public void create() {
 		LSpeechDialog dialog = new LSpeechDialog(25, 25, 330, 200);
 		// 添加一个说话角色, 对话框伴随的小尾巴在左侧
-		dialog.putCharacter("角色A", LColor.white, LColor.blue, null, "left");
+		dialog.putCharacter("角色A", LColor.white, LColor.black, null, "left");
 		// 添加一组对话
 		TArray<TextSegment> mes1 = new TArray<TextSegment>();
 		// 前半部分单纯蓝色文字
@@ -41,8 +41,8 @@ public class SpeechTest extends Stage {
 		// 中间部分单纯黑色文字
 		mes1.add(new LSpeechDialog.TextSegment("你…你真的要走吗？\n不能等到下午再说吗？", LColor.black));
 		// 后半部分红色，震颤，幅度3
-		mes1.add(new LSpeechDialog.TextSegment("\n你总说我是你的翅膀\n难道就不能让我陪你翱翔？", LColor.red, true, false, false, false,
-				false, 3, 0, 3f));
+		mes1.add(new LSpeechDialog.TextSegment("\n你总说我是你的翅膀\n难道就不能让我陪你翱翔？", LColor.red, false, true, false, false,
+				false, 3, 3, 3f));
 		// 添加对话到角色, 语速0.1秒每字，使用椭圆形对话框
 		dialog.putDialogue("角色A", mes1, 0.1f, BubbleType.ELLIPSE, "normal");
 
@@ -57,11 +57,15 @@ public class SpeechTest extends Stage {
 		// 添加第三组对话
 		TArray<TextSegment> mes3 = new TArray<TextSegment>();
 		// 所有特效一起开
-		mes3.add(new LSpeechDialog.TextSegment("\n汝可知伊藤诚，\n恨不逢旧事乎？", LColor.red, true, true, true, true, true, 9, 9,
-				6f));
+		mes3.add(new LSpeechDialog.TextSegment("\n汝可知伊藤诚，\n恨不逢旧事乎？", LColor.red, true, true, true, true, true, 3, 3,
+				3f));
 		// 添加对话到角色A, 语速0.2秒每字，使用圆形对话框, 偏移显示位置-20,20
-		dialog.putDialogue("角色A", mes3, 0.2f, BubbleType.CIRCLE, "normal", -20f, 20f);
+		dialog.putDialogue("角色A", mes3, 0.5f, BubbleType.CIRCLE, "normal", -20f, 20f);
 
+		// 以类似html的方式构建字符串样式
+		String markup = "<offset x='-35' y='-20'><wave amp=8 freq=0.8 phaseOffset=0.5>这是波浪文字</wave>"
+				+ "<color v=red>这是红色普通文字</color> " + "\n\n这是默认颜色的普通文字</offset>";
+		dialog.putDialogueFromMarkup("角色A", markup, 0.02f, BubbleType.ROUND, "normal");
 		centerOn(dialog);
 		add(dialog);
 		// 点击对话框时直接进入下一个对话
