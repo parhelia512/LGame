@@ -24,7 +24,6 @@ import loon.LTexture;
 import loon.canvas.LColor;
 import loon.component.skin.SkinManager;
 import loon.component.skin.SliderSkin;
-import loon.events.SysTouch;
 import loon.events.ValueListener;
 import loon.opengl.GLEx;
 
@@ -114,10 +113,8 @@ public class LSlider extends LComponent {
 			return;
 		}
 		super.update(elapsedTime);
-		if (SysTouch.isDrag() || SysTouch.isDown()) {
-			if (isPointInUI()) {
-				onChange();
-			}
+		if ((isClickDrag() || isClickDown()) && isPointInUI()) {
+			onChange();
 		}
 	}
 
@@ -126,7 +123,7 @@ public class LSlider extends LComponent {
 		if (_vertical) {
 			g.draw(_barImage, x + _padding, y + getHeight() / 2 - _barImageHeight / 2, getWidth() - _padding * 2,
 					_barImageHeight);
-			g.draw(_sliderImage, x + _padding * (getWidth() - _padding * 2) - _sliderWidth / 2 + getWidth() / 2,
+			g.draw(_sliderImage, x + _padding * (getWidth() - _padding * 2) - _sliderWidth / 2 + getWidth() / 2 - 1,
 					y + _value * (getHeight()) - _sliderHeight / 2, _sliderWidth, _sliderHeight);
 		} else {
 			g.draw(_barImage, x + _padding, y + getHeight() / 2 - _barImageHeight / 2, getWidth() - _padding * 2,

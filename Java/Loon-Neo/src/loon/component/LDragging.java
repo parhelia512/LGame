@@ -20,6 +20,8 @@
  */
 package loon.component;
 
+import java.util.Iterator;
+
 import loon.LSystem;
 import loon.canvas.LColor;
 import loon.events.ActionKey;
@@ -30,11 +32,39 @@ import loon.geom.RectBox;
 import loon.geom.Shape;
 import loon.opengl.GLEx;
 import loon.utils.MathUtils;
+import loon.utils.ObjectMap;
+import loon.utils.TArray;
 
 /**
  * 用于显示拖拽范围的拖拽效果组件
  */
 public class LDragging extends LComponent {
+
+	public enum SelectionMode {
+		PARTIAL, FULL
+	}
+
+	public static interface Selectable {
+
+		boolean contains(float x, float y);
+
+		boolean intersects(Shape area);
+
+		void moveBy(float dx, float dy);
+
+		float getX();
+
+		float getY();
+	}
+
+	public static interface DragItemsListener {
+
+		void onDragStart(TArray<Selectable> items);
+
+		void onDrag(TArray<Selectable> items, float dx, float dy);
+
+		void onDragEnd(TArray<Selectable> items);
+	}
 
 	private SelectAreaListener _selectArea;
 
@@ -69,12 +99,25 @@ public class LDragging extends LComponent {
 	private LColor _fillColor;
 
 	private LColor _rectColor;
-
 	/**
 	 * 构造拖拽用组件,用于渲染出特定的拖拽区域
 	 */
+	private final TArray<Selectable> _allSelectables = new TArray<Selectable>();
+
+	private final TArray<Selectable> _selected = new TArray<Selectable>();
+
+	private final ObjectMap<Selectable, float[]> _dragOffsets = new ObjectMap<Selectable, float[]>();
+
+	private boolean _draggingItems = false;
+
+	private DragItemsListener _dragItemsListener;
+
+	private boolean _multiSelect = true;
+
+	private SelectionMode _selectionMode = SelectionMode.PARTIAL;
+
 	public LDragging() {
-		this(false, true, true);
+		this(false, false, true);
 	}
 
 	/**
@@ -148,6 +191,21 @@ public class LDragging extends LComponent {
 			if (!_locked.isPressed()) {
 				start();
 				_locked.press();
+				if (!_selected.isEmpty()) {
+					float tx = getUITouchX();
+					float ty = getUITouchY();
+					for (int i = _selected.size() - 1; i >= 0; i--) {
+						Selectable s = _selected.get(i);
+						if (s != null && s.contains(tx, ty)) {
+							prepareDragSelectedItems(tx, ty);
+							_draggingItems = true;
+							if (_dragItemsListener != null) {
+								_dragItemsListener.onDragStart(_selected);
+							}
+							break;
+						}
+					}
+				}
 			}
 		}
 	}
@@ -155,6 +213,19 @@ public class LDragging extends LComponent {
 	@Override
 	public void processTouchDragged() {
 		super.processTouchDragged();
+		if (_draggingItems && _locked.isPressed()) {
+			float tx = getUITouchX();
+			float ty = getUITouchY();
+			float dx = tx - this._startX;
+			float dy = ty - this._startY;
+			dragSelectedItemsTo(dx, dy);
+			if (_dragItemsListener != null) {
+				_dragItemsListener.onDrag(_selected, dx, dy);
+			}
+			this._lastX = tx;
+			this._lastY = ty;
+			return;
+		}
 		if (!_locked.isPressed()) {
 			start();
 			_locked.press();
@@ -166,6 +237,13 @@ public class LDragging extends LComponent {
 	@Override
 	public void processTouchReleased() {
 		super.processTouchReleased();
+		if (_draggingItems) {
+			_draggingItems = false;
+			_dragOffsets.clear();
+			if (_dragItemsListener != null) {
+				_dragItemsListener.onDragEnd(_selected);
+			}
+		}
 		if (_locked.isPressed() && _dragging) {
 			if (_selectArea != null) {
 				_selectArea.onArea(this._display_area.x, this._display_area.y,
@@ -319,6 +397,7 @@ public class LDragging extends LComponent {
 
 	public LDragging clearArea() {
 		_area.clear();
+		_display_area.clear();
 		return this;
 	}
 
@@ -339,6 +418,144 @@ public class LDragging extends LComponent {
 		} else {
 			return new RectBox(areaX, areaY, areaWidth, areaHeight);
 		}
+	}
+
+	public LDragging addSelectable(Selectable s) {
+		if (s != null && !_allSelectables.contains(s)) {
+			_allSelectables.add(s);
+		}
+		return this;
+	}
+
+	public LDragging removeSelectable(Selectable s) {
+		_allSelectables.remove(s);
+		_selected.remove(s);
+		_dragOffsets.remove(s);
+		return this;
+	}
+
+	public TArray<Selectable> getAllSelectables() {
+		return new TArray<Selectable>(_allSelectables);
+	}
+
+	public TArray<Selectable> getSelected() {
+		return new TArray<Selectable>(_selected);
+	}
+
+	public LDragging clearSelection() {
+		_selected.clear();
+		_dragOffsets.clear();
+		return this;
+	}
+
+	public LDragging setMultiSelect(boolean m) {
+		this._multiSelect = m;
+		return this;
+	}
+
+	public boolean isMultiSelect() {
+		return this._multiSelect;
+	}
+
+	public LDragging setSelectionMode(SelectionMode m) {
+		if (m != null) {
+			this._selectionMode = m;
+		}
+		return this;
+	}
+
+	public SelectionMode getSelectionMode() {
+		return this._selectionMode;
+	}
+
+	public TArray<Selectable> selectItemsInArea(boolean multiAdd) {
+		Shape areaShape = getDragRang();
+		TArray<Selectable> found = new TArray<Selectable>();
+		for (Selectable s : _allSelectables) {
+			boolean hit;
+			if (_selectionMode == SelectionMode.FULL) {
+				hit = s.intersects(areaShape) && fullyContained(s, areaShape);
+			} else {
+				hit = s.intersects(areaShape);
+			}
+			if (hit) {
+				found.add(s);
+			}
+		}
+		if (!multiAdd || !_multiSelect) {
+			_selected.clear();
+		}
+		for (Selectable s : found) {
+			if (!_selected.contains(s)) {
+				_selected.add(s);
+			}
+		}
+		return new TArray<Selectable>(_selected);
+	}
+
+	public TArray<Selectable> selectByPoint(float x, float y, boolean multiAdd) {
+		Selectable hit = null;
+		for (int i = _allSelectables.size() - 1; i >= 0; i--) {
+			Selectable s = _allSelectables.get(i);
+			if (s.contains(x, y)) {
+				hit = s;
+				break;
+			}
+		}
+		if (!multiAdd || !_multiSelect) {
+			_selected.clear();
+		}
+		if (hit != null) {
+			if (_selected.contains(hit)) {
+				if (multiAdd) {
+					_selected.remove(hit);
+				}
+			} else {
+				_selected.add(hit);
+			}
+		} else {
+			if (!multiAdd) {
+				_selected.clear();
+			}
+		}
+		return new TArray<Selectable>(_selected);
+	}
+
+	private boolean fullyContained(Selectable s, Shape area) {
+		return s.intersects(area);
+	}
+
+	private void prepareDragSelectedItems(float touchX, float touchY) {
+		_dragOffsets.clear();
+		for (Selectable s : _selected) {
+			float dx = s.getX() - touchX;
+			float dy = s.getY() - touchY;
+			_dragOffsets.put(s, new float[] { dx, dy });
+		}
+	}
+
+	private void dragSelectedItemsTo(float dx, float dy) {
+		for (Iterator<Selectable> it = _selected.iterator(); it.hasNext();) {
+			Selectable s = it.next();
+			float[] off = _dragOffsets.get(s);
+			if (off == null) {
+				continue;
+			}
+			float targetX = this._startX + dx + off[0];
+			float targetY = this._startY + dy + off[1];
+			float moveDx = targetX - s.getX();
+			float moveDy = targetY - s.getY();
+			s.moveBy(moveDx, moveDy);
+		}
+	}
+
+	public LDragging setDragItemsListener(DragItemsListener l) {
+		this._dragItemsListener = l;
+		return this;
+	}
+
+	public DragItemsListener getDragItemsListener() {
+		return this._dragItemsListener;
 	}
 
 	public SelectAreaListener getSelectAreaListener() {
@@ -426,7 +643,10 @@ public class LDragging extends LComponent {
 
 	@Override
 	public void destroy() {
-
+		_allSelectables.clear();
+		_selected.clear();
+		_dragOffsets.clear();
+		_dragItemsListener = null;
+		_selectArea = null;
 	}
-
 }

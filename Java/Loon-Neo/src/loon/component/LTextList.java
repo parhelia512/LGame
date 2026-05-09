@@ -27,12 +27,14 @@ import loon.LTexture;
 import loon.canvas.LColor;
 import loon.component.skin.SkinManager;
 import loon.component.skin.TextListSkin;
+import loon.events.SysKey;
 import loon.events.SysTouch;
 import loon.font.FontSet;
 import loon.font.IFont;
 import loon.geom.Vector2f;
 import loon.opengl.GLEx;
 import loon.utils.MathUtils;
+import loon.utils.StrBuilder;
 
 /**
  * 文字列表显示用UI,用以列表方式显示指定数据,LGame本身附带有默认UI,用户也可以自行注入图片进行替换.
@@ -43,6 +45,10 @@ import loon.utils.MathUtils;
  * list.add("人月神话"); list.add("费雪效应"); list.add("ABC"); list.add("EFG");
  */
 public class LTextList extends LComponent implements FontSet<LTextList> {
+
+	private final StrBuilder _tempNames = new StrBuilder();
+
+	private final Vector2f _resultPos = new Vector2f();
 
 	private LTexture _choiceTexture, _scrollTexture, _scrollFlagATexture, _scrollFlagBTexture;
 
@@ -80,9 +86,9 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	private int _scrollBarY;
 	private int _scrollBarHeight;
 
-	private int _scrollBarHeight_max;
 	private boolean _scrollBarDrag;
 
+	private int _scrollBarHeight_max;
 	private int _scrollButtonWidth = 15;
 	private int _scrollButtonHeight = 15;
 	private int _scrollButtonX;
@@ -96,6 +102,13 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	private int _maxX = 0;
 	private int _maxY = 0;
 	private float _sizeFillOffset = 0f;
+
+	// 多选支持标志数组与模式
+	private boolean[] _selectedFlags;
+	private boolean _multiSelect = false;
+
+	// 键盘导航开关
+	private boolean _keyboardNavigationEnabled = false;
 
 	public LTextList(int x, int y) {
 		this(128, x, y, 150, 300, 30);
@@ -165,12 +178,16 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 		this._numbers = new int[this._max];
 		this._colors = new LColor[this._max];
 		this._lengthChecks = new boolean[this._max];
+		this._selectedFlags = new boolean[this._max];
 
 		for (int i = 0; i < this._max; i++) {
 			this._colors[i] = this._defaultStringColor;
+			this._numbers[i] = -1;
+			this._lengthChecks[i] = false;
+			this._selectedFlags[i] = false;
 		}
 
-		this._selectList = 0;
+		this._selectList = -1;
 		this._curIndex = 0;
 		this._scrollList = 0;
 
@@ -183,7 +200,16 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	public LTextList delete() {
+		for (int i = 0; i < this._max; i++) {
+			this._names[i] = null;
+			this._numbers[i] = -1;
+			this._colors[i] = this._defaultStringColor;
+			this._lengthChecks[i] = false;
+			this._selectedFlags[i] = false;
+		}
 		this._curIndex = 0;
+		this._selectList = -1;
+		this._scrollList = 0;
 		return this;
 	}
 
@@ -199,23 +225,32 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	public LTextList changeName(int position, String nameString, int numberInt) {
-		this._names[position] = nameString;
-		this._numbers[position] = numberInt;
+		if (position >= 0 && position < this._max) {
+			this._names[position] = nameString;
+			this._numbers[position] = numberInt;
+			this._lengthChecks[position] = false;
+		}
 		return this;
 	}
 
 	public LTextList changeColor(int numberInt, LColor colorValue) {
-		this._colors[numberInt] = colorValue;
+		if (numberInt >= 0 && numberInt < this._max) {
+			this._colors[numberInt] = colorValue;
+		}
 		return this;
 	}
 
 	public LTextList setNextStringColor(LColor nextStringColor) {
-		this._nextStringColor = nextStringColor;
+		if (nextStringColor != null) {
+			this._nextStringColor = nextStringColor;
+		}
 		return this;
 	}
 
 	public LTextList setScrollButtonWidth(int w) {
-		_scrollButtonWidth = w;
+		if (w > 0) {
+			_scrollButtonWidth = w;
+		}
 		return this;
 	}
 
@@ -224,7 +259,9 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	public LTextList setScrollButtonHeight(int h) {
-		_scrollButtonHeight = h;
+		if (h > 0) {
+			_scrollButtonHeight = h;
+		}
 		return this;
 	}
 
@@ -256,35 +293,49 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	private void removeNames(int idx, int flag) {
+		if (idx < 0 || idx >= flag) {
+			return;
+		}
 		int size = flag - idx - 1;
 		if (size > 0) {
 			System.arraycopy(this._names, idx + 1, this._names, idx, size);
+			System.arraycopy(this._lengthChecks, idx + 1, this._lengthChecks, idx, size);
+			System.arraycopy(this._selectedFlags, idx + 1, this._selectedFlags, idx, size);
 		}
-		this._names[--flag] = null;
-		if (size == 0) {
-			_names = new String[0];
+		// 清理最后一个位置
+		int last = flag - 1;
+		if (last >= 0 && last < this._names.length) {
+			this._names[last] = null;
+			this._lengthChecks[last] = false;
+			this._selectedFlags[last] = false;
 		}
 	}
 
 	private void removeInteger(int idx, int flag) {
+		if (idx < 0 || idx >= flag) {
+			return;
+		}
 		int size = flag - idx - 1;
 		if (size > 0) {
 			System.arraycopy(this._numbers, idx + 1, this._numbers, idx, size);
 		}
-		this._numbers[--flag] = -1;
-		if (size == 0) {
-			_numbers = new int[0];
+		int last = flag - 1;
+		if (last >= 0 && last < this._numbers.length) {
+			this._numbers[last] = -1;
 		}
 	}
 
 	private void removeColor(int idx, int flag) {
+		if (idx < 0 || idx >= flag) {
+			return;
+		}
 		int size = flag - idx - 1;
 		if (size > 0) {
 			System.arraycopy(this._colors, idx + 1, this._colors, idx, size);
 		}
-		this._colors[--flag] = null;
-		if (size == 0) {
-			_colors = new LColor[0];
+		int last = flag - 1;
+		if (last >= 0 && last < this._colors.length) {
+			this._colors[last] = this._defaultStringColor;
 		}
 	}
 
@@ -301,13 +352,54 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	public LTextList remove(int idx) {
-		if (idx > -1 && idx < _names.length) {
+		if (idx > -1 && idx < _curIndex) {
 			this.removeNames(idx, this._curIndex);
 			this.removeInteger(idx, this._curIndex);
 			this.removeColor(idx, this._curIndex);
 			this._curIndex -= 1;
+			if (this._selectList == idx) {
+				this._selectList = -1;
+			} else if (this._selectList > idx) {
+				this._selectList -= 1;
+			}
+			if (this._scrollList > 0 && this._scrollList > this._curIndex - this._drawNum) {
+				this._scrollList = MathUtils.max(0, this._curIndex - this._drawNum);
+			}
 		}
 		return this;
+	}
+
+	private void grow() {
+		int oldCapacity = this._max;
+		int newCapacity = oldCapacity + (oldCapacity >> 1);
+		if (newCapacity <= oldCapacity) {
+			newCapacity = oldCapacity + 1;
+		}
+		String[] newNames = new String[newCapacity];
+		int[] newNumbers = new int[newCapacity];
+		LColor[] newColors = new LColor[newCapacity];
+		boolean[] newLengthChecks = new boolean[newCapacity];
+		boolean[] newSelectedFlags = new boolean[newCapacity];
+
+		System.arraycopy(this._names, 0, newNames, 0, this._curIndex);
+		System.arraycopy(this._numbers, 0, newNumbers, 0, this._curIndex);
+		System.arraycopy(this._colors, 0, newColors, 0, this._curIndex);
+		System.arraycopy(this._lengthChecks, 0, newLengthChecks, 0, this._curIndex);
+		System.arraycopy(this._selectedFlags, 0, newSelectedFlags, 0, this._curIndex);
+
+		for (int i = this._curIndex; i < newCapacity; i++) {
+			newNumbers[i] = -1;
+			newColors[i] = this._defaultStringColor;
+			newLengthChecks[i] = false;
+			newSelectedFlags[i] = false;
+		}
+
+		this._names = newNames;
+		this._numbers = newNumbers;
+		this._colors = newColors;
+		this._lengthChecks = newLengthChecks;
+		this._selectedFlags = newSelectedFlags;
+		this._max = newCapacity;
 	}
 
 	public LTextList add(String nameString) {
@@ -316,29 +408,44 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	public LTextList add(String nameString, int numberInt) {
+		if (this._curIndex >= this._max) {
+			grow();
+		}
 		this._names[this._curIndex] = nameString;
 		this._numbers[this._curIndex] = numberInt;
-		this._colors[this._curIndex] = this._nextStringColor;
+		this._colors[this._curIndex] = this._nextStringColor != null ? this._nextStringColor : this._defaultStringColor;
+		this._lengthChecks[this._curIndex] = false;
+		this._selectedFlags[this._curIndex] = false;
 		this._nextStringColor = this._defaultStringColor;
 		this._curIndex += 1;
 		return this;
 	}
 
 	public LTextList setDefaultStringColor(LColor stringNewColor) {
-		this._defaultStringColor = stringNewColor;
+		if (stringNewColor != null) {
+			this._defaultStringColor = stringNewColor;
+		}
 		return this;
 	}
 
 	public LTextList setDefaultStringColor(LColor newStringColor, LColor newChoiceStringColor,
 			LColor newChoiceStringBoxColor) {
-		this._defaultStringColor = newStringColor;
-		this._choiceStringColor = newChoiceStringColor;
-		this._choiceStringBoxColor = newChoiceStringBoxColor;
+		if (newStringColor != null) {
+			this._defaultStringColor = newStringColor;
+		}
+		if (newChoiceStringColor != null) {
+			this._choiceStringColor = newChoiceStringColor;
+		}
+		if (newChoiceStringBoxColor != null) {
+			this._choiceStringBoxColor = newChoiceStringBoxColor;
+		}
 		return this;
 	}
 
 	public LTextList setListColor(LColor c) {
-		_listColor = c;
+		if (c != null) {
+			_listColor = c;
+		}
 		return this;
 	}
 
@@ -347,7 +454,9 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	public LTextList setListBorderColor(LColor c) {
-		_listBorderColor = c;
+		if (c != null) {
+			_listBorderColor = c;
+		}
 		return this;
 	}
 
@@ -356,7 +465,9 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	public LTextList setScrollBarButtonColor(LColor c) {
-		_scrollBarButtonColor = c;
+		if (c != null) {
+			_scrollBarButtonColor = c;
+		}
 		return this;
 	}
 
@@ -369,7 +480,9 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	public LTextList setScrollBarSelectColor(LColor s) {
-		_scrollBarSelectColor = s;
+		if (s != null) {
+			_scrollBarSelectColor = s;
+		}
 		return this;
 	}
 
@@ -403,12 +516,16 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	public int getNumber(int curIndex) {
-		return curIndex < _max ? this._numbers[curIndex] : this._numbers[_max - 1];
+		if (curIndex >= 0 && curIndex < this._curIndex) {
+			return this._numbers[curIndex];
+		}
+		return -1;
 	}
 
 	public String getSelectName() {
 		int idx = getIndex();
-		if (idx != -1) {
+		System.out.println(idx);
+		if (idx != -1 && idx >= 0 && idx < this._curIndex) {
 			return _names[idx];
 		}
 		return LSystem.UNKNOWN;
@@ -420,8 +537,9 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	 * @return
 	 */
 	public int getIndex() {
-		if (this._selectList >= 0) {
-			return this._numbers[this._selectList];
+		if (this._selectList >= 0 && this._selectList < this._curIndex) {
+			int num = this._numbers[this._selectList];
+			return (num != -1) ? num : this._selectList;
 		}
 		return -1;
 	}
@@ -431,10 +549,18 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	public void setScrollList(int scroll) {
-		this._scrollList = (scroll - this._drawNum);
-		if (this._scrollList < 0) {
-			this._scrollList = 0;
+		if (scroll < 0) {
+			scroll = 0;
 		}
+		if (this._drawNum <= 0) {
+			this._scrollList = 0;
+			return;
+		}
+		int maxScroll = MathUtils.max(0, this._curIndex - this._drawNum);
+		if (scroll > maxScroll) {
+			scroll = maxScroll;
+		}
+		this._scrollList = scroll;
 	}
 
 	private void drawText(GLEx g, String str, int x, int y, LColor c) {
@@ -447,54 +573,88 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 		}
 	}
 
+	private String getDisplayName(int index, float backgroundWidth) {
+		if (index < 0 || index >= this._curIndex) {
+			return LSystem.EMPTY;
+		}
+		String s = this._names[index];
+		if (s == null) {
+			return LSystem.EMPTY;
+		}
+		if (_font == null) {
+			return s;
+		}
+		if (_font.stringWidth(s) <= backgroundWidth) {
+			return s;
+		}
+		_tempNames.setLength(0);
+		_tempNames.append(s);
+		while (_tempNames.length() > 0 && _font.stringWidth(_tempNames.toString() + "...") > backgroundWidth) {
+			_tempNames.setLength(_tempNames.length() - 1);
+		}
+		if (_tempNames.length() < s.length()) {
+			_tempNames.append("...");
+		}
+		return _tempNames.toString();
+	}
+
 	public void draw(GLEx g, int x, int y, float mouseX, float mouseY) {
 		final int oldColor = g.color();
 		try {
 			if (this._max > 0) {
 				final float backgroundWidth = getWidth() + _sizeFillOffset;
 				final float backgroundHeight = getHeight() + _sizeFillOffset;
-				final int fontSize = _font.getSize();
-				// 如果没有设置背景，则绘制
+				final int fontSize = _font != null ? _font.getSize() : 12;
+
 				if (_background == null) {
 					g.fillRect(x, y, backgroundWidth, backgroundHeight, _listColor);
 				} else {
 					g.draw(_background, x, y, backgroundWidth, backgroundHeight, _component_baseColor);
 				}
-				this._drawNum = MathUtils.floor((backgroundHeight - 10) / fontSize);
+
+				this._drawNum = MathUtils.floor((backgroundHeight - 10) / MathUtils.max(1, fontSize));
+				if (this._drawNum < 0) {
+					this._drawNum = 0;
+				}
+
 				this._loop = 0;
-				this._selectList = -1;
-				for (int i = this._scrollList; i < this._drawNum + this._scrollList; i++) {
+				int hoverIndex = -1;
+
+				int endIndex = this._drawNum + this._scrollList;
+				for (int i = this._scrollList; i < endIndex; i++) {
 					if (i >= this._curIndex) {
 						break;
 					}
+					if (i < 0 || i >= this._names.length) {
+						this._loop += 1;
+						continue;
+					}
+
 					this._drawX = (x + 5);
 					this._drawY = (y + 5 + this._loop * fontSize);
+
 					if (!this._scrollBarDrag) {
 						if ((mouseY > this._drawY + _maxY) && (mouseY <= this._drawY + _maxY + fontSize)
 								&& (mouseX > this._drawX + _maxX) && (mouseX < this._drawX + _maxX + backgroundWidth)) {
+							hoverIndex = i;
 							this._selectList = i;
 						}
 					}
 
-					// 计算是否选中当前行
 					if (!this._lengthChecks[i]) {
 						this._lengthChecks[i] = true;
-						if (this._names[i] != null) {
-							while (_font.stringWidth(this._names[i]) > backgroundWidth) {
-								this._names[i] = this._names[i].substring(0, this._names[i].length() - 1);
-							}
-						}
 					}
 
-					if ((this._selectList == i) || ((this._useHold) && (this._hold == i))) {
+					String display = getDisplayName(i, backgroundWidth - 10);
+
+					if ((hoverIndex == i) || ((this._useHold) && (this._hold == i))) {
 						if ((this._useHold) && (this._hold == i)) {
 							g.fillRect(x + _sizeFillOffset, this._drawY, backgroundWidth - _sizeFillOffset, fontSize,
 									_listHoldColor);
-							drawText(g, this._names[i], this._drawX, this._drawY, this._choiceStringColor);
+							drawText(g, display, this._drawX, this._drawY, this._choiceStringColor);
 							this._hold = -1;
 						}
-						// 选中指定列时
-						if (this._selectList == i) {
+						if (hoverIndex == i) {
 							if (_choiceTexture == null) {
 								g.fillRect(x + _sizeFillOffset, this._drawY, backgroundWidth - _sizeFillOffset,
 										fontSize + _sizeFillOffset, this._choiceStringBoxColor);
@@ -503,10 +663,10 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 										backgroundWidth - _sizeFillOffset, fontSize + _sizeFillOffset,
 										_component_baseColor);
 							}
-							drawText(g, this._names[i], this._drawX, this._drawY, this._choiceStringColor);
+							drawText(g, display, this._drawX, this._drawY, this._choiceStringColor);
 						}
 					} else {
-						drawText(g, this._names[i], this._drawX, this._drawY, this._colors[i]);
+						drawText(g, display, this._drawX, this._drawY, this._colors[i]);
 					}
 					this._loop += 1;
 				}
@@ -514,16 +674,23 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 				this._scrollBarX = MathUtils.floor(x + backgroundWidth + _sizeFillOffset);
 
 				this._scrollBarHeight_max = MathUtils.floor(getHeight() - this._scrollButtonHeight * 2f);
+				if (this._scrollBarHeight_max < 0) {
+					this._scrollBarHeight_max = 0;
+				}
 
 				if ((this._drawNum < this._curIndex) && (this._drawNum > 0)) {
-					this._scrollBarHeight = (this._scrollBarHeight_max / this._curIndex / this._drawNum);
-					this._scrollBarHeight = (this._scrollBarHeight_max * this._drawNum / this._curIndex);
-					if (this._scrollBarHeight < 8)
+					this._scrollBarHeight = (this._scrollBarHeight_max * this._drawNum)
+							/ MathUtils.max(1, this._curIndex);
+					if (this._scrollBarHeight < 8) {
 						this._scrollBarHeight = 8;
+					}
 
 					this._scrollBarY = (int) (y + this._scrollButtonHeight + _sizeFillOffset);
-					this._scrollBarY += (this._scrollBarHeight_max - this._scrollBarHeight) * this._scrollList
-							/ (this._curIndex - this._drawNum);
+					int denom = (this._curIndex - this._drawNum);
+					if (denom <= 0) {
+						denom = 1;
+					}
+					this._scrollBarY += (this._scrollBarHeight_max - this._scrollBarHeight) * this._scrollList / denom;
 				} else {
 					this._scrollBarHeight = this._scrollBarHeight_max;
 					this._scrollBarY = (int) (y + this._scrollButtonHeight + _sizeFillOffset);
@@ -650,7 +817,7 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 		float touchY = getTouchY();
 		Desktop desk = getDesktop();
 		if (desk != null) {
-			final Vector2f pos = desk.getUITouch(touchX, touchY, false);
+			final Vector2f pos = desk.getUITouch(touchX, touchY, _resultPos, false);
 			touchX = pos.getX();
 			touchY = pos.getY();
 		}
@@ -667,24 +834,32 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	}
 
 	public LTextList setArrowColor(LColor c) {
-		this._arrowColor = new LColor(c);
+		if (c != null) {
+			this._arrowColor = new LColor(c);
+		}
 		return this;
 	}
 
 	public LTextList setChoiceStringColor(LColor c) {
-		this._choiceStringColor = new LColor(c);
+		if (c != null) {
+			this._choiceStringColor = new LColor(c);
+		}
 		return this;
 	}
 
 	public LTextList setChoiceStringBoxColor(LColor c) {
-		this._choiceStringBoxColor = new LColor(c);
+		if (c != null) {
+			this._choiceStringBoxColor = new LColor(c);
+		}
 		return this;
 	}
 
 	@Override
 	public LTextList setFontColor(LColor c) {
-		this._defaultStringColor = new LColor(c);
-		return null;
+		if (c != null) {
+			this._defaultStringColor = new LColor(c);
+		}
+		return this;
 	}
 
 	@Override
@@ -699,6 +874,196 @@ public class LTextList extends LComponent implements FontSet<LTextList> {
 	public LTextList setSizeFillOffset(float s) {
 		this._sizeFillOffset = s;
 		return this;
+	}
+
+	public LTextList setMultiSelect(boolean multi) {
+		this._multiSelect = multi;
+		if (!multi) {
+			for (int i = 0; i < this._selectedFlags.length; i++) {
+				this._selectedFlags[i] = false;
+			}
+		}
+		return this;
+	}
+
+	public boolean isMultiSelect() {
+		return this._multiSelect;
+	}
+
+	public LTextList select(int index) {
+		if (index >= 0 && index < this._curIndex) {
+			this._selectList = index;
+			if (this._multiSelect) {
+				this._selectedFlags[index] = true;
+			} else {
+				for (int i = 0; i < this._curIndex; i++) {
+					this._selectedFlags[i] = false;
+				}
+				this._selectedFlags[index] = true;
+			}
+			ensureVisible(index);
+		}
+		return this;
+	}
+
+	public LTextList toggleSelect(int index) {
+		if (index >= 0 && index < this._curIndex) {
+			this._selectList = index;
+			if (this._multiSelect) {
+				this._selectedFlags[index] = !this._selectedFlags[index];
+			} else {
+				for (int i = 0; i < this._curIndex; i++) {
+					this._selectedFlags[i] = false;
+				}
+				this._selectedFlags[index] = true;
+			}
+			ensureVisible(index);
+		}
+		return this;
+	}
+
+	public int[] getSelectedIndices() {
+		int count = 0;
+		for (int i = 0; i < this._curIndex; i++) {
+			if (this._selectedFlags[i]) {
+				count++;
+			}
+		}
+		int[] res = new int[count];
+		int j = 0;
+		for (int i = 0; i < this._curIndex; i++) {
+			if (this._selectedFlags[i]) {
+				res[j++] = i;
+			}
+		}
+		return res;
+	}
+
+	public LTextList clearSelection() {
+		for (int i = 0; i < this._curIndex; i++) {
+			this._selectedFlags[i] = false;
+		}
+		this._selectList = -1;
+		return this;
+	}
+
+	private void ensureVisible(int index) {
+		if (index < 0) {
+			return;
+		}
+		int visible = this._drawNum;
+		if (visible <= 0) {
+			int fontSize = (_font != null ? _font.getSize() : 12);
+			visible = MathUtils.floor((getHeight() + _sizeFillOffset - 10) / MathUtils.max(1, fontSize));
+			if (visible < 1) {
+				visible = 1;
+			}
+		}
+		int maxScroll = MathUtils.max(0, this._curIndex - visible);
+		if (index < this._scrollList) {
+			this._scrollList = index;
+		} else if (index >= this._scrollList + visible) {
+			this._scrollList = index - visible + 1;
+		}
+		if (this._scrollList < 0) {
+			this._scrollList = 0;
+		} else if (this._scrollList > maxScroll) {
+			this._scrollList = maxScroll;
+		}
+	}
+
+	public LTextList enableKeyboardNavigation(boolean enable) {
+		this._keyboardNavigationEnabled = enable;
+		return this;
+	}
+
+	public boolean isKeyboardNavigationEnabled() {
+		return this._keyboardNavigationEnabled;
+	}
+
+	public boolean onKeyDown(int keyCode) {
+		if (!this._keyboardNavigationEnabled || this._curIndex <= 0) {
+			return false;
+		}
+		if (keyCode == SysKey.UP) {
+			int target = this._selectList > 0 ? this._selectList - 1 : 0;
+			this._selectList = target;
+			if (!this._multiSelect) {
+				clearSelection();
+				this._selectedFlags[target] = true;
+			}
+			ensureVisible(this._selectList);
+			return true;
+		} else if (keyCode == SysKey.DOWN) {
+			int target = this._selectList < this._curIndex - 1 ? this._selectList + 1 : this._curIndex - 1;
+			this._selectList = target;
+			if (!this._multiSelect) {
+				clearSelection();
+				this._selectedFlags[target] = true;
+			}
+			ensureVisible(this._selectList);
+			return true;
+		} else if (keyCode == SysKey.PAGE_UP) {
+			int step = MathUtils.max(1, this._drawNum);
+			int target = MathUtils.max(0, this._selectList - step);
+			this._selectList = target;
+			if (!this._multiSelect) {
+				clearSelection();
+				this._selectedFlags[target] = true;
+			}
+			ensureVisible(this._selectList);
+			return true;
+		} else if (keyCode == SysKey.PAGE_DOWN) {
+			int step = MathUtils.max(1, this._drawNum);
+			int target = MathUtils.min(this._curIndex - 1, this._selectList + step);
+			this._selectList = target;
+			if (!this._multiSelect) {
+				clearSelection();
+				this._selectedFlags[target] = true;
+			}
+			ensureVisible(this._selectList);
+			return true;
+		} else if (keyCode == SysKey.HOME) {
+			this._selectList = 0;
+			if (!this._multiSelect) {
+				clearSelection();
+				this._selectedFlags[0] = true;
+			}
+			ensureVisible(0);
+			return true;
+		} else if (keyCode == SysKey.END) {
+			this._selectList = MathUtils.max(0, this._curIndex - 1);
+			if (!this._multiSelect) {
+				clearSelection();
+				this._selectedFlags[this._selectList] = true;
+			}
+			ensureVisible(this._selectList);
+			return true;
+		} else if (keyCode == SysKey.SPACE) {
+			if (this._selectList >= 0 && this._selectList < this._curIndex) {
+				if (this._multiSelect) {
+					this._selectedFlags[this._selectList] = !this._selectedFlags[this._selectList];
+				} else {
+					clearSelection();
+					this._selectedFlags[this._selectList] = true;
+				}
+			}
+			return true;
+		} else if (keyCode == SysKey.ENTER) {
+			if (this._selectList >= 0 && this._selectList < this._curIndex) {
+				if (!this._multiSelect) {
+					clearSelection();
+					this._selectedFlags[this._selectList] = true;
+				}
+			}
+			return true;
+		}
+		return false;
+	}
+
+	@Override
+	public void upKey() {
+		onKeyDown(_input != null ? _input.getKeyReleased() : SysKey.getKeyCode());
 	}
 
 	@Override
