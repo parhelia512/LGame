@@ -66,11 +66,12 @@ public class LCardGroup extends LContainer {
 		Easing easing;
 
 		boolean finished;
+		boolean removed;
 
 		EventActionT<LComponent> onComplete;
 
 		CardTween(LComponent comp, float toX, float toY, float toScale, float toAlpha, float toRot, long startTime,
-				long duration, Easing easing, EventActionT<LComponent> onComplete) {
+				long duration, Easing easing, boolean remove, EventActionT<LComponent> onComplete) {
 			this.comp = comp;
 			this.fromX = comp.getX();
 			this.fromY = comp.getY();
@@ -86,6 +87,7 @@ public class LCardGroup extends LContainer {
 			this.duration = MathUtils.max(1, duration);
 			this.easing = easing == null ? Easing.TIME_LINEAR : easing;
 			this.finished = false;
+			this.removed = remove;
 			this.onComplete = onComplete;
 		}
 
@@ -259,23 +261,40 @@ public class LCardGroup extends LContainer {
 	 * @param duration
 	 */
 	public void playCard(float tx, float ty, float tScale, float tAlpha, float tRotation, long duration) {
-		playCard(tx, ty, tScale, tAlpha, tRotation, duration, _ease);
+		playCard(tx, ty, tScale, tAlpha, tRotation, duration, null);
+	}
+
+	/**
+	 * 不指定卡牌时使用当前点击卡牌播放特效
+	 * 
+	 * @param tx
+	 * @param ty
+	 * @param tScale
+	 * @param tAlpha
+	 * @param tRotation
+	 * @param duration
+	 * @param onComplete
+	 */
+	public void playCard(float tx, float ty, float tScale, float tAlpha, float tRotation, long duration,
+			EventActionT<LComponent> onComplete) {
+		playCard(tx, ty, tScale, tAlpha, tRotation, duration, _ease, onComplete);
 	}
 
 	/**
 	 * 不指定卡牌时使用当前点击卡牌播放特效（默认从卡组中飞出并移除）
 	 *
-	 * @param tx        目标 X
-	 * @param ty        目标 Y
-	 * @param tScale    目标缩放
-	 * @param tAlpha    目标透明度
-	 * @param tRotation 目标旋转度
-	 * @param duration  动画时长（毫秒）
-	 * @param easing    缓动函数（可为null）
+	 * @param tx         目标 X
+	 * @param ty         目标 Y
+	 * @param tScale     目标缩放
+	 * @param tAlpha     目标透明度
+	 * @param tRotation  目标旋转度
+	 * @param duration   动画时长（毫秒）
+	 * @param easing     缓动函数（可为null）
+	 * @param onComplete 回调事件（可为null）
 	 */
-	public void playCard(float tx, float ty, float tScale, float tAlpha, float tRotation, long duration,
-			Easing easing) {
-		playCard(null, true, tx, ty, tScale, tAlpha, tRotation, duration, easing);
+	public void playCard(float tx, float ty, float tScale, float tAlpha, float tRotation, long duration, Easing easing,
+			EventActionT<LComponent> onComplete) {
+		playCard(null, true, tx, ty, tScale, tAlpha, tRotation, duration, easing, onComplete);
 	}
 
 	/**
@@ -290,9 +309,10 @@ public class LCardGroup extends LContainer {
 	 * @param tRotation       目标旋转度
 	 * @param duration        动画时长（毫秒）
 	 * @param easing          缓动函数（可为null，使用默认_ease）
+	 * @param onComplete      回调事件（可为null）
 	 */
 	public void playCard(LComponent card, boolean removeFromGroup, float tx, float ty, float tScale, float tAlpha,
-			float tRotation, long duration, Easing easing) {
+			float tRotation, long duration, Easing easing, EventActionT<LComponent> onComplete) {
 		LComponent target = card;
 		if (target == null) {
 			target = getClickedCard();
@@ -301,40 +321,69 @@ public class LCardGroup extends LContainer {
 			return;
 		}
 		final LComponent animTarget = target;
-		EventActionT<LComponent> onComplete = null;
-		if (removeFromGroup) {
-			onComplete = new EventActionT<LComponent>() {
-				@Override
-				public void update(LComponent comp) {
-					try {
-						if (containsCard(animTarget)) {
-							remove(animTarget);
-							setCardUpdate(false);
-						}
-					} catch (Throwable ex) {
-					}
-				}
-			};
-		}
 		Easing useEase = (easing == null) ? _ease : easing;
 		long start = TimeUtils.millis();
 		CardTween t = new CardTween(animTarget, tx, ty, tScale, tAlpha, tRotation, start, MathUtils.max(1, duration),
-				useEase, onComplete);
+				useEase, removeFromGroup, onComplete);
 		_tweens.add(t);
 	}
 
+	/**
+	 * 播放指定组件的缓动动画
+	 * 
+	 * @param c
+	 * @param tx
+	 * @param ty
+	 * @param tScale
+	 * @param tAlpha
+	 * @param tRot
+	 * @param duration
+	 * @param delay
+	 */
 	public void animateTo(LComponent c, float tx, float ty, float tScale, float tAlpha, float tRot, long duration,
 			long delay) {
-		animateTo(c, tx, ty, tScale, tAlpha, tRot, duration, delay, null);
+		animateTo(c, tx, ty, tScale, tAlpha, tRot, duration, delay, false);
 	}
 
+	/**
+	 * 播放指定组件的缓动动画
+	 * 
+	 * @param c
+	 * @param tx
+	 * @param ty
+	 * @param tScale
+	 * @param tAlpha
+	 * @param tRot
+	 * @param duration
+	 * @param delay
+	 * @param removed
+	 */
 	public void animateTo(LComponent c, float tx, float ty, float tScale, float tAlpha, float tRot, long duration,
-			long delay, EventActionT<LComponent> onComplete) {
+			long delay, boolean removed) {
+		animateTo(c, tx, ty, tScale, tAlpha, tRot, duration, delay, removed, null);
+	}
+
+	/**
+	 * 播放指定组件的缓动动画
+	 * 
+	 * @param c          组件对象
+	 * @param tx         目标x轴
+	 * @param ty         目标y轴
+	 * @param tScale     缩放变更值
+	 * @param tAlpha     透明度变更值
+	 * @param tRot       旋转变更值
+	 * @param duration   动画时长（毫秒）
+	 * @param delay      每步延迟（毫秒）
+	 * @param removed    播放后是否删除对象（默认false）
+	 * @param onComplete 播放完毕回调函数（可为null）
+	 */
+	public void animateTo(LComponent c, float tx, float ty, float tScale, float tAlpha, float tRot, long duration,
+			long delay, boolean removed, EventActionT<LComponent> onComplete) {
 		if (c == null) {
 			return;
 		}
 		long start = TimeUtils.millis() + MathUtils.max(0, delay);
-		CardTween t = new CardTween(c, tx, ty, tScale, tAlpha, tRot, start, duration, _ease, onComplete);
+		CardTween t = new CardTween(c, tx, ty, tScale, tAlpha, tRot, start, duration, _ease, removed, onComplete);
 		_tweens.add(t);
 	}
 
@@ -642,10 +691,22 @@ public class LCardGroup extends LContainer {
 			CardTween t = _tweens.get(i);
 			t.update(now);
 			if (t.finished) {
-				if (t.onComplete != null) {
-					try {
-						t.onComplete.update(t.comp);
-					} catch (Throwable ex) {
+				LComponent card = t.comp;
+				if (card != null) {
+					if (t.onComplete != null) {
+						try {
+							t.onComplete.update(card);
+						} catch (Throwable ex) {
+						}
+					}
+					if (t.removed) {
+						try {
+							if (containsCard(card)) {
+								remove(card);
+								setCardUpdate(false);
+							}
+						} catch (Throwable ex) {
+						}
 					}
 				}
 				_tweens.removeIndex(i);
@@ -1168,7 +1229,7 @@ public class LCardGroup extends LContainer {
 			LComponent drawn = getCardAt(idx);
 			if (drawn != null) {
 				playCard(drawn, true, _autoDrawTargetX, _autoDrawTargetY, _autoDrawTargetScale, _autoDrawTargetAlpha,
-						_autoDrawTargetRotation, _autoDrawDuration, _ease);
+						_autoDrawTargetRotation, _autoDrawDuration, _ease, null);
 			}
 		}
 	}

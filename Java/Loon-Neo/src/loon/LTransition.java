@@ -31,6 +31,7 @@ import loon.action.sprite.effect.FadeDoorIrregularEffect;
 import loon.action.sprite.effect.CrossEffect;
 import loon.action.sprite.effect.FadeDotEffect;
 import loon.action.sprite.effect.FadeEffect;
+import loon.action.sprite.effect.FadeGlassShatterEffect;
 import loon.action.sprite.effect.FadeOvalEffect;
 import loon.action.sprite.effect.FadeSpiralEffect;
 import loon.action.sprite.effect.FadeTileEffect;
@@ -705,11 +706,48 @@ public final class LTransition {
 		return null;
 	}
 
+	/**
+	 * 西洋棋淡入淡出
+	 * 
+	 * @param t
+	 * @param c
+	 * @return
+	 */
 	public static final LTransition newFadeCheckerBoard(final int t, final LColor c) {
 		if (LSystem.base() != null) {
 			return createEffectTransition(new FadeCheckerboardEffect(t, c));
 		}
 		return null;
+	}
+
+	public static final LTransition newFadeCheckerBoardIn(final LColor c) {
+		return newFadeCheckerBoard(FadeEffect.TYPE_FADE_IN, c);
+	}
+
+	public static final LTransition newFadeCheckerBoardOut(final LColor c) {
+		return newFadeCheckerBoard(FadeEffect.TYPE_FADE_OUT, c);
+	}
+
+	/**
+	 * 玻璃碎片淡入淡出
+	 * 
+	 * @param t
+	 * @param c
+	 * @return
+	 */
+	public static final LTransition newFadeGlassShatter(final int t, final LColor c) {
+		if (LSystem.base() != null) {
+			return createEffectTransition(new FadeGlassShatterEffect(t, c));
+		}
+		return null;
+	}
+
+	public static final LTransition newFadeGlassShatterIn(final LColor c) {
+		return newFadeGlassShatter(FadeEffect.TYPE_FADE_IN, c);
+	}
+
+	public static final LTransition newFadeGlassShatterOut(final LColor c) {
+		return newFadeGlassShatter(FadeEffect.TYPE_FADE_OUT, c);
 	}
 
 	/**

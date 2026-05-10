@@ -2861,18 +2861,42 @@ public class GLEx implements LRelease {
 
 	/**
 	 * 填充多边形
+	 * 
+	 * @param xPoints
+	 * @param yPoints
+	 * @param nPoints
+	 * @return
+	 */
+	public final GLEx fillPolygon(float[] xPoints, float[] yPoints, int nPoints) {
+		return fillPolygon(xPoints, yPoints, nPoints, currentColorTemp);
+	}
+
+	/**
+	 * 填充多边形
 	 *
 	 * @param xPoints
 	 * @param yPoints
 	 * @param nPoints
 	 */
-	public final GLEx fillPolygon(float[] xPoints, float[] yPoints, int nPoints) {
+	public final GLEx fillPolygon(float[] xPoints, float[] yPoints, int nPoints, LColor c) {
 		if (isClosed) {
 			return this;
 		}
 		_currentPolys.setPolygon(xPoints, yPoints, nPoints);
-		fill(_currentPolys);
+		fill(_currentPolys, c);
 		return this;
+	}
+
+	/**
+	 * 绘制多边形轮廓
+	 * 
+	 * @param xPoints
+	 * @param yPoints
+	 * @param nPoints
+	 * @return
+	 */
+	public final GLEx drawPolygon(float[] xPoints, float[] yPoints, int nPoints) {
+		return drawPolygon(xPoints, yPoints, nPoints, currentColorTemp);
 	}
 
 	/**
@@ -2882,12 +2906,12 @@ public class GLEx implements LRelease {
 	 * @param yPoints
 	 * @param nPoints
 	 */
-	public GLEx drawPolygon(float[] xPoints, float[] yPoints, int nPoints) {
+	public GLEx drawPolygon(float[] xPoints, float[] yPoints, int nPoints, LColor c) {
 		if (isClosed) {
 			return this;
 		}
 		_currentPolys.setPolygon(xPoints, yPoints, nPoints);
-		draw(_currentPolys);
+		draw(_currentPolys, c);
 		return this;
 	}
 

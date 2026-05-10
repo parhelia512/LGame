@@ -416,9 +416,10 @@ public final class LProcess implements LRelease {
 						// * 使用,返回: 设定或者自定义一个LTransition对象.
 						LTransition randTransition = newScreen.onTransition();
 						if (randTransition == null) {
-							int rad = MathUtils.random(0, 14);
+							int rad = MathUtils.random(0, 16);
 							switch (rad) {
 							case 0:
+							default:
 								randTransition = LTransition.newFadeIn();
 								break;
 							case 1:
@@ -462,6 +463,12 @@ public final class LProcess implements LRelease {
 								break;
 							case 14:
 								randTransition = LTransition.newFadeDoorIrregularIn(LColor.black);
+								break;
+							case 15:
+								randTransition = LTransition.newFadeCheckerBoardIn(LColor.black);
+								break;
+							case 16:
+								randTransition = LTransition.newFadeGlassShatterIn(LColor.black);
 								break;
 							}
 						}

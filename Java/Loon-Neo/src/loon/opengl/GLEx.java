@@ -4134,17 +4134,34 @@ public class GLEx extends BatchEx<GLEx> implements LRelease {
 	 * @param xPoints
 	 * @param yPoints
 	 * @param nPoints
+	 * @return
 	 */
 	public final GLEx fillPolygon(float[] xPoints, float[] yPoints, int nPoints) {
+		return fillPolygon(xPoints, yPoints, nPoints, currentColorTemp);
+	}
+
+	/**
+	 * 填充多边形
+	 * 
+	 * @param xPoints
+	 * @param yPoints
+	 * @param nPoints
+	 * @param c
+	 * @return
+	 */
+	public final GLEx fillPolygon(float[] xPoints, float[] yPoints, int nPoints, LColor c) {
 		if (isClosed) {
 			return this;
 		}
 		if (this.lastBrush.alltextures) {
+			int old = color();
+			setTint(c);
 			fillPolygonImpl(xPoints, yPoints, nPoints);
+			setTint(old);
 			drawCallCount++;
 		} else {
 			_currentPolys.setPolygon(xPoints, yPoints, nPoints);
-			fill(_currentPolys);
+			fill(_currentPolys, c);
 		}
 		return this;
 	}
@@ -4155,17 +4172,34 @@ public class GLEx extends BatchEx<GLEx> implements LRelease {
 	 * @param xPoints
 	 * @param yPoints
 	 * @param nPoints
+	 * @return
 	 */
-	public GLEx drawPolygon(float[] xPoints, float[] yPoints, int nPoints) {
+	public final GLEx drawPolygon(float[] xPoints, float[] yPoints, int nPoints) {
+		return drawPolygon(xPoints, yPoints, nPoints, currentColorTemp);
+	}
+
+	/**
+	 * 绘制多边形轮廓
+	 * 
+	 * @param xPoints
+	 * @param yPoints
+	 * @param nPoints
+	 * @param c
+	 * @return
+	 */
+	public GLEx drawPolygon(float[] xPoints, float[] yPoints, int nPoints, LColor c) {
 		if (isClosed) {
 			return this;
 		}
 		if (this.lastBrush.alltextures) {
+			int old = color();
+			setTint(c);
 			drawPolygonImpl(xPoints, yPoints, nPoints);
+			setTint(old);
 			drawCallCount++;
 		} else {
 			_currentPolys.setPolygon(xPoints, yPoints, nPoints);
-			draw(_currentPolys);
+			draw(_currentPolys, c);
 		}
 		return this;
 	}

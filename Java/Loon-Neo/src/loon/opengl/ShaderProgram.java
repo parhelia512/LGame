@@ -620,6 +620,9 @@ public final class ShaderProgram extends BaseBufferSupport implements LRelease {
 
 	@Override
 	public void close() {
+		if (LSystem.base() == null) {
+			return;
+		}
 		GL20 gl = LSystem.base().graphics().gl;
 		if (gl != null) {
 			if (!LSystem.mainDrawRunning()) {

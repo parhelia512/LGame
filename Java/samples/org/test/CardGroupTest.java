@@ -39,6 +39,8 @@ public class CardGroupTest extends Stage {
 		for (int i = 0; i < 5; i++) {
 			LPaper p = new LPaper("assets/1.png");
 			p.setFlagType(i);
+			// p.setGroup("Card");
+			// p.Tag = "Other";
 			cards.add(p);
 		}
 		// cards.setMiddleProtrusionCard(false);
@@ -71,10 +73,12 @@ public class CardGroupTest extends Stage {
 		add(play);
 		// 点击按钮触发发牌特效
 		play.up((x, y) -> {
-			// 播放出牌缓动动画,将选中牌(没有选中不执行)出牌到位置getWidth()/2f-40x10,出牌后牌缓动变成缩放1f,透明度1f，旋转0f的样式，出牌耗时1600毫秒
+			// 播放出牌缓动动画,将选中牌(没有选中不执行)出牌到位置getWidth()/2f-40x10,出牌后牌缓动变成缩放1f,透明度1f，旋转90f的样式，出牌耗时1600毫秒
 			// ps:出牌也是在LCardGroup组件中，而非直接发在上级Desktop组件中，所以LCardGroup设定的大小要能足够，否则会看不到.
 			// 然后x和y坐标也一样，例如演示的LCardGroup的y向下偏移了50像素，所以发牌位置要向上偏移，减50才是屏幕0，减40才是屏幕10，在此说明.
-			cards.playCard(getWidth() / 2f - 40, -40f, 1f, 1f, 0, 1600L);
+			cards.playCard(getWidth() / 2f - 40, -40f, 1f, 1f, 90, 1600L, (t) -> {
+				System.out.println(t.getFlagType() + ":执行完毕");
+			});
 			// cards.addCard(new LPaper("assets/1.png"));
 		});
 	}

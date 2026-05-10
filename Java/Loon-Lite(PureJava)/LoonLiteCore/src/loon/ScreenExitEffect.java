@@ -29,6 +29,7 @@ import loon.action.sprite.effect.FadeDoorEffect;
 import loon.action.sprite.effect.FadeDoorIrregularEffect;
 import loon.action.sprite.effect.FadeDotEffect;
 import loon.action.sprite.effect.FadeEffect;
+import loon.action.sprite.effect.FadeGlassShatterEffect;
 import loon.action.sprite.effect.FadeOvalEffect;
 import loon.action.sprite.effect.FadeSpiralEffect;
 import loon.action.sprite.effect.FadeSwipeEffect;
@@ -126,6 +127,11 @@ public final class ScreenExitEffect {
 	public final static int CHECKER_FADE = 15;
 
 	/**
+	 * 玻璃碎片状淡出,淡入
+	 */
+	public final static int SHATTER_FADE = 16;
+
+	/**
 	 * 转换过渡效果字符串为对应的索引
 	 * 
 	 * @param name
@@ -167,7 +173,9 @@ public final class ScreenExitEffect {
 		} else if (key.equals("tiles_fade") || key.equals("tilesfade")) {
 			return TILES_FADE;
 		} else if (key.equals("checker_fade") || key.equals("checkerfade")) {
-			return TILES_FADE;
+			return CHECKER_FADE;
+		} else if (key.equals("shatter_fade") || key.equals("shatterfade") || key.equals("glass")) {
+			return SHATTER_FADE;
 		}
 		return STANDARD_FADE;
 	}
@@ -285,6 +293,9 @@ public final class ScreenExitEffect {
 				case CHECKER_FADE:
 					dstScreen.setTransition(LTransition.newFadeCheckerBoard(effectType, color));
 					break;
+				case SHATTER_FADE:
+					dstScreen.setTransition(LTransition.newFadeGlassShatter(effectType, color));
+					break;
 				}
 				srcScreen.setScreen(dstScreen);
 			} catch (Exception ex) {
@@ -391,6 +402,9 @@ public final class ScreenExitEffect {
 		case CHECKER_FADE:
 			baseEffect = new FadeCheckerboardEffect(effectType, color);
 			break;
+		case SHATTER_FADE:
+			baseEffect = new FadeGlassShatterEffect(effectType, color);
+			break;
 		}
 		baseEffect.setCompletedAfterBlack(true);
 		// 把渐变效果渲染层级调到最高,避免被其它效果遮挡
@@ -454,7 +468,7 @@ public final class ScreenExitEffect {
 	}
 
 	public void gotoEffectExitRand(final LColor color, final Screen src, final Screen dst) {
-		gotoEffectExit(MathUtils.random(0, CHECKER_FADE), color, src, dst, _effectLocked, _hideUI);
+		gotoEffectExit(MathUtils.random(0, SHATTER_FADE), color, src, dst, _effectLocked, _hideUI);
 	}
 
 	public LColor getEffectExitColor() {

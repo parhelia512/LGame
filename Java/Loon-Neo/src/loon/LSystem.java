@@ -1678,9 +1678,9 @@ public final class LSystem {
 		}
 	}
 
-	public static final IFont serachFontPool(String className, String fontName, int size) {
+	public static final IFont searchFontPool(String className, String fontName, int size) {
 		if (base() != null) {
-			return base().serachFontPool(className, fontName, size);
+			return base().searchFontPool(className, fontName, size);
 		}
 		return null;
 	}

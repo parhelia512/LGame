@@ -39,6 +39,7 @@ import loon.opengl.ShaderProgram;
 import loon.opengl.TextureSource;
 import loon.utils.IntMap;
 import loon.utils.Language;
+import loon.utils.MathUtils;
 import loon.utils.ObjectMap;
 import loon.utils.PathUtils;
 import loon.utils.StringUtils;
@@ -289,6 +290,7 @@ public abstract class LGame implements LRelease {
 					close();
 				}
 			} catch (Throwable cause) {
+				log().error("Exception while stopping game", cause);
 			}
 			_stopGame = true;
 		}
@@ -539,7 +541,8 @@ public abstract class LGame implements LRelease {
 	 * @return
 	 */
 	public boolean isAsyncSupported() {
-		return asyn().isAsyncSupported();
+		Asyn a = asyn();
+		return a != null && a.isAsyncSupported();
 	}
 
 	/**
@@ -616,12 +619,14 @@ public abstract class LGame implements LRelease {
 		IntMap<LTextureBatch> batchCaches = new IntMap<LTextureBatch>(_texture_batch_pools);
 		for (LTextureBatch bt : batchCaches.values()) {
 			if (bt != null) {
-				bt.close();
-				bt = null;
+				try {
+					bt.close();
+				} catch (Throwable t) {
+					log().warn("clearBatchCaches: close() threw", t);
+				}
 			}
 		}
 		_texture_batch_pools.clear();
-		batchCaches = null;
 	}
 
 	/**
@@ -674,9 +679,16 @@ public abstract class LGame implements LRelease {
 	 * @return
 	 */
 	public synchronized LTextureBatch disposeBatchCache(final LTextureBatch batch, final boolean closed) {
+		if (batch == null) {
+			return null;
+		}
 		LTextureBatch pBatch = _texture_batch_pools.remove(batch.getTextureID());
 		if (closed && pBatch != null) {
-			pBatch.close();
+			try {
+				pBatch.close();
+			} catch (Throwable t) {
+				log().warn("disposeBatchCache: close() threw", t);
+			}
 			pBatch = null;
 		}
 		return pBatch;
@@ -942,26 +954,37 @@ public abstract class LGame implements LRelease {
 	 * @param remove
 	 * @return
 	 */
-	public int removeTextureRef(final String name, final boolean remove) {
+	public synchronized int removeTextureRef(final String name, final boolean remove) {
 		if (StringUtils.isEmpty(name)) {
 			return 0;
 		}
+		final String key = name.trim();
+		LTexture texture = null;
 		int refCount = -1;
-		LTexture texture = _texture_lazys.get(name);
+		texture = _texture_lazys.get(key);
 		if (texture != null) {
-			refCount = texture._referenceCount--;
+			refCount = MathUtils.max(0, texture._referenceCount);
+			texture._referenceCount = MathUtils.max(0, texture._referenceCount - 1);
 		} else {
 			for (int i = 0; i < _texture_all_list.size; i++) {
 				LTexture tex = _texture_all_list.get(i);
-				if (tex != null && tex.tmpLazy.equals(name)) {
-					texture = tex;
-					refCount = tex._referenceCount--;
-					break;
+				if (tex != null) {
+					String tmp = tex.tmpLazy;
+					if (tmp != null && tmp.equals(name)) {
+						texture = tex;
+						refCount = MathUtils.max(0, tex._referenceCount);
+						tex._referenceCount = MathUtils.max(0, tex._referenceCount - 1);
+						break;
+					}
 				}
 			}
 		}
 		if (remove && texture != null) {
-			texture.close(true);
+			try {
+				texture.close(true);
+			} catch (Throwable t) {
+				reportError("Failed to close texture during removeTextureRef", t);
+			}
 		}
 		return refCount;
 	}
@@ -1029,25 +1052,35 @@ public abstract class LGame implements LRelease {
 			return null;
 		}
 		final String key = fileName.trim().toLowerCase();
-		final ObjectMap<String, LTexture> texs = new ObjectMap<String, LTexture>(_texture_lazys);
-		LTexture texture = texs.get(key);
+		LTexture texture = _texture_lazys.get(key);
 		if (texture == null) {
-			for (LTexture tex : texs.values()) {
-				if (tex.tmpLazy != null && tex.tmpLazy.toLowerCase().equals(key.toLowerCase())) {
-					texture = tex;
-					break;
+			for (LTexture tex : _texture_lazys.values()) {
+				if (tex != null) {
+					String tmp = tex.tmpLazy;
+					if (tmp != null && tmp.equalsIgnoreCase(key)) {
+						texture = tex;
+						break;
+					}
 				}
 			}
 		}
 		if (texture != null && !texture.disposed()) {
+			if (texture._referenceCount < 0) {
+				texture._referenceCount = 0;
+			}
 			texture._referenceCount++;
 			return texture;
 		}
-		texture = BaseIO.loadImage(fileName).onHaveToClose(true).createTexture(config);
-		texture.tmpLazy = fileName;
-		_texture_lazys.put(key, texture);
-		log().debug("Texture : " + fileName + " Loaded");
-		return texture;
+		try {
+			texture = BaseIO.loadImage(fileName).onHaveToClose(true).createTexture(config);
+			texture.tmpLazy = fileName;
+			_texture_lazys.put(key, texture);
+			log().debug("Texture : " + fileName + " Loaded");
+			return texture;
+		} catch (Throwable t) {
+			reportError("Failed to load texture: " + fileName, t);
+			return null;
+		}
 	}
 
 	/**
@@ -1066,14 +1099,26 @@ public abstract class LGame implements LRelease {
 	 * @param tex
 	 * @return
 	 */
-	protected LTexture removeTexture(final LTexture tex) {
+	protected synchronized LTexture removeTexture(final LTexture tex) {
 		if (tex == null) {
 			return null;
 		}
-		final String key = tex.src().trim().toLowerCase();
-		LTexture tex2d = _texture_lazys.remove(key);
+		String src = null;
+		try {
+			src = tex.src();
+		} catch (Throwable t) {
+			log().warn("removeTexture: src() threw", t);
+		}
+		final String key = (src == null) ? null : src.trim().toLowerCase();
+		LTexture tex2d = null;
+		if (key != null) {
+			tex2d = _texture_lazys.remove(key);
+		}
 		if (tex2d == null) {
-			tex2d = _texture_lazys.remove(tex.tmpLazy);
+			String tmp = tex.tmpLazy;
+			if (tmp != null) {
+				tex2d = _texture_lazys.remove(tmp.toLowerCase());
+			}
 		}
 		return tex2d;
 	}
@@ -1269,7 +1314,7 @@ public abstract class LGame implements LRelease {
 		return _font_pools.remove(font);
 	}
 
-	public IFont serachFontPool(final String className, final String fontName, final int size) {
+	public IFont searchFontPool(final String className, final String fontName, final int size) {
 		if (className == null) {
 			return null;
 		}
