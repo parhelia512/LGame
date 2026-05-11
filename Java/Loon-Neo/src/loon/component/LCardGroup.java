@@ -53,12 +53,15 @@ public class LCardGroup extends LContainer {
 
 	private static class CardTween {
 
+		private final LColor resultColor = new LColor();
+
 		LComponent comp;
 
 		float fromX, fromY, toX, toY;
 		float fromScale, toScale;
 		float fromAlpha, toAlpha;
 		float fromRot, toRot;
+		LColor fromColor, toColor;
 
 		long startTime;
 		long duration;
@@ -70,11 +73,13 @@ public class LCardGroup extends LContainer {
 
 		EventActionT<LComponent> onComplete;
 
-		CardTween(LComponent comp, float toX, float toY, float toScale, float toAlpha, float toRot, long startTime,
-				long duration, Easing easing, boolean remove, EventActionT<LComponent> onComplete) {
+		CardTween(LComponent comp, float toX, float toY, float toScale, float toAlpha, float toRot, LColor tColor,
+				long startTime, long duration, Easing easing, boolean remove, EventActionT<LComponent> onComplete) {
 			this.comp = comp;
 			this.fromX = comp.getX();
 			this.fromY = comp.getY();
+			this.fromColor = comp.getColor();
+			this.toColor = tColor;
 			this.toX = toX;
 			this.toY = toY;
 			this.fromScale = comp.getScaleX();
@@ -112,6 +117,9 @@ public class LCardGroup extends LContainer {
 			comp.setScale(ns);
 			comp.setAlpha(na);
 			comp.setRotation(nr);
+			if (fromColor != null && toColor != null) {
+				comp.setColor(LColor.lerp(fromColor, toColor, e, resultColor));
+			}
 			if (t >= 1f) {
 				finished = true;
 			}
@@ -180,6 +188,7 @@ public class LCardGroup extends LContainer {
 	private float _autoDrawTargetScale = 1f;
 	private float _autoDrawTargetAlpha = 1f;
 	private float _autoDrawTargetRotation = 0f;
+	private LColor _autoDrawTargetColor = LColor.white;
 	private long _autoDrawDuration = 600L;
 
 	private long _randomizeWiggleDuration = 220L;
@@ -237,16 +246,18 @@ public class LCardGroup extends LContainer {
 	 * @param targetScale
 	 * @param targetAlpha
 	 * @param targetRotation
+	 * @param targetColor
 	 * @param durationMs
 	 */
 	public void enableAutoDrawAfterShuffle(float targetX, float targetY, float targetScale, float targetAlpha,
-			float targetRotation, long durationMs) {
+			float targetRotation, LColor targetColor, long durationMs) {
 		_autoDrawAfterShuffle = true;
 		_autoDrawTargetX = targetX;
 		_autoDrawTargetY = targetY;
 		_autoDrawTargetScale = targetScale;
 		_autoDrawTargetAlpha = targetAlpha;
 		_autoDrawTargetRotation = targetRotation;
+		_autoDrawTargetColor = targetColor;
 		_autoDrawDuration = durationMs;
 	}
 
@@ -258,10 +269,12 @@ public class LCardGroup extends LContainer {
 	 * @param tScale
 	 * @param tAlpha
 	 * @param tRotation
+	 * @param tColor
 	 * @param duration
 	 */
-	public void playCard(float tx, float ty, float tScale, float tAlpha, float tRotation, long duration) {
-		playCard(tx, ty, tScale, tAlpha, tRotation, duration, null);
+	public void playCard(float tx, float ty, float tScale, float tAlpha, float tRotation, LColor tColor,
+			long duration) {
+		playCard(tx, ty, tScale, tAlpha, tRotation, tColor, duration, null);
 	}
 
 	/**
@@ -277,7 +290,24 @@ public class LCardGroup extends LContainer {
 	 */
 	public void playCard(float tx, float ty, float tScale, float tAlpha, float tRotation, long duration,
 			EventActionT<LComponent> onComplete) {
-		playCard(tx, ty, tScale, tAlpha, tRotation, duration, _ease, onComplete);
+		playCard(tx, ty, tScale, tAlpha, tRotation, _autoDrawTargetColor, duration, onComplete);
+	}
+
+	/**
+	 * 不指定卡牌时使用当前点击卡牌播放特效
+	 * 
+	 * @param tx
+	 * @param ty
+	 * @param tScale
+	 * @param tAlpha
+	 * @param tRotation
+	 * @param tColor
+	 * @param duration
+	 * @param onComplete
+	 */
+	public void playCard(float tx, float ty, float tScale, float tAlpha, float tRotation, LColor tColor, long duration,
+			EventActionT<LComponent> onComplete) {
+		playCard(tx, ty, tScale, tAlpha, tRotation, tColor, duration, _ease, onComplete);
 	}
 
 	/**
@@ -288,13 +318,14 @@ public class LCardGroup extends LContainer {
 	 * @param tScale     目标缩放
 	 * @param tAlpha     目标透明度
 	 * @param tRotation  目标旋转度
+	 * @param tColor
 	 * @param duration   动画时长（毫秒）
 	 * @param easing     缓动函数（可为null）
 	 * @param onComplete 回调事件（可为null）
 	 */
-	public void playCard(float tx, float ty, float tScale, float tAlpha, float tRotation, long duration, Easing easing,
-			EventActionT<LComponent> onComplete) {
-		playCard(null, true, tx, ty, tScale, tAlpha, tRotation, duration, easing, onComplete);
+	public void playCard(float tx, float ty, float tScale, float tAlpha, float tRotation, LColor tColor, long duration,
+			Easing easing, EventActionT<LComponent> onComplete) {
+		playCard(null, true, tx, ty, tScale, tAlpha, tRotation, tColor, duration, easing, onComplete);
 	}
 
 	/**
@@ -307,12 +338,13 @@ public class LCardGroup extends LContainer {
 	 * @param tScale          目标缩放
 	 * @param tAlpha          目标透明度
 	 * @param tRotation       目标旋转度
+	 * @param tColor          目标最终颜色
 	 * @param duration        动画时长（毫秒）
 	 * @param easing          缓动函数（可为null，使用默认_ease）
 	 * @param onComplete      回调事件（可为null）
 	 */
 	public void playCard(LComponent card, boolean removeFromGroup, float tx, float ty, float tScale, float tAlpha,
-			float tRotation, long duration, Easing easing, EventActionT<LComponent> onComplete) {
+			float tRotation, LColor tColor, long duration, Easing easing, EventActionT<LComponent> onComplete) {
 		LComponent target = card;
 		if (target == null) {
 			target = getClickedCard();
@@ -323,8 +355,8 @@ public class LCardGroup extends LContainer {
 		final LComponent animTarget = target;
 		Easing useEase = (easing == null) ? _ease : easing;
 		long start = TimeUtils.millis();
-		CardTween t = new CardTween(animTarget, tx, ty, tScale, tAlpha, tRotation, start, MathUtils.max(1, duration),
-				useEase, removeFromGroup, onComplete);
+		CardTween t = new CardTween(animTarget, tx, ty, tScale, tAlpha, tRotation, tColor, start,
+				MathUtils.max(1, duration), useEase, removeFromGroup, onComplete);
 		_tweens.add(t);
 	}
 
@@ -337,12 +369,13 @@ public class LCardGroup extends LContainer {
 	 * @param tScale
 	 * @param tAlpha
 	 * @param tRot
+	 * @param tColor
 	 * @param duration
 	 * @param delay
 	 */
-	public void animateTo(LComponent c, float tx, float ty, float tScale, float tAlpha, float tRot, long duration,
-			long delay) {
-		animateTo(c, tx, ty, tScale, tAlpha, tRot, duration, delay, false);
+	public void animateTo(LComponent c, float tx, float ty, float tScale, float tAlpha, float tRot, LColor tColor,
+			long duration, long delay) {
+		animateTo(c, tx, ty, tScale, tAlpha, tRot, tColor, duration, delay, false);
 	}
 
 	/**
@@ -354,13 +387,14 @@ public class LCardGroup extends LContainer {
 	 * @param tScale
 	 * @param tAlpha
 	 * @param tRot
+	 * @param tColor
 	 * @param duration
 	 * @param delay
 	 * @param removed
 	 */
-	public void animateTo(LComponent c, float tx, float ty, float tScale, float tAlpha, float tRot, long duration,
-			long delay, boolean removed) {
-		animateTo(c, tx, ty, tScale, tAlpha, tRot, duration, delay, removed, null);
+	public void animateTo(LComponent c, float tx, float ty, float tScale, float tAlpha, float tRot, LColor tColor,
+			long duration, long delay, boolean removed) {
+		animateTo(c, tx, ty, tScale, tAlpha, tRot, tColor, duration, delay, removed, null);
 	}
 
 	/**
@@ -372,23 +406,29 @@ public class LCardGroup extends LContainer {
 	 * @param tScale     缩放变更值
 	 * @param tAlpha     透明度变更值
 	 * @param tRot       旋转变更值
+	 * @param tColor     目标颜色
 	 * @param duration   动画时长（毫秒）
 	 * @param delay      每步延迟（毫秒）
 	 * @param removed    播放后是否删除对象（默认false）
 	 * @param onComplete 播放完毕回调函数（可为null）
 	 */
-	public void animateTo(LComponent c, float tx, float ty, float tScale, float tAlpha, float tRot, long duration,
-			long delay, boolean removed, EventActionT<LComponent> onComplete) {
+	public void animateTo(LComponent c, float tx, float ty, float tScale, float tAlpha, float tRot, LColor tColor,
+			long duration, long delay, boolean removed, EventActionT<LComponent> onComplete) {
 		if (c == null) {
 			return;
 		}
 		long start = TimeUtils.millis() + MathUtils.max(0, delay);
-		CardTween t = new CardTween(c, tx, ty, tScale, tAlpha, tRot, start, duration, _ease, removed, onComplete);
+		CardTween t = new CardTween(c, tx, ty, tScale, tAlpha, tRot, tColor, start, duration, _ease, removed,
+				onComplete);
 		_tweens.add(t);
 	}
 
 	public void clearTweens() {
 		_tweens.clear();
+	}
+
+	public boolean isCardPlaying() {
+		return !_tweens.isEmpty();
 	}
 
 	@Override
@@ -1229,7 +1269,7 @@ public class LCardGroup extends LContainer {
 			LComponent drawn = getCardAt(idx);
 			if (drawn != null) {
 				playCard(drawn, true, _autoDrawTargetX, _autoDrawTargetY, _autoDrawTargetScale, _autoDrawTargetAlpha,
-						_autoDrawTargetRotation, _autoDrawDuration, _ease, null);
+						_autoDrawTargetRotation, _autoDrawTargetColor, _autoDrawDuration, _ease, null);
 			}
 		}
 	}
@@ -1295,7 +1335,8 @@ public class LCardGroup extends LContainer {
 			float origRot = c.getRotation();
 			float wiggleRot = origRot + (MathUtils.random() - 0.5f) * 18f;
 			long delay = i * _randomizeWiggleDelayStep;
-			animateTo(c, c.getX(), c.getY(), wiggleScale, c.getAlpha(), wiggleRot, _randomizeWiggleDuration, delay);
+			animateTo(c, c.getX(), c.getY(), wiggleScale, c.getAlpha(), wiggleRot, _autoDrawTargetColor,
+					_randomizeWiggleDuration, delay);
 		}
 	}
 
@@ -1334,7 +1375,7 @@ public class LCardGroup extends LContainer {
 			if (c != null) {
 				long delay = i * _staggerValue;
 				animateTo(c, _targetX.get(c), _targetY.get(c), _baseScale, _baseAlpha, c.getRotation(),
-						_distributeDuration, delay);
+						_autoDrawTargetColor, _distributeDuration, delay);
 			}
 		}
 		_shufflePhase = ShufflePhase.DISTRIBUTE;
@@ -1358,7 +1399,7 @@ public class LCardGroup extends LContainer {
 			LComponent drawn = getCardAt(idx);
 			if (drawn != null) {
 				animateTo(drawn, _autoDrawTargetX, _autoDrawTargetY, _autoDrawTargetScale, _autoDrawTargetAlpha,
-						_autoDrawTargetRotation, _autoDrawDuration, 0L);
+						_autoDrawTargetRotation, _autoDrawTargetColor, _autoDrawDuration, 0L);
 			}
 		}
 	}
@@ -1544,6 +1585,90 @@ public class LCardGroup extends LContainer {
 		return this._enableShuffleAnimation;
 	}
 
+	public boolean isAutoUpdateLayout() {
+		return _autoUpdateLayout;
+	}
+
+	public boolean isAutoShuffleEnabled() {
+		return _autoShuffleEnabled;
+	}
+
+	public void setAutoShuffleEnabled(boolean a) {
+		this._autoShuffleEnabled = a;
+	}
+
+	public long getAutoShuffleInterval() {
+		return _autoShuffleInterval;
+	}
+
+	public void setAutoShuffleInterval(long a) {
+		this._autoShuffleInterval = a;
+	}
+
+	public boolean isAutoDrawAfterShuffle() {
+		return _autoDrawAfterShuffle;
+	}
+
+	public void set_autoDrawAfterShuffle(boolean a) {
+		this._autoDrawAfterShuffle = a;
+	}
+
+	public float getAutoDrawTargetX() {
+		return _autoDrawTargetX;
+	}
+
+	public void setAutoDrawTargetX(float a) {
+		this._autoDrawTargetX = a;
+	}
+
+	public float getAutoDrawTargetY() {
+		return _autoDrawTargetY;
+	}
+
+	public void setAutoDrawTargetY(float a) {
+		this._autoDrawTargetY = a;
+	}
+
+	public float getAutoDrawTargetScale() {
+		return _autoDrawTargetScale;
+	}
+
+	public void setAutoDrawTargetScale(float a) {
+		this._autoDrawTargetScale = a;
+	}
+
+	public float getAutoDrawTargetAlpha() {
+		return _autoDrawTargetAlpha;
+	}
+
+	public void setAutoDrawTargetAlpha(float a) {
+		this._autoDrawTargetAlpha = a;
+	}
+
+	public float getAutoDrawTargetRotation() {
+		return _autoDrawTargetRotation;
+	}
+
+	public void setAutoDrawTargetRotation(float a) {
+		this._autoDrawTargetRotation = a;
+	}
+
+	public LColor getAutoDrawTargetColor() {
+		return _autoDrawTargetColor;
+	}
+
+	public void setAutoDrawTargetColor(LColor a) {
+		this._autoDrawTargetColor = a;
+	}
+
+	public long getAutoDrawDuration() {
+		return _autoDrawDuration;
+	}
+
+	public void setAutoDrawDuration(long a) {
+		this._autoDrawDuration = a;
+	}
+
 	@Override
 	public String getUIName() {
 		return "CardGroup";
@@ -1570,4 +1695,5 @@ public class LCardGroup extends LContainer {
 		}
 		clearTweens();
 	}
+
 }

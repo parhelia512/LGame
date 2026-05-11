@@ -282,10 +282,14 @@ public class CoroutineProcess extends RealtimeProcess implements LRelease {
 	 * @return
 	 */
 	public boolean removeCoroutine(Coroutine c) {
-		if (c != null) {
-			return this._cycles.remove(c);
+		if (c == null) {
+			return false;
 		}
-		return false;
+		boolean removed = this._cycles.remove(c);
+		if (removed && _mainCoroutine == c) {
+			_mainCoroutine = null;
+		}
+		return removed;
 	}
 
 	/**
@@ -297,10 +301,14 @@ public class CoroutineProcess extends RealtimeProcess implements LRelease {
 	public boolean removeCoroutine(String name) {
 		int count = 0;
 		if (_cycles.size > 0) {
-			for (Iterator<Coroutine> it = _cycles.iterator(); it.hasNext();) {
+			Iterator<Coroutine> it = _cycles.iterator();
+			while (it.hasNext()) {
 				Coroutine ele = it.next();
-				if (ele.getCoroutineName().equals(name)) {
-					_cycles.remove(ele);
+				if (ele != null && ele.getCoroutineName().equals(name)) {
+					it.remove();
+					if (_mainCoroutine == ele) {
+						_mainCoroutine = null;
+					}
 					count++;
 				}
 			}
@@ -315,6 +323,7 @@ public class CoroutineProcess extends RealtimeProcess implements LRelease {
 	 */
 	public CoroutineProcess clearCoroutine() {
 		this._cycles.clear();
+		this._mainCoroutine = null;
 		return this;
 	}
 
@@ -326,6 +335,7 @@ public class CoroutineProcess extends RealtimeProcess implements LRelease {
 	public void kill() {
 		super.kill();
 		_coroutineRunning = false;
+		_mainCoroutine = null;
 	}
 
 	@Override
@@ -339,12 +349,12 @@ public class CoroutineProcess extends RealtimeProcess implements LRelease {
 		if (_mainCoroutine != null) {
 			_mainCoroutine.update(e);
 			if (isCompleted(_mainCoroutine)) {
-				return;
-			} else {
 				if (_allowAutoRemove) {
 					removeCoroutine(_mainCoroutine);
 				}
 				_mainCoroutine = null;
+			} else {
+				return;
 			}
 		}
 		if (_cycles.size > 0) {
@@ -353,13 +363,16 @@ public class CoroutineProcess extends RealtimeProcess implements LRelease {
 				c.update(e);
 				if (_allowAutoRemove && isCompleted(c)) {
 					removeCoroutine(c);
+					if (_mainCoroutine == c) {
+						_mainCoroutine = null;
+					}
 				}
 			}
 		}
 	}
 
 	protected boolean isCompleted(Coroutine c) {
-		return c == null ? true : c.isActive();
+		return c == null ? true : !c.isActive();
 	}
 
 	/**

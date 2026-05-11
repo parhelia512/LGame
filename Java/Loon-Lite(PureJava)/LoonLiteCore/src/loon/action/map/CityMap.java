@@ -300,10 +300,11 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 		}
 	}
 
-	private final LColor SELECT_HALO_COLOR = LColor.cyan;
-	private final LColor MARCH_COLOR = LColor.red;
-	private final LColor TRANSPORT_COLOR = LColor.yellow;
-	private final LColor PLAYER_MOVE_COLOR = LColor.blue;
+	private final LColor SELECT_HALO_COLOR = new LColor(LColor.cyan);
+	private final LColor SELECT_HALO_LERP_COLOR = new LColor(LColor.yellow);
+	private final LColor MARCH_COLOR = new LColor(LColor.red);
+	private final LColor TRANSPORT_COLOR = new LColor(LColor.yellow);
+	private final LColor PLAYER_MOVE_COLOR = new LColor(LColor.blue);
 
 	private final Vector2f _tempPosA = new Vector2f();
 	private final Vector2f _tempPosB = new Vector2f();
@@ -354,8 +355,11 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 
 	private int _maxEdgeProcessPerFrame = 12;
 
-	// 或此项为真，则使用二维地图索引坐标，而非世界地图的经纬度坐标(默认开二维坐标，用世界坐标关了即可)
+	// 若此项为真，则使用二维地图索引坐标，而非世界地图的经纬度坐标(默认开二维坐标，用世界坐标关了即可)
 	private boolean _useOrthogonalPos = true;
+
+	// 若此项为真，则使用方形选择框而非圆形
+	private boolean _useRectSelected = false;
 
 	private final ObjectMap<String, TArray<Vector2f>> _edgePathCache = new ObjectMap<String, TArray<Vector2f>>();
 
@@ -2116,11 +2120,80 @@ public class CityMap extends LObject<ISprite> implements TileMapCollision, Sized
 		float radius = _selectedCity.radius * 2 + pulse;
 		final float newX = pos.x + offsetX - radius / 2;
 		final float newY = pos.y + offsetY - radius / 2;
-		g.drawDashCircle(newX, newY, radius, width, SELECT_HALO_COLOR);
-		final float pulseRadius = radius + (pulse * 2);
-		g.drawDashCircle(newX - pulse, newY - pulse, pulseRadius, width,
-				SELECT_HALO_COLOR.lerp(LColor.yellow, 0.5f, _tempColorB));
+		if (_useRectSelected) {
+			float oldWidth = g.getLineWidth();
+			int lineWidth = MathUtils.iceil(width);
+			g.setLineWidth(lineWidth);
+			g.drawDashRect(newX, newY, radius, radius, SELECT_HALO_COLOR, lineWidth);
+			final float pulseRadius = radius + (pulse * 2);
+			g.drawDashRect(newX - pulse, newY - pulse, pulseRadius, pulseRadius,
+					SELECT_HALO_COLOR.lerp(SELECT_HALO_LERP_COLOR, 0.5f, _tempColorB), lineWidth);
+			g.setLineWidth(oldWidth);
+		} else {
+			g.drawDashCircle(newX, newY, radius, width, SELECT_HALO_COLOR);
+			final float pulseRadius = radius + (pulse * 2);
+			g.drawDashCircle(newX - pulse, newY - pulse, pulseRadius, width,
+					SELECT_HALO_COLOR.lerp(SELECT_HALO_LERP_COLOR, 0.5f, _tempColorB));
+		}
+	}
 
+	public void setSelectHaloColor(LColor c) {
+		if (c != null) {
+			SELECT_HALO_COLOR.setColor(c);
+		}
+	}
+
+	public void setSelectHaloLerpColor(LColor c) {
+		if (c != null) {
+			SELECT_HALO_LERP_COLOR.setColor(c);
+		}
+	}
+
+	public void setMarchColor(LColor c) {
+		if (c != null) {
+			MARCH_COLOR.setColor(c);
+		}
+	}
+
+	public void setTransportColor(LColor c) {
+		if (c != null) {
+			TRANSPORT_COLOR.setColor(c);
+		}
+	}
+
+	public void setPlayerMoveColor(LColor c) {
+		if (c != null) {
+			PLAYER_MOVE_COLOR.setColor(c);
+		}
+	}
+
+	public LColor getSelectHaloColor(LColor c) {
+		return SELECT_HALO_COLOR;
+	}
+
+	public LColor getSelectHaloLerpColor(LColor c) {
+		return SELECT_HALO_LERP_COLOR;
+	}
+
+	public LColor getMarchColor(LColor c) {
+		return MARCH_COLOR;
+	}
+
+	public LColor getTransportColor() {
+		return TRANSPORT_COLOR;
+	}
+
+	public LColor getPlayerMoveColor() {
+		return PLAYER_MOVE_COLOR;
+	}
+
+	public boolean isUseRectSelected() {
+		return _useRectSelected;
+	}
+
+	public CityMap setRectSelected(boolean rect) {
+		_useRectSelected = rect;
+		return this;
 	}
 
 	/**

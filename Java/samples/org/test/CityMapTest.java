@@ -24,10 +24,7 @@ import loon.LTexture;
 import loon.LTextures;
 import loon.Stage;
 import loon.action.map.CityMap;
-import loon.action.map.CityMap.Edge;
-import loon.action.map.CityMap.EdgeType;
 import loon.action.map.items.City;
-import loon.canvas.LColor;
 
 public class CityMapTest extends Stage {
 
@@ -40,6 +37,8 @@ public class CityMapTest extends Stage {
 		CityMap map = new CityMap(16, 16, 32, 32, 0);
         // 使用虚线显示链接路径
 		map.setDefaultDash(true);
+		// 使用方选择框选中目标
+		// map.setRectSelected(true);
 		// 在指定xy坐标位置添加城市
 		City luoyang = map.addCity("洛阳", 11, 2, icon);
 		City changan = map.addCity("长安", 4, 2, icon);

@@ -1650,6 +1650,45 @@ public abstract class SpriteBase<T extends ISprite> extends LObject<T> implement
 		return getY() + (getHeight() / 2f);
 	}
 
+	public SpriteBase<T> setSprite(ISprite spr) {
+		return setSprite(spr, 0f, 0f);
+	}
+
+	public SpriteBase<T> setSprite(ISprite spr, float offsetX, float offsetY) {
+		if (spr != null) {
+			setLocation(spr.getX() + offsetX, spr.getY() + offsetY);
+			setScale(spr.getScaleX(), spr.getScaleY());
+			setAlpha(spr.getAlpha());
+			setColor(spr.getColor());
+			setLayer(spr.getLayer());
+			setSize(spr.getWidth(), spr.getHeight());
+			setState(spr.getState());
+			setRotation(spr.getRotation());
+		}
+		return this;
+	}
+
+	public SpriteBase<T> setActionBind(ActionBind act) {
+		return setActionBind(act, 0f, 0f);
+	}
+
+	public SpriteBase<T> setActionBind(ActionBind act, float offsetX, float offsetY) {
+		if (act != null) {
+			setLocation(act.getX() + offsetX, act.getY() + offsetY);
+			setScale(act.getScaleX(), act.getScaleY());
+			setAlpha(act.getAlpha());
+			setColor(act.getColor());
+			setSize(act.getWidth(), act.getHeight());
+			setRotation(act.getRotation());
+		}
+		return this;
+	}
+
+	public SpriteBase<T> resetColor() {
+		setColor(LColor.white);
+		return this;
+	}
+
 	@Override
 	public float getContainerWidth() {
 		return this._sprites == null ? super.getContainerWidth() : this._sprites.getWidth();

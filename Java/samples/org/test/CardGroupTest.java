@@ -21,6 +21,8 @@
 package org.test;
 
 import loon.Stage;
+import loon.action.sprite.effect.explosion.ExplosionEffect;
+import loon.action.sprite.effect.explosion.ExplosionEffect.Mode;
 import loon.component.LCardGroup;
 import loon.component.LCardGroup.ShuffleType;
 import loon.component.LClickButton;
@@ -54,8 +56,19 @@ public class CardGroupTest extends Stage {
 		LClickButton shuffle = LClickButton.make("Shuffle Card");
 		bottomLeftOn(shuffle, 5, -10);
 		add(shuffle);
+
+		// 构建一个隐藏的特效类，用于让卡牌消失具有特效
+		ExplosionEffect explosionCardEffect = new ExplosionEffect(Mode.Explode, "assets/1.png");
+		// 直接添加到Desktop(这个不能放在cards，不然会被自动布局带跑，只能放在上层组件)
+		add(explosionCardEffect);
+		explosionCardEffect.setVisible(false);
+
 		// 点击按钮触发洗牌特效
 		shuffle.up((x, y) -> {
+			// 若有缓动动画不许重复执行
+			if (cards.isCardPlaying() || !explosionCardEffect.isCompleted()) {
+				return;
+			}
 			// 设定洗牌特效播放位置
 			// cards.shuffleLayered(cards.getCenterX(), cards.getCenterY(), 8f, 1400L, 60);
 			// 启用自动周期性洗牌（每10秒）
@@ -73,14 +86,25 @@ public class CardGroupTest extends Stage {
 		add(play);
 		// 点击按钮触发发牌特效
 		play.up((x, y) -> {
+			// 若有缓动动画不许重复执行
+			if (cards.isCardPlaying() || !explosionCardEffect.isCompleted()) {
+				return;
+			}
 			// 播放出牌缓动动画,将选中牌(没有选中不执行)出牌到位置getWidth()/2f-40x10,出牌后牌缓动变成缩放1f,透明度1f，旋转90f的样式，出牌耗时1600毫秒
 			// ps:出牌也是在LCardGroup组件中，而非直接发在上级Desktop组件中，所以LCardGroup设定的大小要能足够，否则会看不到.
 			// 然后x和y坐标也一样，例如演示的LCardGroup的y向下偏移了50像素，所以发牌位置要向上偏移，减50才是屏幕0，减40才是屏幕10，在此说明.
 			cards.playCard(getWidth() / 2f - 40, -40f, 1f, 1f, 90, 1600L, (t) -> {
 				System.out.println(t.getFlagType() + ":执行完毕");
+				// 绑定卡片组件状态到特效类(要偏移，因为组件实际位置不同，cards集体下移了50，所以特效也得移动)
+				explosionCardEffect.setActionBind(t, 0f, 50f);
+				// explosionCardEffect.reset();
+				// 执行特效让卡牌消散，而不是单纯消失
+				explosionCardEffect.start(Mode.Explode);
+
 			});
 			// cards.addCard(new LPaper("assets/1.png"));
 		});
+
 	}
 
 }

@@ -2788,6 +2788,34 @@ public abstract class LComponent extends LObject<LContainer>
 		return this;
 	}
 
+	public LComponent setComponent(LComponent comp) {
+		return setComponent(comp, 0f, 0f);
+	}
+
+	public LComponent setComponent(LComponent comp, float offsetX, float offsetY) {
+		if (comp != null) {
+			setLocation(comp.getX() + offsetX, comp.getY() + offsetY);
+			setScale(comp.getScaleX(), comp.getScaleY());
+			setAlpha(comp.getAlpha());
+			setFixedWidthOffset(comp.getFixedWidthOffset());
+			setFixedHeightOffset(comp.getFixedHeightOffset());
+			setColor(comp.getColor());
+			setLayer(comp.getLayer());
+			setOffsetX(comp.getOffsetX());
+			setOffsetY(comp.getOffsetY());
+			setOrigin(comp.getOrigin());
+			setSize(comp.getWidth(), comp.getHeight());
+			setState(comp.getState());
+			setRotation(comp.getRotation());
+		}
+		return this;
+	}
+
+	public LComponent resetColor() {
+		setColor(LColor.white);
+		return this;
+	}
+
 	LComponent freeImages() {
 		if (!_component_autoDestroy) {
 			return this;

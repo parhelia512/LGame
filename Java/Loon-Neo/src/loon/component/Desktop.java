@@ -560,6 +560,7 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 		if (!_visible) {
 			return;
 		}
+		final int initColor = g.color();
 		try {
 			afterSaveToBuffer(g);
 			g.saveTx();
@@ -581,6 +582,7 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 		} finally {
 			g.restoreTx();
 			beforeSaveToBuffer(g);
+			g.setColor(initColor);
 		}
 	}
 

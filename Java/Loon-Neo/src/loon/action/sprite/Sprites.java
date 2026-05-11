@@ -1856,7 +1856,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 		final float minY = _isViewWindowSet ? y + _viewY : y;
 		final float maxX = minX + (_isViewWindowSet ? _viewWidth : _width);
 		final float maxY = minY + (_isViewWindowSet ? _viewHeight : _height);
-
+		final int initColor = g.color();
 		try {
 			afterSaveToBuffer(g);
 			if (startX != 0 || startY != 0) {
@@ -1874,6 +1874,7 @@ public final class Sprites extends PlaceActions implements Visible, ZIndex, IArr
 				g.translate(-startX, -startY);
 			}
 			beforeSaveToBuffer(g);
+			g.setColor(initColor);
 		}
 	}
 
