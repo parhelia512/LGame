@@ -2515,7 +2515,7 @@ public abstract class LComponent extends LObject<LContainer>
 		return this._keyLocked;
 	}
 
-	private final TouchedClick makeTouched() {
+	private synchronized final TouchedClick makeTouched() {
 		if (_touchListener == null) {
 			_touchListener = new TouchedClick();
 		}
@@ -2761,26 +2761,22 @@ public abstract class LComponent extends LObject<LContainer>
 		return getScalePixelY() + _origin.oy(getHeight());
 	}
 
-	public LComponent setClickListenerSafe(final ClickListener c) {
-		synchronized (this) {
-			this._clickListener = c;
-			if (c != null) {
-				makeTouched();
-			}
+	public synchronized LComponent setClickListenerSafe(final ClickListener c) {
+		this._clickListener = c;
+		if (c != null) {
+			makeTouched();
 		}
 		return this;
 	}
 
-	public LComponent clearListenersSafe() {
-		synchronized (this) {
-			this._clickListener = null;
-			if (_touchListener != null) {
-				_touchListener.clear();
-				_touchListener = null;
-			}
-			this._resizeListener = null;
-			this._loopActionListener = null;
+	public synchronized LComponent clearListenersSafe() {
+		this._clickListener = null;
+		if (_touchListener != null) {
+			_touchListener.clear();
+			_touchListener = null;
 		}
+		this._resizeListener = null;
+		this._loopActionListener = null;
 		return this;
 	}
 

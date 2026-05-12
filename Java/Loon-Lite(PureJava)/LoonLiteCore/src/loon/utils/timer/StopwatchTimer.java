@@ -23,6 +23,7 @@ package loon.utils.timer;
 import loon.LSystem;
 import loon.events.EventAction;
 import loon.utils.HelperUtils;
+import loon.utils.MathUtils;
 import loon.utils.StringKeyValue;
 import loon.utils.TimeUtils;
 
@@ -30,6 +31,20 @@ import loon.utils.TimeUtils;
  * 计时器(也就是俗称的秒表，需要正常计算时间的游戏都会用到)
  */
 public class StopwatchTimer {
+
+	public static interface OnCompleteListener {
+		void onComplete(StopwatchTimer timer, long elapsedMillis);
+	}
+
+	public static String formatElapsed(long millis) {
+		long ms = millis % 1000;
+		long totalSeconds = millis / 1000;
+		long s = totalSeconds % 60;
+		long totalMinutes = totalSeconds / 60;
+		long m = totalMinutes % 60;
+		long h = totalMinutes / 60;
+		return String.format("%02d:%02d:%02d.%03d", h, m, s, ms);
+	}
 
 	public static StopwatchTimer create() {
 		return make();
@@ -52,28 +67,27 @@ public class StopwatchTimer {
 		return sw;
 	}
 
+	private OnCompleteListener _onCompleteListener;
+	private boolean autoResetOnComplete = false;
 	private String _currentName;
 
 	private long _from;
-
 	private long _to;
-
 	private long _lastStop;
-
 	private long _target;
-
 	private long _timeOn = -1;
-
 	private long _timeOff = -1;
+	private long _accumulated;
 
 	private boolean _over;
+	private boolean _running;
 
 	public StopwatchTimer() {
 		this(LSystem.EMPTY);
 	}
 
 	public StopwatchTimer(String name) {
-		this(name, 0);
+		this(name, 0L);
 	}
 
 	public StopwatchTimer(long target) {
@@ -83,15 +97,115 @@ public class StopwatchTimer {
 	public StopwatchTimer(String name, long target) {
 		this._currentName = name;
 		this._target = target;
-		this.reset();
+		reset();
+	}
+
+	private long currentTime() {
+		return TimeUtils.millis();
 	}
 
 	public boolean isWaiting() {
-		return !isDone();
+		return isRunning();
 	}
 
 	public boolean isRunning() {
-		return isWaiting();
+		return _running;
+	}
+
+	public long start() {
+		if (!_running) {
+			_from = (_timeOn == -1) ? currentTime() : _timeOn;
+			_to = _from;
+			_running = true;
+			_over = false;
+		}
+		return _from;
+	}
+
+	public StopwatchTimer stop() {
+		if (_running) {
+			_lastStop = _to;
+			_to = (_timeOff == -1) ? currentTime() : _timeOff;
+			long segment = _to - _from;
+			if (segment < 0) {
+				segment = 0;
+			}
+			_accumulated += segment;
+			_running = false;
+			_over = true;
+			checkTargetAndNotify();
+		}
+		return this;
+	}
+
+	public StopwatchTimer end() {
+		return stop();
+	}
+
+	public StopwatchTimer pause() {
+		return stop();
+	}
+
+	public StopwatchTimer resume() {
+		start();
+		return this;
+	}
+
+	public StopwatchTimer reset() {
+		_from = 0;
+		_to = 0;
+		_lastStop = 0;
+		_accumulated = 0;
+		_running = false;
+		_over = false;
+		_timeOn = -1;
+		_timeOff = -1;
+		return this;
+	}
+
+	public long getTime() {
+		if (_running) {
+			long now = currentTime();
+			long seg = now - _from;
+			if (seg < 0) {
+				seg = 0;
+			}
+			return _accumulated + seg;
+		} else {
+			return _accumulated;
+		}
+	}
+
+	public long getDuration() {
+		if (_running) {
+			long now = currentTime();
+			long seg = now - _from;
+			return MathUtils.max(0, seg);
+		} else {
+			return MathUtils.max(0, _to - _from);
+		}
+	}
+
+	public long getLastDuration() {
+		if (_lastStop == 0) {
+			return 0;
+		}
+		return MathUtils.max(0, _to - _lastStop);
+	}
+
+	public long getStartTime() {
+		return _from;
+	}
+
+	public long getEndTime() {
+		return _to;
+	}
+
+	public boolean isDone() {
+		if (_target <= 0) {
+			return false;
+		}
+		return getTime() >= _target;
 	}
 
 	public boolean isDoneAndReset() {
@@ -102,68 +216,8 @@ public class StopwatchTimer {
 		return false;
 	}
 
-	public boolean isDone() {
-		return (currentTime() - _from) >= _target;
-	}
-
 	public boolean isPassedTime(long interval) {
-		return currentTime() - _from >= interval;
-	}
-
-	public StopwatchTimer reset() {
-		start();
-		return this;
-	}
-
-	public long start() {
-		this._from = (_timeOn == -1) ? currentTime() : _timeOn;
-		this._to = this._from;
-		this._lastStop = this._to;
-		this._over = false;
-		return this._from;
-	}
-
-	private long currentTime() {
-		return TimeUtils.millis();
-	}
-
-	public StopwatchTimer end() {
-		return stop();
-	}
-
-	public StopwatchTimer stop() {
-		this._lastStop = this._to;
-		this._to = (_timeOff == -1) ? currentTime() : _timeOff;
-		this._over = true;
-		return this;
-	}
-
-	public long getPercentage(float timeScale) {
-		return (long) (this._from + (this._to - this._from) * timeScale);
-	}
-
-	public long getPercentage() {
-		return getPercentage(1f);
-	}
-
-	public long getTime() {
-		return isWaiting() ? currentTime() - _from + _to : _lastStop;
-	}
-
-	public long getDuration() {
-		return this._to - this._from;
-	}
-
-	public long getLastDuration() {
-		return this._to - this._lastStop;
-	}
-
-	public long getStartTime() {
-		return this._from;
-	}
-
-	public long getEndTime() {
-		return this._to;
+		return getTime() >= interval;
 	}
 
 	public StopwatchTimer setName(String n) {
@@ -173,10 +227,6 @@ public class StopwatchTimer {
 
 	public String getName() {
 		return this._currentName;
-	}
-
-	public boolean completed() {
-		return this._over;
 	}
 
 	public long getTimeOn() {
@@ -197,8 +247,40 @@ public class StopwatchTimer {
 		return this;
 	}
 
+	public StopwatchTimer setOnCompleteListener(OnCompleteListener l) {
+		this._onCompleteListener = l;
+		return this;
+	}
+
+	public StopwatchTimer setAutoResetOnComplete(boolean v) {
+		this.autoResetOnComplete = v;
+		return this;
+	}
+
+	private void checkTargetAndNotify() {
+		if (_target > 0 && getTime() >= _target) {
+			if (_onCompleteListener != null) {
+				try {
+					_onCompleteListener.onComplete(this, getTime());
+				} catch (Throwable t) {
+				}
+			}
+			if (autoResetOnComplete) {
+				reset();
+			}
+		}
+	}
+
+	public boolean completed() {
+		return this._over;
+	}
+
 	public long getTimestamp() {
 		return currentTime();
+	}
+
+	public String formatElapsed() {
+		return formatElapsed(getTime());
 	}
 
 	@Override

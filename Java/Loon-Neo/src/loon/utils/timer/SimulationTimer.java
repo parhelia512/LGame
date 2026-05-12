@@ -36,7 +36,7 @@ import loon.utils.processes.RealtimeProcess;
  */
 public class SimulationTimer extends RealtimeProcess {
 
-	public static enum MonthType {
+	public enum MonthType {
 		January, February, March, April, May, June, July, August, September, October, November, December
 	}
 
@@ -45,33 +45,28 @@ public class SimulationTimer extends RealtimeProcess {
 	}
 
 	private StringKeyValue _kvBuilder;
-
 	private ArrayMap _monthDic = new ArrayMap();
 
-	private int _year, _day, _hour;
+	// 每次调用 nextTimePass或tick时增加的分钟数
+	private float minutesPerTick;
 
+	private int _year;
+	private int _day;
+	private int _hour;
 	private MonthType _month;
-
-	private float _minuteSpeed;
-
 	private float _minute;
 
 	private NumberValue _bindYear;
-
 	private NumberValue _bindMonth;
-
 	private NumberValue _bindDay;
-
 	private NumberValue _bindHour;
-
 	private NumberValue _bindMinute;
 
 	private boolean _dirty;
-
 	private EventActionT<SimulationTimer> _timeEvent;
 
 	public SimulationTimer(int year) {
-		this(year, 1, 1);
+		this(year, MonthType.January, 1, 0, 0f, 1f);
 	}
 
 	public SimulationTimer(int year, int day, int hour) {
@@ -79,11 +74,11 @@ public class SimulationTimer extends RealtimeProcess {
 	}
 
 	public SimulationTimer(int year, MonthType month) {
-		this(year, month, 1);
+		this(year, month, 1, 0, 0f, 1f);
 	}
 
 	public SimulationTimer(int year, MonthType month, int day) {
-		this(year, month, day, 1);
+		this(year, month, day, 0, 0f, 1f);
 	}
 
 	public SimulationTimer(int year, MonthType month, int day, int hour) {
@@ -97,6 +92,7 @@ public class SimulationTimer extends RealtimeProcess {
 		if (month == null) {
 			throw new LSysException("The month cannot be null !");
 		}
+		// 初始化每月天数
 		_monthDic.put(MonthType.January, 31);
 		_monthDic.put(MonthType.February, isLeapYear(year) ? 29 : 28);
 		_monthDic.put(MonthType.March, 31);
@@ -109,6 +105,8 @@ public class SimulationTimer extends RealtimeProcess {
 		_monthDic.put(MonthType.October, 31);
 		_monthDic.put(MonthType.November, 30);
 		_monthDic.put(MonthType.December, 31);
+
+		this.minutesPerTick = MathUtils.clamp(minutesPerTick, LSystem.MIN_SECONE_SPEED_FIXED, 65535f);
 		this.setYear(year);
 		this.setMonth(month);
 		this.setDay(day);
@@ -118,8 +116,13 @@ public class SimulationTimer extends RealtimeProcess {
 		this.setProcessType(GameProcessType.SimulationTime);
 	}
 
+	/**
+	 * 时间段判断（使用0为初值，0-23小时制）
+	 * 
+	 * @return
+	 */
 	public boolean isMidnight() {
-		return _hour == 24 || (_hour >= 0 && _hour < 6);
+		return _hour >= 0 && _hour < 6;
 	}
 
 	public boolean isMorning() {
@@ -150,6 +153,27 @@ public class SimulationTimer extends RealtimeProcess {
 		return isNoon() || isAfterNoon() || isEvening();
 	}
 
+	/**
+	 * 将MonthType转为1-12
+	 * 
+	 * @param m
+	 * @return
+	 */
+	private int monthIndex(MonthType m) {
+		return m.ordinal() + 1;
+	}
+
+	/**
+	 * 将1..12转为MonthType（支持任意整数，自动循环）
+	 * 
+	 * @param idx
+	 * @return
+	 */
+	private MonthType monthFromIndex(int idx) {
+		int normalized = ((idx - 1) % 12 + 12) % 12;
+		return MonthType.values()[normalized];
+	}
+
 	public MonthType getMonthDaysToNameType(int days) {
 		for (int i = 0; i < _monthDic.size(); i++) {
 			Entry it = _monthDic.getEntry(i);
@@ -160,56 +184,78 @@ public class SimulationTimer extends RealtimeProcess {
 		return null;
 	}
 
+	/**
+	 * 返回对应月份的数值(1-12)
+	 * 
+	 * @param t
+	 * @return
+	 */
 	public int getMonthNameTypeToInt(MonthType t) {
-		int count = 0;
-		for (int i = 0; i < _monthDic.size(); i++) {
-			Entry it = _monthDic.getEntry(i);
-			if (it != null && ((MonthType) it.getKey()).equals(t)) {
-				return count;
-			}
-			count++;
+		if (t == null) {
+			return -1;
 		}
-		return -1;
+		return monthIndex(t);
 	}
 
+	/**
+	 * 输入1-12的数值，返回MonthType(数值越界会循环变成12的余数计算)
+	 * 
+	 * @param m
+	 * @return
+	 */
 	public MonthType getMonthIntToNameType(int m) {
-		final int month = m % 12;
-		int count = 0;
-		for (int i = 0; i < _monthDic.size(); i++) {
-			Entry it = _monthDic.getEntry(i);
-			if (it != null && count == month) {
-				return (MonthType) it.getKey();
-			}
-			count++;
-		}
-		return null;
+		int normalized = ((m - 1) % 12 + 12) % 12;
+		return MonthType.values()[normalized];
 	}
 
 	public int getMonthDays(MonthType m) {
 		if (m == null) {
 			return -1;
 		}
+		if (m == MonthType.February) {
+			return isLeapYear(_year) ? 29 : 28;
+		}
 		return (int) _monthDic.get(m);
 	}
 
 	protected void onMinute(float m) {
-		_bindMinute.update(m);
+		if (this._bindMinute == null) {
+			this._bindMinute = new NumberValue(m);
+		} else {
+			this._bindMinute.update(m);
+		}
 	}
 
 	protected void onHour(int h) {
-		_bindHour.update(h);
+		if (this._bindHour == null) {
+			this._bindHour = new NumberValue(h);
+		} else {
+			this._bindHour.update(h);
+		}
 	}
 
 	protected void onDay(int d) {
-		_bindDay.update(d);
+		if (this._bindDay == null) {
+			this._bindDay = new NumberValue(d);
+		} else {
+			this._bindDay.update(d);
+		}
 	}
 
 	protected void onMonth(int m) {
-		_bindMonth.set(m);
+		if (this._bindMonth == null) {
+			this._bindMonth = new NumberValue(m);
+		} else {
+			this._bindMonth.update(m);
+		}
 	}
 
 	protected void onYear(int y) {
-		_bindYear.set(y);
+		if (this._bindYear == null) {
+			this._bindYear = new NumberValue(y);
+		} else {
+			this._bindYear.update(y);
+		}
 	}
 
 	public SimulationTimer setEventAction(EventActionT<SimulationTimer> e) {
@@ -226,45 +272,129 @@ public class SimulationTimer extends RealtimeProcess {
 		nextTimePass();
 	}
 
+	/**
+	 * 设置每次tick增加的分钟数
+	 * 
+	 * @param m
+	 */
+	public SimulationTimer setMinutesPerTick(float m) {
+		this.minutesPerTick = MathUtils.max(0f, m);
+		this._dirty = true;
+		return this;
+	}
+
+	/**
+	 * 获取每次tick增加的分钟数
+	 */
+	public float getMinutesPerTick() {
+		return this.minutesPerTick;
+	}
+
+	public SimulationTimer setMinuteSpeed(float m) {
+		return setMinutesPerTick(m);
+	}
+
+	public float getMinuteSpeed() {
+		return getMinutesPerTick();
+	}
+
+	/**
+	 * 每个仿真刻推进一次
+	 */
+	public void tick() {
+		nextTimePass();
+	}
+
+	/**
+	 * 累加分钟，处理进位（分钟->小时->日->月->年）
+	 */
 	public void nextTimePass() {
 		if (_timeEvent != null) {
 			_timeEvent.update(this);
 		}
-		this._minute += _minuteSpeed;
-		onMinute(_minute);
-		if (_minute > 60) {
-			final int timeLoopCount = (int) (_minute / 60);
-			for (int i = 0; i < timeLoopCount; i++) {
-				this._hour++;
-				final int dayAdded = _hour / 24;
-				this._hour %= 24;
-				if (dayAdded > 0) {
-					onDay(dayAdded);
-				}
-				final int monthDays = getMonthDays(_month) + 1;
-				this._day += dayAdded;
-				int monthAdded = _day / monthDays;
-				this._day %= monthDays;
-				if (this._day == 0) {
-					this._day = 1;
-				}
-				if (monthAdded > 0) {
-					onMonth(monthAdded);
-				}
-				final int monthNewDays = getMonthNameTypeToInt(_month) + monthAdded;
-				final int yearAdded = monthNewDays / 12;
-				MonthType newMonth = getMonthIntToNameType(monthNewDays);
-				if (newMonth != null) {
-					this._month = newMonth;
-				}
-				if (yearAdded > 0) {
-					onYear(yearAdded);
-					this._month = MonthType.January;
-				}
-				this._year += yearAdded;
-			}
-			this._minute = 0f;
+		this._minute += this.minutesPerTick;
+		onMinute(this._minute);
+		if (this._minute >= 60f) {
+			int extraHours = (int) (this._minute / 60f);
+			this._minute = this._minute % 60f;
+			onMinute(this._minute);
+			addHourInternal(extraHours);
 		}
+	}
+
+	/**
+	 * 增加小时并处理进位到天
+	 * 
+	 * @param hours
+	 */
+	private void addHourInternal(int hours) {
+		if (hours <= 0) {
+			return;
+		}
+		this._hour += hours;
+		onHour(this._hour);
+		if (this._hour >= 24) {
+			int days = this._hour / 24;
+			this._hour = this._hour % 24;
+			onHour(this._hour);
+			addDayInternal(days);
+		}
+	}
+
+	/**
+	 * 增加天并处理进位到月
+	 * 
+	 * @param days
+	 */
+	private void addDayInternal(int days) {
+		if (days <= 0) {
+			return;
+		}
+		this._day += days;
+		onDay(this._day);
+		// 处理跨月（可能跨多月）
+		while (this._day > getMonthDays(this._month)) {
+			int monthDays = getMonthDays(this._month);
+			this._day -= monthDays;
+			// 进入下个月
+			addMonthInternal(1);
+			onDay(this._day);
+		}
+	}
+
+	/**
+	 * 增加月并处理进位到年
+	 * 
+	 * @param months
+	 */
+	private void addMonthInternal(int months) {
+		if (months == 0) {
+			return;
+		}
+		int currentIndex = monthIndex(this._month);
+		int newIndex = currentIndex + months;
+		int yearAdded = (newIndex - 1) / 12;
+		int normalizedIndex = ((newIndex - 1) % 12) + 1;
+		this._month = monthFromIndex(normalizedIndex);
+		onMonth(normalizedIndex);
+		if (yearAdded > 0) {
+			addYearInternal(yearAdded);
+		}
+	}
+
+	/**
+	 * 增加年
+	 * 
+	 * @param years
+	 */
+	private void addYearInternal(int years) {
+		if (years == 0) {
+			return;
+		}
+		this._year += years;
+		onYear(this._year);
+		// 更新二月天数缓存
+		_monthDic.put(MonthType.February, isLeapYear(_year) ? 29 : 28);
 	}
 
 	public NumberValue getYearBind() {
@@ -308,7 +438,10 @@ public class SimulationTimer extends RealtimeProcess {
 	}
 
 	public SimulationTimer setMinute(float m) {
-		this._minute = MathUtils.clamp(m, 0, 60);
+		if (MathUtils.isNan(m)) {
+			m = 0f;
+		}
+		this._minute = MathUtils.clamp(m, 0f, 59.999f);
 		if (this._bindMinute == null) {
 			this._bindMinute = new NumberValue(_minute);
 		} else {
@@ -318,14 +451,8 @@ public class SimulationTimer extends RealtimeProcess {
 		return this;
 	}
 
-	public SimulationTimer setMinuteSpeed(float m) {
-		this._minuteSpeed = MathUtils.clamp(m, LSystem.MIN_SECONE_SPEED_FIXED, 65535f);
-		this._dirty = true;
-		return this;
-	}
-
 	public SimulationTimer setHour(int h) {
-		this._hour = MathUtils.clamp(h, 1, 24);
+		this._hour = MathUtils.clamp(h, 0, 23);
 		if (this._bindHour == null) {
 			this._bindHour = new NumberValue(_hour);
 		} else {
@@ -336,7 +463,8 @@ public class SimulationTimer extends RealtimeProcess {
 	}
 
 	public SimulationTimer setDay(int d) {
-		this._day = MathUtils.clamp(d, 1, 31);
+		int maxDay = getMonthDays(this._month);
+		this._day = MathUtils.clamp(d, 1, MathUtils.max(1, maxDay));
 		if (this._bindDay == null) {
 			this._bindDay = new NumberValue(_day);
 		} else {
@@ -347,22 +475,27 @@ public class SimulationTimer extends RealtimeProcess {
 	}
 
 	public SimulationTimer setMonth(int m) {
-		this._month = getMonthIntToNameType(m = MathUtils.clamp(m, 1, 12));
+		int clamped = MathUtils.clamp(m, 1, 12);
+		this._month = getMonthIntToNameType(clamped);
 		if (this._bindMonth == null) {
-			this._bindMonth = new NumberValue(m);
+			this._bindMonth = new NumberValue(clamped);
 		} else {
-			this._bindMonth.update(m);
+			this._bindMonth.update(clamped);
 		}
 		this._dirty = true;
 		return this;
 	}
 
 	public SimulationTimer setMonth(MonthType m) {
+		if (m == null) {
+			return this;
+		}
 		this._month = m;
+		int idx = getMonthNameTypeToInt(m);
 		if (this._bindMonth == null) {
-			this._bindMonth = new NumberValue(getMonthNameTypeToInt(m));
+			this._bindMonth = new NumberValue(idx);
 		} else {
-			this._bindMonth.update(getMonthNameTypeToInt(m));
+			this._bindMonth.update(idx);
 		}
 		this._dirty = true;
 		return this;
@@ -375,6 +508,8 @@ public class SimulationTimer extends RealtimeProcess {
 		} else {
 			this._bindYear.update(_year);
 		}
+		// 更新二月天数缓存
+		_monthDic.put(MonthType.February, isLeapYear(_year) ? 29 : 28);
 		this._dirty = true;
 		return this;
 	}
@@ -389,23 +524,81 @@ public class SimulationTimer extends RealtimeProcess {
 	}
 
 	public SimulationTimer addYear(int y) {
-		return setYear(this._year + y);
+		addYearInternal(y);
+		return this;
 	}
 
 	public SimulationTimer addMonth(int m) {
-		return setMonth(getMonthNameTypeToInt(this._month) + m);
+		addMonthInternal(m);
+		return this;
 	}
 
 	public SimulationTimer addDay(int d) {
-		return setDay(this._day + d);
+		addDayInternal(d);
+		return this;
 	}
 
 	public SimulationTimer addHour(int h) {
-		return setHour(this._hour + h);
+		addHourInternal(h);
+		return this;
 	}
 
 	public SimulationTimer addMinute(int m) {
-		return setMinute(this._minute + m);
+		if (m <= 0) {
+			return this;
+		}
+		float totalMinutes = this._minute + m;
+		int extraHours = (int) (totalMinutes / 60f);
+		this._minute = totalMinutes % 60f;
+		onMinute(this._minute);
+		if (extraHours > 0) {
+			addHourInternal(extraHours);
+		}
+		return this;
+	}
+
+	/**
+	 * 按秒推进
+	 * 
+	 * @param seconds
+	 * @return
+	 */
+	public SimulationTimer advanceBySeconds(int seconds) {
+		if (seconds <= 0) {
+			return this;
+		}
+		int addMinutes = seconds / 60;
+		int remSeconds = seconds % 60;
+		// 先按整分钟推进
+		if (addMinutes > 0) {
+			addMinute(addMinutes);
+		}
+		// 剩余秒数转换为小数分钟
+		if (remSeconds > 0) {
+			float fractional = remSeconds / 60f;
+			this._minute += fractional;
+			if (this._minute >= 60f) {
+				int extraHours = (int) (this._minute / 60f);
+				this._minute = this._minute % 60f;
+				addHourInternal(extraHours);
+			}
+			onMinute(this._minute);
+		}
+		return this;
+	}
+
+	public SimulationTimer setMinutesPerSecond(float minutesPerSecond, float ticksPerSecond) {
+		if (ticksPerSecond <= 0f) {
+			throw new LSysException("ticksPerSecond must be > 0");
+		}
+		return setMinutesPerTick(minutesPerSecond / ticksPerSecond);
+	}
+
+	public float getMinutesPerSecond(float ticksPerSecond) {
+		if (ticksPerSecond <= 0f) {
+			return 0f;
+		}
+		return this.minutesPerTick * ticksPerSecond;
 	}
 
 	public String toData() {

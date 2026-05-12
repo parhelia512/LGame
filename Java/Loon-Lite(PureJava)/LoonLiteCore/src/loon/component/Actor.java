@@ -772,6 +772,10 @@ public class Actor extends LObject<Actor>
 		this.setLocation(x, y);
 	}
 
+	public boolean isTouchable() {
+		return visible && (clicked || draged);
+	}
+
 	@Override
 	public RectBox getCollisionArea() {
 		return getRectBox();

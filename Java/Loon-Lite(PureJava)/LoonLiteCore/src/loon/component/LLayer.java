@@ -78,6 +78,16 @@ public class LLayer extends ActorLayer {
 
 	private DrawListener<LLayer> _drawListener;
 
+	private float _touchSlop = 3f;
+
+	private float _touchStartX = 0f;
+
+	private float _touchStartY = 0f;
+
+	private boolean _touchStartedOnActor = false;
+
+	private Actor _pressedActor = null;
+
 	public LLayer(int w, int h) {
 		this(0, 0, w, h);
 	}
@@ -109,6 +119,15 @@ public class LLayer extends ActorLayer {
 		this.setElastic(true);
 		this.setLocked(true);
 		this.setLayer(-10000);
+	}
+
+	public LLayer setTouchSlop(float slop) {
+		this._touchSlop = MathUtils.max(1f, slop);
+		return this;
+	}
+
+	public float getTouchSlop() {
+		return this._touchSlop;
 	}
 
 	private void allocateSprites() {
@@ -222,7 +241,7 @@ public class LLayer extends ActorLayer {
 					LIterator<Actor> it = objects.iterator();
 					for (; it.hasNext();) {
 						_thing = (Actor) it.next();
-						if (!_thing.visible) {
+						if (_thing == null || !_thing.visible) {
 							continue;
 						}
 						_thing.update(elapsed);
@@ -272,74 +291,70 @@ public class LLayer extends ActorLayer {
 	}
 
 	public void paintObjects(final GLEx g, final int minX, final int minY, final int maxX, final int maxY) {
-		synchronized (objects) {
-			final LIterator<Actor> it = objects.iterator();
-			for (; it.hasNext();) {
-				_thing = it.next();
-				if (!_thing.visible) {
-					continue;
+		final LIterator<Actor> it = objects.iterator();
+		for (; it.hasNext();) {
+			_thing = it.next();
+			if (_thing == null || !_thing.visible) {
+				continue;
+			}
+			_currentLayerListener = (_thing.actorListener != null);
+			if (_currentLayerVSync) {
+				if (_currentLayerListener) {
+					_thing.actorListener.update(elapsedTime);
 				}
-				_currentLayerListener = (_thing.actorListener != null);
-				if (_currentLayerVSync) {
-					if (_currentLayerListener) {
-						_thing.actorListener.update(elapsedTime);
-					}
-					_thing.update(elapsedTime);
-				}
+				_thing.update(elapsedTime);
+			}
 
-				_actorX = minX + _thing.getX();
-				_actorY = minY + _thing.getY();
-				_actorWidth = _thing.pixelWidth();
-				_actorHeight = _thing.pixelHeight();
-				if (_component_elastic && (_actorX + _actorWidth < minX || _actorX > maxX
-						|| _actorY + _actorHeight < minY || _actorY > maxY)) {
-					continue;
+			_actorX = minX + _thing.getX();
+			_actorY = minY + _thing.getY();
+			_actorWidth = _thing.pixelWidth();
+			_actorHeight = _thing.pixelHeight();
+			if (_component_elastic && (_actorX + _actorWidth < minX || _actorX > maxX || _actorY + _actorHeight < minY
+					|| _actorY > maxY)) {
+				continue;
+			}
+			final int tint = g.color();
+			final float alpha = g.alpha();
+			LTexture actorImage = _thing.getImage();
+			if (actorImage != null) {
+				final float width = _thing.pixelWidth();
+				final float height = _thing.pixelHeight();
+				_thing.setLastPaintSeqNum(_paintSeq++);
+				float oldAlpha = g.alpha();
+				_colorAlpha = _thing.getAlpha();
+				if (_colorAlpha != oldAlpha) {
+					g.setAlpha(_colorAlpha);
 				}
-				final int tint = g.color();
-				final float alpha = g.alpha();
-				LTexture actorImage = _thing.getImage();
-				if (actorImage != null) {
-					final float width = _thing.pixelWidth();
-					final float height = _thing.pixelHeight();
-					_thing.setLastPaintSeqNum(_paintSeq++);
-					float oldAlpha = g.alpha();
-					_colorAlpha = _thing.getAlpha();
-					if (_colorAlpha != oldAlpha) {
-						g.setAlpha(_colorAlpha);
-					}
-					g.draw(actorImage, _actorX, _actorY, width, height,
-							_colorTemp
-									.setColor(_component_baseColor == null ? LColor.getColorARGBInt(_thing.filterColor)
-											: LColor.combine(_component_baseColor, _thing.filterColor)),
-							_thing.getRotation(), _thing.scaleX, _thing.scaleY, _thing.flipX, _thing.flipY);
-					if (_colorAlpha != oldAlpha) {
-						g.setAlpha(oldAlpha);
-					}
+				g.draw(actorImage, _actorX, _actorY, width, height,
+						_colorTemp.setColor(_component_baseColor == null ? LColor.getColorARGBInt(_thing.filterColor)
+								: LColor.combine(_component_baseColor, _thing.filterColor)),
+						_thing.getRotation(), _thing.scaleX, _thing.scaleY, _thing.flipX, _thing.flipY);
+				if (_colorAlpha != oldAlpha) {
+					g.setAlpha(oldAlpha);
 				}
-				if (_thing.isConsumerDrawing) {
-					if (_actorX == 0 && _actorY == 0) {
+			}
+			if (_thing.isConsumerDrawing) {
+				if (_actorX == 0 && _actorY == 0) {
+					_thing.draw(g);
+					if (_currentLayerListener) {
+						_thing.actorListener.draw(g);
+					}
+				} else {
+					try {
+						g.saveTx();
+						g.translate(_actorX, _actorY);
 						_thing.draw(g);
 						if (_currentLayerListener) {
 							_thing.actorListener.draw(g);
 						}
-					} else {
-						try {
-							g.saveTx();
-							g.translate(_actorX, _actorY);
-							_thing.draw(g);
-							if (_currentLayerListener) {
-								_thing.actorListener.draw(g);
-							}
-						} finally {
-							g.translate(-_actorX, -_actorY);
-							g.restoreTx();
-						}
+					} finally {
+						g.translate(-_actorX, -_actorY);
+						g.restoreTx();
 					}
 				}
-				g.setAlpha(alpha);
-				g.setTint(tint);
 			}
-
+			g.setAlpha(alpha);
+			g.setTint(tint);
 		}
 	}
 
@@ -505,25 +520,110 @@ public class LLayer extends ActorLayer {
 	protected void processTouchPressed() {
 		if (_input != null && !_input.isMoving()) {
 			super.processTouchPressed();
+
 			final Vector2f pos = getUITouchXY();
-			int dx = MathUtils.floor(pos.x);
-			int dy = MathUtils.floor(pos.y);
-			_dragActor = getSynchronizedObject(dx, dy);
-			if (_dragActor != null) {
+			float fx = pos.x;
+			float fy = pos.y;
+
+			_touchStartX = fx;
+			_touchStartY = fy;
+
+			_pressedActor = getSynchronizedObject(MathUtils.floor(fx), MathUtils.floor(fy));
+			_touchStartedOnActor = (_pressedActor != null && _pressedActor.isTouchable());
+
+			if (_pressedActor != null) {
+				_dragActor = _pressedActor;
 				if (!_dragActor.isClick()) {
-					_dragActor.downClick(dx, dy);
+					_dragActor.downClick(MathUtils.floor(fx), MathUtils.floor(fy));
 					if (_dragActor.actorListener != null) {
-						_dragActor.actorListener.downClick(dx, dy);
+						_dragActor.actorListener.downClick(MathUtils.floor(fx), MathUtils.floor(fy));
 					}
 					_dragActor.clicked = true;
 				}
+			} else {
+				_dragActor = null;
 			}
+
 			try {
-				this.downClick(dx, dy);
+				this.downClick(MathUtils.floor(fx), MathUtils.floor(fy));
 			} catch (Throwable e) {
 				LSystem.error("Layer downClick() exception", e);
 			}
 			_currentLayerTouchClick = true;
+			_currentDragging = false;
+		}
+	}
+
+	@Override
+	protected void processTouchDragged() {
+		if (!_currentLayerTouchClick) {
+			return;
+		}
+		if (_input != null && _input.isMoving()) {
+			final Vector2f pos = getUITouchXY();
+			float fx = pos.x;
+			float fy = pos.y;
+
+			float dxTotal = fx - _touchStartX;
+			float dyTotal = fy - _touchStartY;
+			float distSq = dxTotal * dxTotal + dyTotal * dyTotal;
+
+			if (!_currentDragging) {
+				if (distSq < _touchSlop * _touchSlop) {
+					// 加个容差判断，否则跨平台有坑
+					return;
+				}
+				_currentDragging = true;
+			}
+
+			if (_touchStartedOnActor && _pressedActor != null) {
+				if (_pressedActor.isDrag() && _pressedActor.isClick()) {
+					objects.sendToFront(_pressedActor);
+					RectBox rect = _pressedActor.getBoundingRect();
+					int nx = MathUtils.floor(fx - rect.width / 2);
+					int ny = MathUtils.floor(fy - rect.height / 2);
+					if (_pressedActor.getLLayer() != null) {
+						_pressedActor.setLocation(nx, ny);
+						_pressedActor.drag(MathUtils.floor(fx), MathUtils.floor(fy));
+						if (_pressedActor.actorListener != null) {
+							_pressedActor.actorListener.drag(MathUtils.floor(fx), MathUtils.floor(fy));
+						}
+					}
+					_dragActor = _pressedActor;
+					_lastDropX = MathUtils.floor(fx);
+					_lastDropY = MathUtils.floor(fy);
+					return;
+				} else {
+					return;
+				}
+			}
+
+			if (!_dragLocked) {
+				int dropX = _input == null ? 0 : this._input.getTouchIntDX();
+				int dropY = _input == null ? 0 : this._input.getTouchIntDY();
+				if (isNotMoveInScreen(dropX + x(), dropY + y())) {
+					return;
+				}
+				if (getContainer() != null) {
+					getContainer().sendToFront(this);
+				}
+				try {
+					this.move(dropX, dropY);
+					this.dragClick(dropX, dropY);
+				} catch (Throwable e) {
+					LSystem.error("Layer drag() exception", e);
+				}
+			} else {
+				if (_actorDrag) {
+					checkDragActor();
+				}
+			}
+			try {
+				super.dragClick();
+			} catch (Throwable e) {
+				LSystem.error("Layer dragClick() exception", e);
+			}
+			_currentDragging = true;
 		}
 	}
 
@@ -537,71 +637,38 @@ public class LLayer extends ActorLayer {
 			final Vector2f pos = getUITouchXY();
 			int dx = MathUtils.floor(pos.x);
 			int dy = MathUtils.floor(pos.y);
-			_dragActor = getSynchronizedObject(dx, dy);
-			if (_dragActor != null) {
-				if (_dragActor.isClick()) {
-					_dragActor.upClick(dx, dy);
-					if (_dragActor.actorListener != null) {
-						_dragActor.actorListener.upClick(dx, dy);
+
+			if (_touchStartedOnActor && _pressedActor != null) {
+				if (_pressedActor.isClick()) {
+					_pressedActor.upClick(dx, dy);
+					if (_pressedActor.actorListener != null) {
+						_pressedActor.actorListener.upClick(dx, dy);
 					}
-					_dragActor.clicked = false;
+					_pressedActor.clicked = false;
+				}
+			} else {
+				Actor a = getSynchronizedObject(dx, dy);
+				if (a != null && a.isClick()) {
+					a.upClick(dx, dy);
+					if (a.actorListener != null) {
+						a.actorListener.upClick(dx, dy);
+					}
+					a.clicked = false;
 				}
 			}
+
 			try {
 				this.upClick(dx, dy);
 			} catch (Throwable e) {
 				LSystem.error("Layer upClick() exception", e);
 			}
+
+			// 清理所有临时状态
 			this._dragActor = null;
+			this._pressedActor = null;
+			this._touchStartedOnActor = false;
 			this._currentDragging = false;
 			this._currentLayerTouchClick = false;
-		}
-	}
-
-	@Override
-	protected void processTouchDragged() {
-		if (!_currentLayerTouchClick) {
-			return;
-		}
-		if (_input != null && _input.isMoving()) {
-			int dropX = 0;
-			int dropY = 0;
-			if (!_dragLocked) {
-				boolean moveActor = false;
-				if (_actorDrag) {
-					moveActor = checkDragActor();
-				}
-				if (!moveActor) {
-					synchronized (_input) {
-						validatePosition();
-						dropX = this._input == null ? 0 : this._input.getTouchIntDX();
-						dropY = this._input == null ? 0 : this._input.getTouchIntDY();
-						if (isNotMoveInScreen(dropX + x(), dropY + y())) {
-							return;
-						}
-						if (getContainer() != null) {
-							getContainer().sendToFront(this);
-						}
-						try {
-							this.move(dropX, dropY);
-							this.dragClick(dropX, dropY);
-						} catch (Throwable e) {
-							LSystem.error("Layer drag() exception", e);
-						}
-					}
-				}
-			} else {
-				if (!_actorDrag) {
-					return;
-				}
-				checkDragActor();
-			}
-			try {
-				super.dragClick();
-			} catch (Throwable e) {
-				LSystem.error("Layer dragClick() exception", e);
-			}
-			_currentDragging = true;
 		}
 	}
 
@@ -613,32 +680,28 @@ public class LLayer extends ActorLayer {
 		int dropY = 0;
 		boolean moveActor = false;
 		if (_actorDrag) {
-			synchronized (objects) {
-				final Vector2f pos = getUITouchXY();
-				dropX = MathUtils.floor(pos.x);
-				dropY = MathUtils.floor(pos.y);
-				if (_lastDropX == dropX && _lastDropY == dropY) {
-					return (_dragActor != null && _dragActor.isDrag());
-				}
-				if (_dragActor == null) {
-					_dragActor = getSynchronizedObject(dropX, dropY);
-				}
-				if (_dragActor != null && _dragActor.isDrag() && _dragActor.isClick()) {
-					synchronized (_dragActor) {
-						objects.sendToFront(_dragActor);
-						RectBox rect = _dragActor.getBoundingRect();
-						int dx = dropX - (rect.width / 2);
-						int dy = dropY - (rect.height / 2);
-						if (_dragActor.getLLayer() != null) {
-							_dragActor.setLocation(dx, dy);
-							_dragActor.drag(dropX, dropY);
-							if (_dragActor.actorListener != null) {
-								_dragActor.actorListener.drag(dropX, dropY);
-							}
-						}
-						moveActor = true;
+			final Vector2f pos = getUITouchXY();
+			dropX = MathUtils.floor(pos.x);
+			dropY = MathUtils.floor(pos.y);
+			if (_lastDropX == dropX && _lastDropY == dropY) {
+				return (_dragActor != null && _dragActor.isDrag());
+			}
+			if (_dragActor == null) {
+				_dragActor = getSynchronizedObject(dropX, dropY);
+			}
+			if (_dragActor != null && _dragActor.isDrag() && _dragActor.isClick()) {
+				objects.sendToFront(_dragActor);
+				RectBox rect = _dragActor.getBoundingRect();
+				int dx = dropX - (rect.width / 2);
+				int dy = dropY - (rect.height / 2);
+				if (_dragActor.getLLayer() != null) {
+					_dragActor.setLocation(dx, dy);
+					_dragActor.drag(dropX, dropY);
+					if (_dragActor.actorListener != null) {
+						_dragActor.actorListener.drag(dropX, dropY);
 					}
 				}
+				moveActor = true;
 			}
 		}
 		_lastDropX = dropX;

@@ -1016,7 +1016,7 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 		return SkinManager.get();
 	}
 
-	private final TouchedClick makeTouched() {
+	private final synchronized TouchedClick makeTouched() {
 		if (_touchListener == null) {
 			_touchListener = new TouchedClick();
 		}
@@ -1034,25 +1034,36 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 		clearInput(true, true);
 	}
 
-	protected void clearInput(boolean clearTouch, boolean clearKey) {
+	protected synchronized void clearInput(boolean clearTouch, boolean clearKey) {
 		if (clearTouch) {
 			this._touchButtonPressed = this._touchButtonReleased = NO_BUTTON;
 			this._touchDX = -1;
 			this._touchDY = -1;
 			this._lastTouchX = -1;
 			this._lastTouchY = -1;
-			this._touchDifX = _touchDifY = 0f;
-			this._touchInitX = _touchInitY = 0f;
-			this._touchPrevDifX = _touchPrevDifY = 0f;
+			this._touchDifX = this._touchDifY = 0f;
+			this._touchInitX = this._touchInitY = 0f;
+			this._touchPrevDifX = this._touchPrevDifY = 0f;
 			if (_touchTypes != null) {
 				_touchTypes.clear();
 			}
-			SysTouch.resetTouch();
+			try {
+				SysTouch.resetTouch();
+			} catch (Throwable t) {
+			}
 		}
 		if (clearKey) {
-			this._keyTypes.clear();
-			this.clearActionKey();
-			SysKey.resetKey();
+			if (_keyTypes != null) {
+				_keyTypes.clear();
+			}
+			try {
+				this.clearActionKey();
+			} catch (Throwable t) {
+			}
+			try {
+				SysKey.resetKey();
+			} catch (Throwable t) {
+			}
 		}
 	}
 
@@ -1224,7 +1235,7 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 	public Screen packLayout(final LayoutManager manager, final float spacex, final float spacey,
 			final float spaceWidth, final float spaceHeight) {
 		if (_currentDesktop != null) {
-			_currentDesktop.packLayout(manager, spacex, spacey, spaceHeight, spaceHeight);
+			_currentDesktop.packLayout(manager, spacex, spacey, spaceWidth, spaceHeight);
 		}
 		return this;
 	}
@@ -1307,7 +1318,7 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 	 * @param touchY
 	 */
 	private final void updateTouchArea(final LTouchArea.Event e, final float touchX, final float touchY) {
-		if (this._touchAreas.size == 0) {
+		if (this._touchAreas == null || this._touchAreas.size == 0) {
 			return;
 		}
 		final TArray<LTouchArea> touchAreas = this._touchAreas;
@@ -1873,6 +1884,24 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 			return isMoving();
 		}
 		return false;
+	}
+
+	public Screen setBackgroundColor(LColor color) {
+		if (color == null) {
+			this._backgroundColor = LColor.black;
+		} else {
+			this._backgroundColor = color;
+		}
+		return this;
+	}
+
+	public Screen setBaseColor(LColor color) {
+		if (color == null) {
+			this._baseColor = LColor.white;
+		} else {
+			this._baseColor = color;
+		}
+		return this;
 	}
 
 	public Screen setWidth(float w) {
@@ -5227,17 +5256,17 @@ public abstract class Screen extends PlayerUtils implements SysInput, IArray, LR
 		// 处理直接加入screen中的循环
 		if (_initLoopEvents) {
 			if (_loopEvents != null && _loopEvents.size > 0) {
-				synchronized (this._loopEvents) {
-					if (_frameLooptoUpdated == null) {
-						_frameLooptoUpdated = new TArray<FrameLoopEvent>(this._loopEvents);
-					} else if (_frameLooptoUpdated.size == this._loopEvents.size) {
-						_frameLooptoUpdated.fill(this._loopEvents);
-					} else {
-						_frameLooptoUpdated.clear();
-						_frameLooptoUpdated.addAll(this._loopEvents);
-					}
-				}
 				try {
+					synchronized (this._loopEvents) {
+						if (_frameLooptoUpdated == null) {
+							_frameLooptoUpdated = new TArray<FrameLoopEvent>(this._loopEvents);
+						} else if (_frameLooptoUpdated.size == this._loopEvents.size) {
+							_frameLooptoUpdated.fill(this._loopEvents);
+						} else {
+							_frameLooptoUpdated.clear();
+							_frameLooptoUpdated.addAll(this._loopEvents);
+						}
+					}
 					for (FrameLoopEvent eve : _frameLooptoUpdated) {
 						eve.call(elapsedTime, this);
 						if (eve.isDead()) {
