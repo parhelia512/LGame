@@ -1,3 +1,5 @@
+## This folder contains the core code, library files and examples for the Loon Java game framework/engine
+
 ## 人能弘道，非道宏人，Java游戏之道，在人而不在Java
 
 Java is suitable for game development. Technically it has everything.
