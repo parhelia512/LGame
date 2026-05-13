@@ -1133,6 +1133,74 @@ public final class LColor implements Serializable {
 		return new LColor(rgb[0], rgb[1], rgb[2], alpha);
 	}
 
+	public static int HSBtoRGB(float h, float s, float v) {
+		if (s <= 0f) {
+			int c = MathUtils.min(255, MathUtils.max(0, (int) (v * 255f + 0.5f)));
+			return 0xFF000000 | (c << 16) | (c << 8) | c;
+		}
+		h = h - MathUtils.floor(h);
+		float hf = h * 6f;
+		int sector = (int) hf;
+		float f = hf - sector;
+		float p = v * (1f - s);
+		float q = v * (1f - s * f);
+		float t = v * (1f - s * (1f - f));
+		int ri, gi, bi;
+		switch (sector) {
+		case 0:
+			ri = (int) (v * 255f + 0.5f);
+			gi = (int) (t * 255f + 0.5f);
+			bi = (int) (p * 255f + 0.5f);
+			break;
+		case 1:
+			ri = (int) (q * 255f + 0.5f);
+			gi = (int) (v * 255f + 0.5f);
+			bi = (int) (p * 255f + 0.5f);
+			break;
+		case 2:
+			ri = (int) (p * 255f + 0.5f);
+			gi = (int) (v * 255f + 0.5f);
+			bi = (int) (t * 255f + 0.5f);
+			break;
+		case 3:
+			ri = (int) (p * 255f + 0.5f);
+			gi = (int) (q * 255f + 0.5f);
+			bi = (int) (v * 255f + 0.5f);
+			break;
+		case 4:
+			ri = (int) (t * 255f + 0.5f);
+			gi = (int) (p * 255f + 0.5f);
+			bi = (int) (v * 255f + 0.5f);
+			break;
+		default:
+			ri = (int) (v * 255f + 0.5f);
+			gi = (int) (p * 255f + 0.5f);
+			bi = (int) (q * 255f + 0.5f);
+			break;
+		}
+		return 0xFF000000 | (ri << 16) | (gi << 8) | bi;
+	}
+
+	public static int HSLtoRGB(float hDeg, float s, float l) {
+		float h = ((hDeg % 360) + 360) % 360 / 360f;
+		s = MathUtils.max(0f, MathUtils.min(1f, s));
+		l = MathUtils.max(0f, MathUtils.min(1f, l));
+		float r, g, b;
+		if (s == 0.0) {
+			r = g = b = l;
+		} else {
+			float q = (l < 0.5f) ? (l * (1f + s)) : (l + s - l * s);
+			float p = 2f * l - q;
+			r = hue2rgb(p, q, h + 1f / 3f);
+			g = hue2rgb(p, q, h);
+			b = hue2rgb(p, q, h - 1f / 3f);
+		}
+		int ri = MathUtils.round(r * 255f);
+		int gi = MathUtils.round(g * 255f);
+		int bi = MathUtils.round(b * 255f);
+		return 0xFF000000 | (ri << 16) | (gi << 8) | bi;
+	}
+
 	private final static float added(float c, final float i) {
 		c += i;
 		if (c > 1f) {

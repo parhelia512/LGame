@@ -530,6 +530,8 @@ public final class Pixmap extends PixmapComposite implements Canvas.ColorPixel, 
 		return srcPixels;
 	}
 
+	private LColor result_color = new LColor();
+
 	private RectI temp_rect = new RectI();
 
 	private boolean _dirty;
@@ -3207,9 +3209,11 @@ public final class Pixmap extends PixmapComposite implements Canvas.ColorPixel, 
 		if (src == _transparent) {
 			src = pixel;
 		}
-		if (_composite == -1) {
-			if (_baseAlpha != 1f) {
-				dst = SET_DEFAULT(srcColor.setColor(src), dstColor.setColor(dst), _transparent, _baseAlpha);
+		if (_composite <= -1) {
+			if (MathUtils.equal(_baseAlpha, 1f)) {
+				dst = SET_SRC_OVER(srcColor.setColor(src), dstColor.setColor(dst), _transparent, _baseAlpha);
+			} else {
+				dst = SET_MULTIPLY(srcColor.setColor(src), dstColor.setColor(dst), _transparent, _baseAlpha);
 			}
 		} else {
 			switch (_composite) {
@@ -3277,12 +3281,12 @@ public final class Pixmap extends PixmapComposite implements Canvas.ColorPixel, 
 		if (_baseColor == LColor.DEF_COLOR) {
 			pixels[pixelIndex] = (newColor == _transparent) ? src : newColor;
 		} else {
-			if (newColor == _transparent) {
-				pixels[pixelIndex] = src;
+			dstColor.setColor(newColor);
+			srcColor.setColor(_baseColor);
+			if (!dstColor.equals(srcColor)) {
+				pixels[pixelIndex] = dstColor.multiply(srcColor, result_color).getARGB();
 			} else {
-				dstColor.setColor(newColor);
-				srcColor.setColor(_baseColor);
-				pixels[pixelIndex] = dstColor.multiply(srcColor).getARGB();
+				pixels[pixelIndex] = dstColor.getARGB();
 			}
 		}
 		_dirty = true;
@@ -4019,6 +4023,7 @@ public final class Pixmap extends PixmapComposite implements Canvas.ColorPixel, 
 			_paintCanvas = null;
 		}
 		temp_rect = null;
+		result_color = null;
 		srcColor = null;
 		dstColor = null;
 	}

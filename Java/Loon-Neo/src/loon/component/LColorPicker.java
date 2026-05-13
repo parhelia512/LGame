@@ -30,24 +30,22 @@ import loon.opengl.GLEx;
 import loon.utils.MathUtils;
 import loon.utils.TArray;
 
+/**
+ * 标准的颜色选择器，就是常规的颜色选择
+ */
 public class LColorPicker extends LComponent {
 
-	private final static int[] defaultColors = new int[] { 0x000000, 0x333333, 0x666666, 0x999999, 0xCCCCCC, 0xFFFFFF,
+	private static final int[] DEFAULT_COLORS = new int[] { 0x000000, 0x333333, 0x666666, 0x999999, 0xCCCCCC, 0xFFFFFF,
 			0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0x00FFFF, 0xFF00FF };
 
 	private final TArray<LColor> _colors = new TArray<LColor>();
-
 	private final int _colorRow;
-
 	private final int _colorCol;
-
 	private final int _gridSize;
 
-	private int _selected;
-
+	private int _selectedIndex = -1;
 	private LTexture _cachePicker;
-
-	private boolean _initPicker;
+	private boolean _cacheValid = false;
 
 	public LColorPicker(int x, int y) {
 		this(x, y, 15);
@@ -58,38 +56,80 @@ public class LColorPicker extends LComponent {
 	}
 
 	public LColorPicker(int x, int y, int colorRow, int colorCol, int gridSize) {
-		super(x, y, colorRow * gridSize, colorRow * gridSize);
-		if (colorCol < 1) {
-			throw new LSysException("The color column only has a minimum of 1 ！");
+		super(x, y, colorRow * gridSize, colorCol * gridSize);
+		if (colorRow < 1) {
+			throw new LSysException("The color row must be at least 1.");
 		}
-		if (colorCol > 12) {
-			throw new LSysException("The color column only has a maximum of 12 ！");
+		if (colorCol < 1) {
+			throw new LSysException("The color column must be at least 1.");
+		}
+		if (colorRow > 256 || colorCol > 256) {
+			throw new LSysException("colorRow/colorCol too large.");
 		}
 		this._colorRow = colorRow;
 		this._colorCol = colorCol;
 		this._gridSize = gridSize;
-		this._selected = -1;
+		this._selectedIndex = -1;
+		initDefaultColors();
+	}
+
+	private void initDefaultColors() {
+		_colors.clear();
+		for (int r = 0; r < _colorCol; r++) {
+			for (int c = 0; c < _colorRow; c++) {
+				LColor col;
+				if (r == 0 && c < DEFAULT_COLORS.length) {
+					col = new LColor(DEFAULT_COLORS[c]);
+				} else {
+					float hue = (float) c / MathUtils.max(1, _colorRow);
+					float sat = 0.8f;
+					float bri = 1.0f - (float) r / MathUtils.max(1, _colorCol);
+					int rgb = LColor.HSBtoRGB(hue, sat, bri) & 0xFFFFFF;
+					col = new LColor(rgb);
+				}
+				_colors.add(col);
+			}
+		}
+		invalidateCache();
+	}
+
+	public void invalidateCache() {
+		_cacheValid = false;
+	}
+
+	public void rebuildCache() {
+		if (_cachePicker != null) {
+			freeRes().remove(_cachePicker);
+			_cachePicker.close();
+			_cachePicker = null;
+		}
+		_cachePicker = createColorPickerCache();
+		if (_cachePicker != null) {
+			freeRes().add(_cachePicker);
+			_cacheValid = true;
+		}
 	}
 
 	protected LTexture createColorPickerCache() {
 		Image img = Image.createImage(getWidth(), getHeight());
 		Canvas g = img.getCanvas();
-		for (int i = 0; i < _colorCol; i++) {
-			for (int j = 0; j < _colorRow; j++) {
-				int color = 0;
-				if (j == 0) {
-					color = defaultColors[i];
-				} else if (j == 1) {
-					color = 0;
-				} else {
-					color = (((i * 3 + j / 6) % 3 << 0) + ((i / 6) << 0) * 3) * 0x33 << 16 | j % 6 * 0x33 << 8
-							| (i << 0) % 6 * 0x33;
+		g.setColor(LColor.white);
+		g.fillRect(0, 0, getWidth(), getHeight());
+		int expected = _colorRow * _colorCol;
+		while (_colors.size() < expected) {
+			_colors.add(new LColor(0x000000));
+		}
+		for (int row = 0; row < _colorCol; row++) {
+			for (int col = 0; col < _colorRow; col++) {
+				int tx = col * _gridSize;
+				int ty = row * _gridSize;
+				int idx = col + _colorRow * row;
+				LColor c = _colors.get(idx);
+				if (c == null) {
+					c = new LColor(0x000000);
+					_colors.set(idx, c);
 				}
-				LColor newColor = new LColor(color);
-				_colors.add(newColor);
-				final int tx = j * _gridSize;
-				final int ty = i * _gridSize;
-				g.setColor(newColor);
+				g.setColor(c);
 				g.fillRect(tx, ty, _gridSize, _gridSize);
 				g.setColor(LColor.white);
 				g.strokeRect(tx, ty, _gridSize - 1, _gridSize - 1);
@@ -100,29 +140,38 @@ public class LColorPicker extends LComponent {
 
 	@Override
 	public void createUI(GLEx g, int x, int y) {
-		if (!_initPicker) {
-			_cachePicker = createColorPickerCache();
-			_initPicker = true;
-			freeRes().add(_cachePicker);
+		if (!_cacheValid || _cachePicker == null) {
+			rebuildCache();
 		}
-		g.draw(_cachePicker, x, y);
-		final Vector2f point = getUITouchXY();
-		if (contains(point.x + x, point.y + y)) {
-			_selected = getColorIndexSelected();
-			for (int i = 0; i < _colorCol; i++) {
-				for (int j = 0; j < _colorRow; j++) {
-					int tx = j * _gridSize;
-					int ty = i * _gridSize;
-					if ((j + _colorRow * i) == _selected) {
-						final int nx = x + tx - _gridSize / 2;
-						final int ny = y + ty - _gridSize / 2;
-						final int newTile = _gridSize * 2;
-						g.fillRect(nx, ny, newTile, newTile, _colors.get(getColorIndex(tx, ty)));
-						g.drawRect(nx, ny, newTile, newTile, LColor.lightGray);
-					}
-
-				}
+		if (_cachePicker != null) {
+			g.draw(_cachePicker, x, y);
+		}
+		Vector2f touch = getUITouchXY();
+		float localX = touch.x;
+		float localY = touch.y;
+		if (contains(localX + x, localY + y)) {
+			int idx = getColorIndex(localX, localY);
+			if (idx >= 0 && idx < _colors.size()) {
+				int col = idx % _colorRow;
+				int row = idx / _colorRow;
+				int tx = x + col * _gridSize;
+				int ty = y + row * _gridSize;
+				int pad = MathUtils.max(2, _gridSize / 6);
+				int w = _gridSize + pad * 2;
+				int h = _gridSize + pad * 2;
+				int nx = tx - pad;
+				int ny = ty - pad;
+				LColor selColor = _colors.get(idx);
+				g.fillRect(nx, ny, w, h, selColor);
+				g.drawRect(nx, ny, w, h, LColor.lightGray);
 			}
+		}
+		if (_selectedIndex >= 0 && _selectedIndex < _colors.size()) {
+			int col = _selectedIndex % _colorRow;
+			int row = _selectedIndex / _colorRow;
+			int tx = x + col * _gridSize;
+			int ty = y + row * _gridSize;
+			g.drawRect(tx, ty, _gridSize - 1, _gridSize - 1, LColor.red);
 		}
 	}
 
@@ -134,38 +183,103 @@ public class LColorPicker extends LComponent {
 	@Override
 	public void upClick() {
 		super.upClick();
-		_selected = getColorIndexSelected();
-		final Vector2f pos = getUITouchXY();
-		final int x = MathUtils.floor(pos.x / this._gridSize);
-		final int y = MathUtils.floor(pos.y / this._gridSize);
-		onColorClickd(x, y, this._colors.get(x + _colorRow * y));
+		Vector2f pos = getUITouchXY();
+		int tx = MathUtils.floor(pos.x / this._gridSize);
+		int ty = MathUtils.floor(pos.y / this._gridSize);
+		if (tx < 0 || tx >= _colorRow || ty < 0 || ty >= _colorCol) {
+			return;
+		}
+		int idx = tx + _colorRow * ty;
+		if (idx >= 0 && idx < _colors.size()) {
+			_selectedIndex = idx;
+			onColorClicked(tx, ty, _colors.get(idx));
+		}
 	}
 
-	protected void onColorClickd(int tileX, int tileY, LColor color) {
-
+	protected void onColorClicked(int tileX, int tileY, LColor color) {
 	}
 
 	public String getColorHex() {
-		return getColorSelected().toString();
+		LColor c = getSelectedColor();
+		return c != null ? c.toString() : "#000000";
 	}
 
 	public String getColorCSS() {
-		return getColorSelected().toCSS();
-	}
-
-	public int getColorIndexSelected() {
-		final Vector2f pos = getUITouchXY();
-		return getColorIndex(pos.x, pos.y);
+		LColor c = getSelectedColor();
+		return c != null ? c.toCSS() : "rgb(0,0,0)";
 	}
 
 	public int getColorIndex(float x, float y) {
-		final int tx = MathUtils.floor(x / this._gridSize);
-		final int ty = MathUtils.floor(y / this._gridSize);
+		int tx = MathUtils.floor(x / this._gridSize);
+		int ty = MathUtils.floor(y / this._gridSize);
+		if (tx < 0 || tx >= _colorRow || ty < 0 || ty >= _colorCol) {
+			return -1;
+		}
 		return tx + _colorRow * ty;
 	}
 
-	public LColor getColorSelected() {
-		return this._colors.get(getColorIndexSelected());
+	public int getColorIndexSelected() {
+		Vector2f pos = getUITouchXY();
+		return getColorIndex(pos.x, pos.y);
+	}
+
+	public LColor getSelectedColor() {
+		if (_selectedIndex >= 0 && _selectedIndex < _colors.size()) {
+			return _colors.get(_selectedIndex);
+		}
+		int idx = getColorIndexSelected();
+		if (idx >= 0 && idx < _colors.size()) {
+			return _colors.get(idx);
+		}
+		return null;
+	}
+
+	public void setSelectedIndex(int index) {
+		if (index >= 0 && index < _colors.size()) {
+			this._selectedIndex = index;
+		} else {
+			this._selectedIndex = -1;
+		}
+	}
+
+	public int getSelectedIndex() {
+		return this._selectedIndex;
+	}
+
+	public void setSelectedColor(LColor color) {
+		if (color == null) {
+			this._selectedIndex = -1;
+			return;
+		}
+		int idx = _colors.indexOf(color);
+		if (idx >= 0) {
+			setSelectedIndex(idx);
+		} else {
+			_colors.add(color);
+			invalidateCache();
+			rebuildCache();
+			setSelectedIndex(_colors.size() - 1);
+		}
+	}
+
+	public void addColor(LColor color) {
+		if (color == null) {
+			return;
+		}
+		_colors.add(color);
+		invalidateCache();
+	}
+
+	public void removeColorAt(int index) {
+		if (index >= 0 && index < _colors.size()) {
+			_colors.removeIndex(index);
+			invalidateCache();
+		}
+	}
+
+	public void clearColors() {
+		_colors.clear();
+		initDefaultColors();
 	}
 
 	@Override
@@ -175,7 +289,7 @@ public class LColorPicker extends LComponent {
 
 	@Override
 	public void destroy() {
-		_initPicker = false;
+		_cacheValid = false;
+		_colors.clear();
 	}
-
 }

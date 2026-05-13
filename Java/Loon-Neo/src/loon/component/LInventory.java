@@ -1078,6 +1078,13 @@ public class LInventory extends LLayer {
 	}
 
 	@Override
+	public void process(long elapsedTime) {
+		if (_component_visible && _isMobile && isTouchDownClick() && isLongPressed()) {
+			checkTouchTip();
+		}
+	}
+
+	@Override
 	public void createCustomUI(GLEx g, int x, int y, int w, int h) {
 		if (!_component_visible) {
 			return;
@@ -1165,9 +1172,6 @@ public class LInventory extends LLayer {
 			ItemUI item = getItem(dx, dy);
 			if (item != null && _listener != null) {
 				_listener.onItemClick(item);
-			}
-			if (_isMobile && isLongPressed()) {
-				checkTouchTip();
 			}
 		}
 	}

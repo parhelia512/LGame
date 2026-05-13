@@ -177,7 +177,7 @@ public final class LSystem {
 	public static final float DEFAULT_MAX_PRE_SIZE = 10000f;
 
 	// 长按时间
-	public static final float LONG_PRESSED_TIME = 2f;
+	public static final float LONG_PRESSED_TIME = 1.2f;
 
 	// 默认缓存数量
 	public static final int DEFAULT_MAX_CACHE_SIZE = 32;

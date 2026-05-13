@@ -30,7 +30,6 @@ import loon.canvas.Image;
 import loon.canvas.LColor;
 import loon.canvas.LGradation;
 import loon.canvas.Pixmap;
-import loon.canvas.PixmapComposite;
 import loon.opengl.LSubTexture;
 import loon.utils.TArray;
 import loon.utils.ArrayMap;
@@ -41,7 +40,6 @@ public class DefUI extends HelperUtils {
 
 	public final static LTexture createDefaultCircleButton(LColor c, int width, int height) {
 		Pixmap pixmap = new Pixmap(width, height, true);
-		pixmap.setComposite(PixmapComposite.DST);
 		pixmap.setAlpha(0.8f);
 		pixmap.fillOval(0, 0, width - 1, height - 1, c);
 		pixmap.drawOval(0, 0, width - 1, height - 1, c.darker());
@@ -61,7 +59,6 @@ public class DefUI extends HelperUtils {
 
 	public final static LTexture createDefaultRoundButton(LColor c, int width, int height, int radius) {
 		Pixmap pixmap = new Pixmap(width, height, true);
-		pixmap.setComposite(PixmapComposite.DST);
 		pixmap.setAlpha(0.8f);
 		pixmap.setColor(c);
 		pixmap.fillRoundRect(0, 0, width, height, radius);

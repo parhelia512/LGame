@@ -33,6 +33,8 @@ import loon.action.map.items.ItemInfo;
 import loon.canvas.Canvas;
 import loon.canvas.Image;
 import loon.canvas.LColor;
+import loon.component.LInventory.InventoryListener;
+import loon.component.LInventory.ItemUI;
 import loon.component.skin.InventorySkin;
 import loon.component.skin.SkinManager;
 import loon.events.SysKey;
@@ -1078,6 +1080,13 @@ public class LInventory extends LLayer {
 	}
 
 	@Override
+	public void process(long elapsedTime) {
+		if (_component_visible && _isMobile && isTouchDownClick() && isLongPressed()) {
+			checkTouchTip();
+		}
+	}
+
+	@Override
 	public void createCustomUI(GLEx g, int x, int y, int w, int h) {
 		if (!_component_visible) {
 			return;
@@ -1165,9 +1174,6 @@ public class LInventory extends LLayer {
 			ItemUI item = getItem(dx, dy);
 			if (item != null && _listener != null) {
 				_listener.onItemClick(item);
-			}
-			if (_isMobile && isLongPressed()) {
-				checkTouchTip();
 			}
 		}
 	}

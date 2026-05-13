@@ -78,7 +78,7 @@ public class LLayer extends ActorLayer {
 
 	private DrawListener<LLayer> _drawListener;
 
-	private float _touchSlop = 3f;
+	private float _touchSlop = 2f;
 
 	private float _touchStartX = 0f;
 
