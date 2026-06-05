@@ -82,6 +82,62 @@ public abstract class LContainer extends LComponent implements IArray {
 		this._newLineHeight = -1f;
 	}
 
+	public LComponent addColNext(LComponent comp) {
+		return addColNext(comp, 0f, 1f);
+	}
+
+	public LComponent addColNext(LComponent comp, float offsetX, float offsetY) {
+		if (_destroyed) {
+			return comp;
+		}
+		if (comp == null) {
+			return null;
+		}
+		if (this == comp) {
+			return this;
+		}
+		sortComponents();
+		LComponent tag = null;
+		final LComponent[] childs = this._childs;
+		final int size = this._childCount;
+		if (size > 0) {
+			tag = childs[0];
+			comp.setLocation(tag.getX() + offsetX, tag.getY() + +tag.getHeight() + offsetY);
+		} else {
+			comp.setOffset(offsetX, offsetY);
+		}
+		add(comp);
+		return this;
+	}
+
+	public LComponent addRowNext(LComponent comp) {
+		return addRowNext(comp, 1f, 0f);
+	}
+
+	public LComponent addRowNext(LComponent comp, float offsetX, float offsetY) {
+		if (_destroyed) {
+			return comp;
+		}
+		if (comp == null) {
+			return null;
+		}
+		if (this == comp) {
+			return this;
+		}
+		sortComponents();
+		LComponent tag = null;
+		final LComponent[] childs = this._childs;
+		final int size = this._childCount;
+		if (size > 0) {
+			tag = childs[0];
+			comp.setLocation(tag.getX() + tag.getWidth() + offsetX, tag.getY() + offsetY);
+		} else {
+			comp.setOffset(offsetX, offsetY);
+		}
+		add(comp);
+		return this;
+	}
+
 	public LComponent addPadding(LComponent comp, float offX, float offY) {
 		return addPadding(comp, offX, offY, 2);
 	}
@@ -112,7 +168,7 @@ public abstract class LContainer extends LComponent implements IArray {
 		if (this == comp) {
 			return this;
 		}
-
+		sortComponents();
 		final String otherName = "ToolTip";
 
 		float maxX = 0;
@@ -1024,7 +1080,9 @@ public abstract class LContainer extends LComponent implements IArray {
 		if (_destroyed) {
 			return;
 		}
-		this._desktop.clearComponentsStat(this._childs);
+		if (_desktop != null) {
+			this._desktop.clearComponentsStat(this._childs);
+		}
 		final int size = this._childCount;
 		final LComponent[] childs = this._childs;
 		for (int i = 0; i < size; i++) {
@@ -1685,7 +1743,11 @@ public abstract class LContainer extends LComponent implements IArray {
 	}
 
 	public LContainer packLayout(final LayoutManager manager) {
-		return packLayout(manager, getComponents(), 0, 0, 0, 0, true);
+		return packLayout(manager, true);
+	}
+
+	public LContainer packLayout(final LayoutManager manager, boolean reversed) {
+		return packLayout(manager, getComponents(), 0, 0, 0, 0, reversed);
 	}
 
 	public LContainer packLayout(final LayoutManager manager, final LComponent[] comps) {

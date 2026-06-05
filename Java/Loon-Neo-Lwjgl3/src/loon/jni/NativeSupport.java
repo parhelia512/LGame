@@ -94,17 +94,20 @@ public final class NativeSupport {
 					File nativesDir = null;
 					try {
 						if (isWindows) {
-							nativesDir = export(is64Bit ? "lwjgl.dll" : "lwjgl32.dll", null).getParentFile();
+							File nativeLib = export(is64Bit ? "lwjgl.dll" : "lwjgl32.dll", null);
+							nativesDir = (nativeLib == null) ? new File(".") : nativeLib.getParentFile();
 							export(is64Bit ? "OpenAL.dll" : "OpenAL32.dll", nativesDir.getName());
 							export(is64Bit ? "glfw.dll" : "glfw32.dll", nativesDir.getName());
 							export(is64Bit ? "jemalloc.dll" : "jemalloc32.dll", nativesDir.getName());
 						} else if (isMac) {
-							nativesDir = export("liblwjgl.dylib", null).getParentFile();
+							File nativeLib = export("liblwjgl.dylib", null);
+							nativesDir = (nativeLib == null) ? new File(".") : nativeLib.getParentFile();
 							export("libglfw.dylib", nativesDir.getName());
 							export("libjemalloc.dylib", nativesDir.getName());
 							export("libopenal.dylib", nativesDir.getName());
 						} else if (isLinux || isFreeBSD) {
-							nativesDir = export(is64Bit ? "liblwjgl.so" : "liblwjgl32.so", null).getParentFile();
+							File nativeLib = export(is64Bit ? "liblwjgl.so" : "liblwjgl32.so", null);
+							nativesDir = (nativeLib == null) ? new File(".") : nativeLib.getParentFile();
 							export(is64Bit ? "libglfw.so" : "libglfw32.so", nativesDir.getName());
 							export(is64Bit ? "libjemalloc.so" : "libjemalloc32.so", nativesDir.getName());
 							export(is64Bit ? "libopenal.so" : "libopenal32.so", nativesDir.getName());
@@ -117,6 +120,7 @@ public final class NativeSupport {
 					}
 				}
 			} catch (Throwable e) {
+				throw new RuntimeException("Unable to extract LWJGL natives.", e);
 			}
 			try {
 				loadJNI("lplus");

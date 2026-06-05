@@ -51,6 +51,22 @@ public class LCardGroup extends LContainer {
 		FISHER_YATES, RIFFLE, OVERHAND, STRIP, MONGOOSE, PERFECT_RIFFLE
 	}
 
+	/**
+	 * 卡牌布局
+	 */
+	public enum LayoutMode {
+		FAN, // 孔雀开屏（默认）
+		STACK_VERTICAL, // 竖直叠放（从上到下重叠）
+		STACK_HORIZONTAL, // 水平叠放（从左到右重叠）
+		LINE_LTR, // 直线从左到右（不重叠）
+		LINE_RTL, // 直线从右到左
+		DIAGONAL_X, // X形斜角层叠
+		CIRCLE, // 圆形排列
+		GRID, // 网格排列
+		SCATTER, // 随机散开
+		ZIGZAG // 之字形排列
+	}
+
 	private static class CardTween {
 
 		private final LColor resultColor = new LColor();
@@ -193,6 +209,13 @@ public class LCardGroup extends LContainer {
 
 	private long _randomizeWiggleDuration = 220L;
 	private long _randomizeWiggleDelayStep = 20L;
+	private LayoutMode _layoutMode = LayoutMode.FAN;
+	private float _visibleFraction = 0.33f; // 叠放时每张卡露出比例（0..1）
+	private float _stackSpacing = 8f; // 叠放偏移（像素）
+	private int _gridCols = 4;
+	private float _diagonalAngle = 30f; // 斜角角度（度）
+	private boolean _layoutAnimate = false; // 切换布局时是否使用动画
+	private long _layoutAnimateDuration = 300L; // 动画基础时长
 
 	public LCardGroup() {
 		this(-25f);
@@ -221,6 +244,259 @@ public class LCardGroup extends LContainer {
 		_verticalOffsetY = -1;
 		_cardSpacing = 0f;
 		_autoUpdateLayout = true;
+	}
+
+	public LCardGroup setLayoutMode(LayoutMode mode) {
+		if (mode == null)
+			return this;
+		this._layoutMode = mode;
+		this._updateCards = false;
+		return this;
+	}
+
+	public LayoutMode getLayoutMode() {
+		return this._layoutMode;
+	}
+
+	public LCardGroup setVisibleFraction(float f) {
+		this._visibleFraction = MathUtils.clamp(f, 0f, 1f);
+		this._updateCards = false;
+		return this;
+	}
+
+	public float getVisibleFraction() {
+		return this._visibleFraction;
+	}
+
+	public LCardGroup setStackSpacing(float s) {
+		this._stackSpacing = s;
+		this._updateCards = false;
+		return this;
+	}
+
+	public float getStackSpacing() {
+		return this._stackSpacing;
+	}
+
+	public LCardGroup setGridCols(int cols) {
+		this._gridCols = MathUtils.max(1, cols);
+		this._updateCards = false;
+		return this;
+	}
+
+	public int getGridCols() {
+		return this._gridCols;
+	}
+
+	public LCardGroup setDiagonalAngle(float angle) {
+		this._diagonalAngle = angle;
+		this._updateCards = false;
+		return this;
+	}
+
+	public float getDiagonalAngle() {
+		return this._diagonalAngle;
+	}
+
+	public LCardGroup setLayoutAnimate(boolean animate) {
+		this._layoutAnimate = animate;
+		return this;
+	}
+
+	public boolean isLayoutAnimate() {
+		return this._layoutAnimate;
+	}
+
+	public LCardGroup setLayoutAnimateDuration(long ms) {
+		this._layoutAnimateDuration = MathUtils.max(0, ms);
+		return this;
+	}
+
+	/**
+	 * 根据当前_layoutMode 算每张卡的目标位置、旋转与层级
+	 */
+	private void setPositionsForMode() {
+		if (_childs == null)
+			return;
+		int n = getChildCount();
+		if (n == 0)
+			return;
+
+		float[] tx = new float[n];
+		float[] ty = new float[n];
+		float[] trot = new float[n];
+		int[] tz = new int[n];
+
+		switch (_layoutMode) {
+		case FAN: {
+			final float childrenTotalWidth = getChildTotalWidth() + (n - 1) * _cardSpacing;
+			float startX = getAnchorPositionByAlignment(childrenTotalWidth);
+			for (int i = 0; i < n; i++) {
+				LComponent c = getChildByIndex(i);
+				tx[i] = startX;
+				ty[i] = getY();
+				trot[i] = getCardRotation(i);
+				tz[i] = _defaultSortOrder + i;
+				startX += c.getWidth() + _cardSpacing;
+			}
+			break;
+		}
+		case STACK_VERTICAL: {
+			// 从上到下叠放，每张卡只露出visibleFraction的高度
+			float baseX = getCenterX();
+			float baseY = getY();
+			for (int i = 0; i < n; i++) {
+				LComponent c = getChildByIndex(i);
+				float visible = c.getHeight() * _visibleFraction;
+				tx[i] = baseX - c.getWidth() / 2f;
+				ty[i] = baseY + i * visible;
+				trot[i] = 0f;
+				tz[i] = _defaultSortOrder + i;
+			}
+			break;
+		}
+		case STACK_HORIZONTAL: {
+			// 从左到右叠放，每张卡只露出visibleFraction的宽度
+			float bx = getX();
+			for (int i = 0; i < n; i++) {
+				LComponent c = getChildByIndex(i);
+				float visibleW = c.getWidth() * _visibleFraction;
+				tx[i] = bx + i * visibleW;
+				ty[i] = getCenterY() - c.getHeight() / 2f;
+				trot[i] = 0f;
+				tz[i] = _defaultSortOrder + i;
+			}
+			break;
+		}
+		case LINE_LTR: {
+			float totalW = getChildTotalWidth() + (n - 1) * _cardSpacing;
+			float anchor = getAnchorPositionByAlignment(totalW);
+			float cur = anchor;
+			for (int i = 0; i < n; i++) {
+				LComponent c = getChildByIndex(i);
+				tx[i] = cur;
+				ty[i] = getY();
+				trot[i] = 0f;
+				tz[i] = _defaultSortOrder + i;
+				cur += c.getWidth() + _cardSpacing;
+			}
+			break;
+		}
+		case LINE_RTL: {
+			float totalW = getChildTotalWidth() + (n - 1) * _cardSpacing;
+			float anchor = getAnchorPositionByAlignment(totalW);
+			float cur = anchor + totalW - getChildByIndex(0).getWidth();
+			for (int i = 0; i < n; i++) {
+				LComponent c = getChildByIndex(i);
+				tx[i] = cur;
+				ty[i] = getY();
+				trot[i] = 0f;
+				tz[i] = _defaultSortOrder + i;
+				cur -= c.getWidth() + _cardSpacing;
+			}
+			break;
+		}
+		case DIAGONAL_X: {
+			// 交叉对角线排列
+			for (int i = 0; i < n; i++) {
+				LComponent c = getChildByIndex(i);
+				float t = i / (float) MathUtils.max(1, n - 1);
+				if (i % 2 == 0) {
+					tx[i] = getX() + t * (getWidth() - c.getWidth());
+					ty[i] = getY() + t * (getHeight() - c.getHeight());
+				} else {
+					tx[i] = getX() + (1 - t) * (getWidth() - c.getWidth());
+					ty[i] = getY() + t * (getHeight() - c.getHeight());
+				}
+				trot[i] = (i % 2 == 0) ? _diagonalAngle : -_diagonalAngle;
+				tz[i] = _defaultSortOrder + i;
+			}
+			break;
+		}
+		case CIRCLE: {
+			float radius = MathUtils.min(getWidth(), getHeight()) / 2f - 20f;
+			float cx = getCenterX();
+			float cy = getCenterY();
+			for (int i = 0; i < n; i++) {
+				LComponent c = getChildByIndex(i);
+				float ang = 2 * MathUtils.PI * i / n;
+				tx[i] = cx + MathUtils.cos(ang) * radius - c.getWidth() / 2f;
+				ty[i] = cy + MathUtils.sin(ang) * radius - c.getHeight() / 2f;
+				trot[i] = MathUtils.toDegrees(ang);
+				tz[i] = _defaultSortOrder + i;
+			}
+			break;
+		}
+		case GRID: {
+			int cols = MathUtils.max(1, _gridCols);
+			int rows = (n + cols - 1) / cols;
+			float cellW = getWidth() / (float) cols;
+			float cellH = getHeight() / (float) rows;
+			for (int i = 0; i < n; i++) {
+				int r = i / cols;
+				int cidx = i % cols;
+				LComponent c = getChildByIndex(i);
+				tx[i] = getX() + cidx * cellW + (cellW - c.getWidth()) / 2f;
+				ty[i] = getY() + r * cellH + (cellH - c.getHeight()) / 2f;
+				trot[i] = 0f;
+				tz[i] = _defaultSortOrder + i;
+			}
+			break;
+		}
+		case SCATTER: {
+			for (int i = 0; i < n; i++) {
+				LComponent c = getChildByIndex(i);
+				tx[i] = getX() + MathUtils.random() * MathUtils.max(0, getWidth() - c.getWidth());
+				ty[i] = getY() + MathUtils.random() * MathUtils.max(0, getHeight() - c.getHeight());
+				trot[i] = (MathUtils.random() - 0.5f) * 30f;
+				tz[i] = _defaultSortOrder + i;
+			}
+			break;
+		}
+		case ZIGZAG: {
+			float stepX = (getWidth() - getChildByIndex(0).getWidth()) / MathUtils.max(1, n - 1);
+			for (int i = 0; i < n; i++) {
+				LComponent c = getChildByIndex(i);
+				tx[i] = getX() + i * stepX;
+				ty[i] = getY() + ((i % 2 == 0) ? 0 : c.getHeight() / 4f);
+				trot[i] = (i % 2 == 0) ? -5f : 5f;
+				tz[i] = _defaultSortOrder + i;
+			}
+			break;
+		}
+		default:
+			break;
+		}
+
+		applyPositions(tx, ty, trot, tz);
+	}
+
+	/**
+	 * 将计算好的目标位置应用到每张卡上，支持直接设置或使用animateTo做平滑过渡
+	 * 
+	 * @param tx
+	 * @param ty
+	 * @param trot
+	 * @param tz
+	 */
+	private void applyPositions(float[] tx, float[] ty, float[] trot, int[] tz) {
+		int n = getChildCount();
+		for (int i = 0; i < n; i++) {
+			LComponent c = getChildByIndex(i);
+			if (c == null)
+				continue;
+			if (_layoutAnimate) {
+				long delay = i * 20L;
+				long dur = _layoutAnimateDuration + i * 10L;
+				animateTo(c, tx[i], ty[i], _baseScale, _baseAlpha, trot[i], c.getColor(), dur, delay, false, null);
+			} else {
+				c.setLocation(tx[i], ty[i]);
+				c.setRotation(trot[i]);
+				c.setZOrder(tz[i]);
+				c.setScale(_baseScale);
+				c.setAlpha(_baseAlpha);
+			}
+		}
 	}
 
 	/**
@@ -797,7 +1073,10 @@ public class LCardGroup extends LContainer {
 		}
 		setCardClick();
 		setCardsPosition();
-		setCardsRotation();
+		setPositionsForMode();
+		if (_layoutMode == LayoutMode.FAN) {
+			setCardsRotation();
+		}
 		setChildZOrders(_defaultSortOrder);
 		_updateCards = true;
 		_verticalOffsetY = -1;
@@ -1667,6 +1946,46 @@ public class LCardGroup extends LContainer {
 
 	public void setAutoDrawDuration(long a) {
 		this._autoDrawDuration = a;
+	}
+
+	public LCardGroup layoutStackVertical(float visibleFraction) {
+		setLayoutMode(LayoutMode.STACK_VERTICAL);
+		setVisibleFraction(visibleFraction);
+		setLayoutAnimate(false);
+		refreshLayout();
+		return this;
+	}
+
+	public LCardGroup layoutStackHorizontal(float visibleFraction) {
+		setLayoutMode(LayoutMode.STACK_HORIZONTAL);
+		setVisibleFraction(visibleFraction);
+		setLayoutAnimate(false);
+		refreshLayout();
+		return this;
+	}
+
+	public LCardGroup layoutDiagonalXAnimated() {
+		setLayoutMode(LayoutMode.DIAGONAL_X);
+		setLayoutAnimate(true);
+		setLayoutAnimateDuration(400L);
+		refreshLayout();
+		return this;
+	}
+
+	public LCardGroup layoutLineXAnimated() {
+		setLayoutMode(LayoutMode.LINE_LTR);
+		setLayoutAnimate(true);
+		setLayoutAnimateDuration(400L);
+		refreshLayout();
+		return this;
+	}
+
+	public LCardGroup layoutLineYAnimated() {
+		setLayoutMode(LayoutMode.LINE_RTL);
+		setLayoutAnimate(true);
+		setLayoutAnimateDuration(400L);
+		refreshLayout();
+		return this;
 	}
 
 	@Override

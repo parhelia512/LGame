@@ -88,7 +88,7 @@ public abstract class LayoutManager implements LRelease {
 	 */
 	public final static void elementsTriangle(final Screen root, final TArray<ActionBind> objs, Triangle2f triangle,
 			int stepRate, float offsetX, float offsetY) {
-		TArray<Point> p1 = Line.at(triangle.getX1(), triangle.getY1(), triangle.getY1(), triangle.getY2())
+		TArray<Point> p1 = Line.at(triangle.getX1(), triangle.getY1(), triangle.getX2(), triangle.getY2())
 				.getBresenhamPoints(stepRate);
 		TArray<Point> p2 = Line.at(triangle.getX2(), triangle.getY2(), triangle.getX3(), triangle.getY3())
 				.getBresenhamPoints(stepRate);
@@ -162,6 +162,9 @@ public abstract class LayoutManager implements LRelease {
 	 */
 	public final static void elementsLine(final Screen root, final TArray<ActionBind> objs, Line line, float offsetX,
 			float offsetY) {
+		if (objs == null || objs.size == 0 || line == null) {
+			return;
+		}
 		Vector2f pos = line.getDirectionValue();
 		int size = objs.size;
 		float newX = line.x;
@@ -224,11 +227,14 @@ public abstract class LayoutManager implements LRelease {
 	 */
 	public final static void elementsCircle(final Screen root, final TArray<ActionBind> objs, Circle circle,
 			float startAngle, float endAngle, float offsetX, float offsetY) {
+		if (objs == null || objs.size == 0 || circle == null) {
+			return;
+		}
 		if (startAngle == -1f) {
-			startAngle = 0;
+			startAngle = 0f;
 		}
 		if (endAngle == -1f) {
-			endAngle = 6.28f;
+			endAngle = MathUtils.TWO_PI;
 		}
 		int size = objs.size;
 		float angle = startAngle;
@@ -283,9 +289,15 @@ public abstract class LayoutManager implements LRelease {
 	 */
 	public final static void elements(final Screen root, final TArray<ActionBind> objs, BoxSize rectView,
 			float cellWidth, float cellHeight, float offsetX, float offsetY) {
+		if (objs == null || rectView == null) {
+			return;
+		}
 		float blockWidth;
 		float blockHeight;
-		float x = rectView.getX(), y = rectView.getY();
+		float x = rectView.getX();
+		float y = rectView.getY();
+		float rightBound = rectView.getX() + rectView.getWidth();
+		float bottomBound = rectView.getY() + rectView.getHeight();
 		for (int i = 0; i < objs.size; i++) {
 			ActionBind obj = objs.get(i);
 			blockWidth = MathUtils.max(cellWidth, obj.getWidth());
@@ -295,12 +307,63 @@ public abstract class LayoutManager implements LRelease {
 				root.add(obj);
 			}
 			y += blockHeight + offsetY;
-			if (y >= rectView.getHeight()) {
+			if (y + blockHeight > bottomBound) {
 				y = rectView.getY();
 				x += blockWidth + offsetX;
 			}
-			if (x >= rectView.getWidth()) {
+			if (x + blockWidth > rightBound) {
 				x = rectView.getX();
+			}
+		}
+	}
+
+	public final static void elementsNineGrid(final Screen root, final TArray<ActionBind> objs, float x, float y,
+			float width, float height) {
+		if (objs == null || objs.size == 0 || root == null) {
+			return;
+		}
+		int cols = 3, rows = 3;
+		float cellW = width / cols;
+		float cellH = height / rows;
+		int idx = 0;
+		for (int r = 0; r < rows; r++) {
+			for (int c = 0; c < cols; c++) {
+				if (idx >= objs.size) {
+					return;
+				}
+				ActionBind obj = objs.get(idx++);
+				float px = x + c * cellW;
+				float py = y + r * cellH;
+				obj.setLocation(px + (cellW - obj.getWidth()) / 2f, py + (cellH - obj.getHeight()) / 2f);
+				if (!root.contains(obj)) {
+					root.add(obj);
+				}
+			}
+		}
+	}
+
+	public final static void elementsKeyboard(final Screen root, final TArray<ActionBind> objs, float x, float y,
+			float totalWidth, int columns, float keyHeight, float gapX, float gapY) {
+		if (objs == null || objs.size == 0 || root == null || columns <= 0) {
+			return;
+		}
+		float keyWidth = (totalWidth - (columns - 1) * gapX) / columns;
+		float px = x;
+		float py = y;
+		int col = 0;
+		for (int i = 0; i < objs.size; i++) {
+			ActionBind obj = objs.get(i);
+			obj.setLocation(px + (keyWidth - obj.getWidth()) / 2f, py + (keyHeight - obj.getHeight()) / 2f);
+			if (!root.contains(obj)) {
+				root.add(obj);
+			}
+			col++;
+			if (col >= columns) {
+				col = 0;
+				px = x;
+				py += keyHeight + gapY;
+			} else {
+				px += keyWidth + gapX;
 			}
 		}
 	}
@@ -322,6 +385,9 @@ public abstract class LayoutManager implements LRelease {
 
 	public final static void elements(final Screen root, final TArray<LObject<?>> objs, int sx, int sy, int cellWidth,
 			int cellHeight, int offsetX, int offsetY, int maxHeight) {
+		if (objs == null || root == null) {
+			return;
+		}
 		int x = sx;
 		int y = sy;
 		for (int i = 0; i < objs.size; i++) {

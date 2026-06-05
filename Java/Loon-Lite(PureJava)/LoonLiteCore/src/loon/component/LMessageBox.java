@@ -184,7 +184,7 @@ public class LMessageBox extends LComponent implements FontSet<LMessageBox> {
 			this._boxY = y;
 			drawBorder(g, this._boxX, this._boxY, c);
 			if (this._drawFace) {
-				_drawFace(g, this._boxX + _offsetX, this._boxY + _offsetY);
+				drawFace(g, this._boxX + _offsetX, this._boxY + _offsetY);
 			}
 			final float newX = this._boxX + this._messageX + _offsetX;
 			final float newY = this._boxY + this._messageY + _offsetY;
@@ -241,7 +241,7 @@ public class LMessageBox extends LComponent implements FontSet<LMessageBox> {
 			}
 		}
 
-		private void _drawFace(GLEx g, float x, float y) {
+		private void drawFace(GLEx g, float x, float y) {
 			g.draw(this.imgFace, x + this._faceX, y + this._faceY, this._faceWidth, this._faceHeight);
 		}
 

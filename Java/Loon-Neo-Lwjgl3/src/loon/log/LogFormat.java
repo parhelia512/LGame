@@ -21,6 +21,7 @@
 package loon.log;
 
 import loon.LSystem;
+import loon.utils.MathUtils;
 
 public class LogFormat {
 
@@ -69,30 +70,46 @@ public class LogFormat {
 
 	private String formatString(String str[], String pad, String sp, boolean tag) {
 		StringBuffer sbr = new StringBuffer();
-		if (tag) {
-			for (int i = 0; i < str.length; i++) {
-				int size = str[i].length();
+		if (str == null || str.length == 0) {
+			return "";
+		}
+		if (logTypeStyle == null) {
+			throw new IllegalStateException("logTypeStyle is null");
+		}
+		int maxIndex = Math.min(str.length, logTypeStyle.length);
+		for (int i = 0; i < maxIndex; i++) {
+			String cur = str[i] == null ? "" : str[i];
+			int size = cur.length();
+			int padTo = MathUtils.min(logTypeStyle[i], limitTagSize);
+			if (tag) {
 				if (size > logTypeStyle[i] || size > limitTagSize) {
-					sbr.append(str[i].substring(0, logTypeStyle[i]) + sp);
+					int cut = Math.min(Math.min(logTypeStyle[i], limitTagSize), size);
+					sbr.append(cur.substring(0, cut)).append(sp);
 					continue;
 				}
-				sbr.append(str[i]);
-				for (int j = size; j < logTypeStyle[i] && j < limitTagSize; j++) {
+				sbr.append(cur);
+				for (int j = size; j < padTo; j++) {
+					sbr.append(pad);
+				}
+				sbr.append(sp);
+			} else {
+				if (size > logTypeStyle[i]) {
+					int cut = Math.min(logTypeStyle[i], size);
+					sbr.append(cur.substring(0, cut)).append(sp);
+					continue;
+				}
+				sbr.append(cur);
+				int padLimit = Math.max(0, logTypeStyle[i]);
+				for (int j = size; j < padLimit; j++) {
 					sbr.append(pad);
 				}
 				sbr.append(sp);
 			}
-		} else {
-			for (int i = 0; i < str.length; i++) {
-				if (str[i].length() > logTypeStyle[i]) {
-					sbr.append(str[i].substring(0, logTypeStyle[i]) + sp);
-					continue;
-				}
-				sbr.append(str[i]);
-				for (int j = str[i].length(); j < logTypeStyle[i]; j++) {
-					sbr.append(pad);
-				}
-				sbr.append(sp);
+		}
+		if (str.length > logTypeStyle.length) {
+			for (int i = logTypeStyle.length; i < str.length; i++) {
+				String cur = str[i] == null ? "" : str[i];
+				sbr.append(cur).append(sp);
 			}
 		}
 		return sbr.toString();

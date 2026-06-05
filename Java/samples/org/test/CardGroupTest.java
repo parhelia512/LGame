@@ -62,7 +62,9 @@ public class CardGroupTest extends Stage {
 		// 直接添加到Desktop(这个不能放在cards，不然会被自动布局带跑，只能放在上层组件)
 		add(explosionCardEffect);
 		explosionCardEffect.setVisible(false);
-
+		//cards.setLayoutMode(LCardGroup.LayoutMode.LINE_LTR)
+        //.setLayoutAnimate(true)
+        //.refreshLayout();
 		// 点击按钮触发洗牌特效
 		shuffle.up((x, y) -> {
 			// 若有缓动动画不许重复执行

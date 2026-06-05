@@ -33,8 +33,6 @@ import loon.action.map.items.ItemInfo;
 import loon.canvas.Canvas;
 import loon.canvas.Image;
 import loon.canvas.LColor;
-import loon.component.LInventory.InventoryListener;
-import loon.component.LInventory.ItemUI;
 import loon.component.skin.InventorySkin;
 import loon.component.skin.SkinManager;
 import loon.events.SysKey;

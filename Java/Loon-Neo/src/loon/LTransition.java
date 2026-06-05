@@ -32,6 +32,7 @@ import loon.action.sprite.effect.CrossEffect;
 import loon.action.sprite.effect.FadeDotEffect;
 import loon.action.sprite.effect.FadeEffect;
 import loon.action.sprite.effect.FadeGlassShatterEffect;
+import loon.action.sprite.effect.FadeLineEffect;
 import loon.action.sprite.effect.FadeOvalEffect;
 import loon.action.sprite.effect.FadeSpiralEffect;
 import loon.action.sprite.effect.FadeTileEffect;
@@ -748,6 +749,28 @@ public final class LTransition {
 
 	public static final LTransition newFadeGlassShatterOut(final LColor c) {
 		return newFadeGlassShatter(FadeEffect.TYPE_FADE_OUT, c);
+	}
+
+	/**
+	 * 多线条组成的淡入淡出
+	 * 
+	 * @param t
+	 * @param c
+	 * @return
+	 */
+	public static final LTransition newFadeLine(final int t, final LColor c) {
+		if (LSystem.base() != null) {
+			return createEffectTransition(new FadeLineEffect(t, c));
+		}
+		return null;
+	}
+
+	public static final LTransition newFadeLineIn(final LColor c) {
+		return newFadeLine(FadeEffect.TYPE_FADE_IN, c);
+	}
+
+	public static final LTransition newFadeLineOut(final LColor c) {
+		return newFadeLine(FadeEffect.TYPE_FADE_OUT, c);
 	}
 
 	/**

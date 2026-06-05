@@ -180,8 +180,11 @@ public final class LProcess implements LRelease {
 		} else {
 			this._currentInput = factory;
 		}
-		InputMake input = _game.input();
-		if (input != null) {
+		final InputMake input = (_game != null) ? _game.input() : null;
+		if (input == null) {
+			return this;
+		}
+		try {
 			if (input.mouseEvents.hasConnections()) {
 				input.mouseEvents.clearConnections();
 			}
@@ -191,30 +194,39 @@ public final class LProcess implements LRelease {
 			if (input.keyboardEvents.hasConnections()) {
 				input.keyboardEvents.clearConnections();
 			}
-			if (input != null) {
-
-				if (!_game.setting.emulateTouch && !_game.isMobile() && !_game.input().hasTouch()) {
-					input.mouseEvents.connect(new MouseMake.ButtonSlot() {
-						@Override
-						public void onEmit(MouseMake.ButtonEvent event) {
+		} catch (Throwable t) {
+			LSystem.error("Failed to clear input connections", t);
+		}
+		try {
+			if (!_game.setting.emulateTouch && !_game.isMobile() && !input.hasTouch()) {
+				input.mouseEvents.connect(new MouseMake.ButtonSlot() {
+					@Override
+					public void onEmit(MouseMake.ButtonEvent event) {
+						if (_currentInput != null) {
 							_currentInput.callMouse(event);
 						}
-					});
-				} else {
-					input.touchEvents.connect(new Port<TouchMake.Event[]>() {
-						@Override
-						public void onEmit(TouchMake.Event[] events) {
+					}
+				});
+			} else {
+				input.touchEvents.connect(new Port<TouchMake.Event[]>() {
+					@Override
+					public void onEmit(TouchMake.Event[] events) {
+						if (_currentInput != null) {
 							_currentInput.callTouch(events);
 						}
-					});
-				}
-				input.keyboardEvents.connect(new KeyMake.KeyPort() {
-					@Override
-					public void onEmit(KeyMake.KeyEvent e) {
-						_currentInput.callKey(e);
 					}
 				});
 			}
+			input.keyboardEvents.connect(new KeyMake.KeyPort() {
+				@Override
+				public void onEmit(KeyMake.KeyEvent e) {
+					if (_currentInput != null) {
+						_currentInput.callKey(e);
+					}
+				}
+			});
+		} catch (Throwable t) {
+			LSystem.error("Failed to connect input events", t);
 		}
 		return this;
 	}
@@ -405,7 +417,7 @@ public final class LProcess implements LRelease {
 						// * 使用,返回: 设定或者自定义一个LTransition对象.
 						LTransition randTransition = newScreen.onTransition();
 						if (randTransition == null) {
-							int rad = MathUtils.random(0, 16);
+							int rad = MathUtils.random(0, 13);
 							switch (rad) {
 							case 0:
 							default:
@@ -421,42 +433,33 @@ public final class LProcess implements LRelease {
 								randTransition = LTransition.newCrossRandom(LColor.black);
 								break;
 							case 4:
-								randTransition = LTransition.newFadeOvalIn(LColor.black);
-								break;
-							case 5:
 								randTransition = LTransition.newPixelWind(LColor.white);
 								break;
-							case 6:
+							case 5:
 								randTransition = LTransition.newPixelDarkOut(LColor.black);
 								break;
-							case 7:
+							case 6:
 								randTransition = LTransition.newPixelThunder(LColor.black);
 								break;
-							case 8:
-								randTransition = LTransition.newFadeDotIn(LColor.black);
-								break;
-							case 9:
+							case 7:
 								randTransition = LTransition.newFadeTileIn(LColor.black);
 								break;
-							case 10:
+							case 8:
 								randTransition = LTransition.newFadeSpiralIn(LColor.black);
 								break;
-							case 11:
-								randTransition = LTransition.newFadeSwipeIn(LColor.black);
-								break;
-							case 12:
+							case 9:
 								randTransition = LTransition.newFadeBoardIn(LColor.black);
 								break;
-							case 13:
+							case 10:
 								randTransition = LTransition.newOvalHollowIn(LColor.black);
 								break;
-							case 14:
+							case 11:
 								randTransition = LTransition.newFadeDoorIrregularIn(LColor.black);
 								break;
-							case 15:
+							case 12:
 								randTransition = LTransition.newFadeCheckerBoardIn(LColor.black);
 								break;
-							case 16:
+							case 13:
 								randTransition = LTransition.newFadeGlassShatterIn(LColor.black);
 								break;
 							}
@@ -704,7 +707,7 @@ public final class LProcess implements LRelease {
 	}
 
 	public LTexture getBackground() {
-		if (_isInstance || _currentScreen != null) {
+		if (_currentScreen != null) {
 			return _currentScreen.getBackground();
 		}
 		return null;
@@ -763,7 +766,7 @@ public final class LProcess implements LRelease {
 	}
 
 	public int getScreenID() {
-		return _isInstance ? -1 : _currentScreen.getID();
+		return _isInstance ? _currentScreen.getID() : -1;
 	}
 
 	public LProcess setID(int i) {
@@ -1581,32 +1584,94 @@ public final class LProcess implements LRelease {
 		return _game;
 	}
 
+	public boolean removeScreen(final CharSequence name) {
+		if (StringUtils.isEmpty(name)) {
+			return false;
+		}
+		final CharSequence key = name;
+		if (_screenMap.containsKey(key)) {
+			Screen s = _screenMap.removeKey(key);
+			if (s != null) {
+				try {
+					s.destroy();
+				} catch (Throwable t) {
+					LSystem.error("Failed to destroy removed screen", t);
+				}
+			}
+			return true;
+		}
+		return false;
+	}
+
+	public TArray<CharSequence> getScreenNames() {
+		TArray<CharSequence> names = new TArray<CharSequence>(_screenMap.size);
+		for (Iterator<Screen> it = _screenMap.iterator(); it.hasNext();) {
+			Screen s = it.next();
+			if (s != null) {
+				names.add(s.getScreenName());
+			}
+		}
+		return names;
+	}
+
+	public Screen findScreenByClassName(final CharSequence className) {
+		if (className == null) {
+			return null;
+		}
+		for (Iterator<Screen> it = _screenMap.iterator(); it.hasNext();) {
+			Screen s = it.next();
+			if (s != null && className.equals(s.getName())) {
+				return s;
+			}
+		}
+		return null;
+	}
+
 	@Override
 	public void close() {
 		_screenLoading = false;
 		if (_isInstance && _currentScreen != null) {
-			_currentScreen.stop();
+			try {
+				_currentScreen.stop();
+			} catch (Throwable t) {
+				LSystem.error("Error stopping current screen", t);
+			}
 		}
 		endTransition();
-		if (_isInstance) {
-			_isInstance = false;
-			if (loads != null) {
-				loads.clear();
-			}
-			if (unloads != null) {
-				unloads.clear();
-			}
-			if (resumes != null) {
-				resumes.clear();
-			}
-			if (_loadcaches != null) {
-				_loadcaches.clear();
-			}
-			if (_currentScreen != null) {
-				_currentScreen.destroy();
-				_currentScreen = null;
-			}
+		_isInstance = false;
+		if (loads != null) {
+			loads.clear();
 		}
+		if (unloads != null) {
+			unloads.clear();
+		}
+		if (resumes != null) {
+			resumes.clear();
+		}
+		if (_loadcaches != null) {
+			_loadcaches.clear();
+		}
+		try {
+			clearScreens();
+		} catch (Throwable t) {
+			LSystem.error("Error clearing screens on close", t);
+		}
+		if (_emulatorButtons != null) {
+			try {
+				_emulatorButtons.close();
+			} catch (Throwable ignore) {
+			}
+			_emulatorButtons = null;
+		}
+		if (_currentScreen != null) {
+			try {
+				_currentScreen.destroy();
+			} catch (Throwable ignore) {
+			}
+			_currentScreen = null;
+		}
+		_bundle.clear();
+		_screenMap.clear();
 	}
 
 }

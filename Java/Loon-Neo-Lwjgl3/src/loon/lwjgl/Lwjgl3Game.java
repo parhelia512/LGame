@@ -20,31 +20,12 @@
  */
 package loon.lwjgl;
 
-import static org.lwjgl.glfw.GLFW.GLFW_ALPHA_BITS;
-import static org.lwjgl.glfw.GLFW.GLFW_BLUE_BITS;
-import static org.lwjgl.glfw.GLFW.GLFW_DEPTH_BITS;
-import static org.lwjgl.glfw.GLFW.GLFW_GREEN_BITS;
-import static org.lwjgl.glfw.GLFW.GLFW_RED_BITS;
-import static org.lwjgl.glfw.GLFW.GLFW_RESIZABLE;
-import static org.lwjgl.glfw.GLFW.GLFW_SAMPLES;
-import static org.lwjgl.glfw.GLFW.GLFW_STENCIL_BITS;
 import static org.lwjgl.glfw.GLFW.GLFW_VISIBLE;
-import static org.lwjgl.glfw.GLFW.glfwCreateWindow;
-import static org.lwjgl.glfw.GLFW.glfwDefaultWindowHints;
 import static org.lwjgl.glfw.GLFW.glfwDestroyWindow;
-import static org.lwjgl.glfw.GLFW.glfwGetPrimaryMonitor;
-import static org.lwjgl.glfw.GLFW.glfwGetVideoMode;
 import static org.lwjgl.glfw.GLFW.glfwGetWindowAttrib;
-import static org.lwjgl.glfw.GLFW.glfwInit;
-import static org.lwjgl.glfw.GLFW.glfwMakeContextCurrent;
-import static org.lwjgl.glfw.GLFW.glfwPollEvents;
-import static org.lwjgl.glfw.GLFW.glfwSetErrorCallback;
 import static org.lwjgl.glfw.GLFW.glfwSetWindowIcon;
-import static org.lwjgl.glfw.GLFW.glfwShowWindow;
 import static org.lwjgl.glfw.GLFW.glfwSwapBuffers;
-import static org.lwjgl.glfw.GLFW.glfwSwapInterval;
 import static org.lwjgl.glfw.GLFW.glfwTerminate;
-import static org.lwjgl.glfw.GLFW.glfwWindowHint;
 import static org.lwjgl.glfw.GLFW.glfwWindowShouldClose;
 
 import java.awt.image.BufferedImage;
@@ -54,6 +35,7 @@ import java.lang.reflect.Method;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWErrorCallback;
@@ -102,6 +84,10 @@ public class Lwjgl3Game extends LGame {
 
 	private final long windowId;
 
+	private final AtomicReference<String> lastGlfwError = new AtomicReference<String>(null);
+
+	private final GLFWErrorCallback errorCallback;
+
 	final static private Runtime systemRuntime = Runtime.getRuntime();
 
 	final static Support support = new Lwjgl3Support();
@@ -127,7 +113,7 @@ public class Lwjgl3Game extends LGame {
 		JAVA_SPEC = getProperty("java.specification.version").toLowerCase();
 		JAVA_VERSION = getProperty("java.version").toLowerCase();
 		osIsLinux = OS_NAME.indexOf("linux") != -1;
-		osIsUnix = OS_NAME.indexOf("nix") != -1 || OS_NAME.indexOf("nux") != 1;
+		osIsUnix = OS_NAME.indexOf("nix") != -1 || OS_NAME.indexOf("nux") != -1;
 		osIsMacOs = OS_NAME.indexOf("mac") != -1;
 		osIsWindows = OS_NAME.indexOf("windows") != -1;
 		String arch = getProperty("os.arch");
@@ -254,6 +240,19 @@ public class Lwjgl3Game extends LGame {
 
 	}
 
+	private boolean glfwInitWithRetry(int maxRetries, long delayMs) {
+		for (int i = 0; i < maxRetries; i++) {
+			if (GLFW.glfwInit()) {
+				return true;
+			}
+			try {
+				Thread.sleep(delayMs);
+			} catch (InterruptedException ignored) {
+			}
+		}
+		return false;
+	}
+
 	public void restoreWindow() {
 		GLFW.glfwRestoreWindow(windowId);
 	}
@@ -282,8 +281,6 @@ public class Lwjgl3Game extends LGame {
 		}
 	}
 
-	private final GLFWErrorCallback errorCallback;
-
 	public Lwjgl3Game(final Loon game, final LSetting config) {
 		super(config, game);
 		this.preInit();
@@ -299,14 +296,16 @@ public class Lwjgl3Game extends LGame {
 		glfwSetErrorCallback(errorCallback = new GLFWErrorCallback() {
 			@Override
 			public void invoke(int error, long description) {
-				log().error("GL Error (" + error + "):" + getDescription(description));
+				String msg = getDescription(description);
+				log().error("GL Error (" + error + "):" + msg);
+				lastGlfwError.set("GLFW Error (" + error + "): " + msg);
 			}
 		});
 		if (isMacOS()) {
 			GLFW.glfwInitHint(GLFW.GLFW_ANGLE_PLATFORM_TYPE, GLFW.GLFW_ANGLE_PLATFORM_TYPE_METAL);
 		}
 		GLFW.glfwInitHint(GLFW.GLFW_JOYSTICK_HAT_BUTTONS, GLFW.GLFW_FALSE);
-		if (!glfwInit())
+		if (!glfwInitWithRetry(5, 1000))
 			throw new RuntimeException("Failed to init GLFW.");
 
 		long monitor = glfwGetPrimaryMonitor();
@@ -319,34 +318,10 @@ public class Lwjgl3Game extends LGame {
 		} else {
 			monitor = 0;
 		}
-		glfwDefaultWindowHints();
-		glfwWindowHint(GLFW_VISIBLE, GLFW.GLFW_FALSE);
-		if (config instanceof JavaSetting) {
-			JavaSetting nativeSetting = (JavaSetting) setting;
-			glfwWindowHint(GLFW_RESIZABLE, nativeSetting.resizable ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
-			glfwWindowHint(GLFW.GLFW_MAXIMIZED, nativeSetting.maximized ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
-			glfwWindowHint(GLFW.GLFW_AUTO_ICONIFY, nativeSetting.autoIconify ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
-			glfwWindowHint(GLFW.GLFW_RED_BITS, nativeSetting.r);
-			glfwWindowHint(GLFW.GLFW_GREEN_BITS, nativeSetting.g);
-			glfwWindowHint(GLFW.GLFW_BLUE_BITS, nativeSetting.b);
-			glfwWindowHint(GLFW.GLFW_ALPHA_BITS, nativeSetting.a);
-			glfwWindowHint(GLFW.GLFW_STENCIL_BITS, nativeSetting.stencil);
-			glfwWindowHint(GLFW.GLFW_DEPTH_BITS, nativeSetting.depth);
-			glfwWindowHint(GLFW.GLFW_SAMPLES, nativeSetting.samples);
-		} else {
-			glfwWindowHint(GLFW_RESIZABLE, GLFW.GLFW_FALSE);
-			glfwWindowHint(GLFW_RED_BITS, 8);
-			glfwWindowHint(GLFW_GREEN_BITS, 8);
-			glfwWindowHint(GLFW_BLUE_BITS, 8);
-			glfwWindowHint(GLFW_ALPHA_BITS, 8);
-			glfwWindowHint(GLFW_STENCIL_BITS, 0);
-			glfwWindowHint(GLFW_DEPTH_BITS, 16);
-			glfwWindowHint(GLFW_SAMPLES, 0);
-		}
-		windowId = glfwCreateWindow(width, height, config.appName, monitor, 0);
-		if (windowId == 0) {
-			throw new RuntimeException("Failed to create windowId; see error log.");
-		}
+
+		final int maxRetries = 3;
+		windowId = createWindowSafe(config, width, height, config.appName, monitor, 0L, false, maxRetries);
+
 		this.graphics = createGraphics();
 		this.input = createInput();
 
@@ -386,13 +361,138 @@ public class Lwjgl3Game extends LGame {
 
 		this.graphics.init();
 		this.input.init();
+
 		glfwShowWindow(windowId);
 		for (int i = 0; i < 2; i++) {
 			GL11.glClearColor(0, 0, 0, 1);
 			GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
 			glfwSwapBuffers(windowId);
 		}
+	}
 
+	private long createWindowSafe(final LSetting config, int width, int height, String title, long monitor, long share,
+			boolean visible, int maxRetries) {
+		GLFWErrorCallback prevCallback = GLFW.glfwSetErrorCallback(new GLFWErrorCallback() {
+			@Override
+			public void invoke(int error, long description) {
+				String msg = getDescription(description);
+				lastGlfwError.set("GLFW Error (" + error + "): " + msg);
+				log().warn(lastGlfwError.get());
+			}
+		});
+		try {
+			int attempt = 0;
+			long currentMonitor = monitor;
+			boolean triedHiddenFallback = false;
+			long window = 0L;
+
+			while (attempt < maxRetries) {
+				attempt++;
+				if (!isFullscreenRequested(config)) {
+					currentMonitor = 0L;
+				}
+				GLFW.glfwDefaultWindowHints();
+				GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, visible ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
+
+				if (config instanceof JavaSetting) {
+					JavaSetting nativeSetting = (JavaSetting) config;
+					GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE,
+							nativeSetting.resizable ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
+					GLFW.glfwWindowHint(GLFW.GLFW_MAXIMIZED,
+							nativeSetting.maximized ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
+					GLFW.glfwWindowHint(GLFW.GLFW_AUTO_ICONIFY,
+							nativeSetting.autoIconify ? GLFW.GLFW_TRUE : GLFW.GLFW_FALSE);
+					GLFW.glfwWindowHint(GLFW.GLFW_RED_BITS, nativeSetting.r);
+					GLFW.glfwWindowHint(GLFW.GLFW_GREEN_BITS, nativeSetting.g);
+					GLFW.glfwWindowHint(GLFW.GLFW_BLUE_BITS, nativeSetting.b);
+					GLFW.glfwWindowHint(GLFW.GLFW_ALPHA_BITS, nativeSetting.a);
+					GLFW.glfwWindowHint(GLFW.GLFW_STENCIL_BITS, nativeSetting.stencil);
+					GLFW.glfwWindowHint(GLFW.GLFW_DEPTH_BITS, nativeSetting.depth);
+					GLFW.glfwWindowHint(GLFW.GLFW_SAMPLES, nativeSetting.samples);
+				} else {
+					GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE, GLFW.GLFW_FALSE);
+					GLFW.glfwWindowHint(GLFW.GLFW_RED_BITS, 8);
+					GLFW.glfwWindowHint(GLFW.GLFW_GREEN_BITS, 8);
+					GLFW.glfwWindowHint(GLFW.GLFW_BLUE_BITS, 8);
+					GLFW.glfwWindowHint(GLFW.GLFW_ALPHA_BITS, 8);
+					GLFW.glfwWindowHint(GLFW.GLFW_STENCIL_BITS, 0);
+					GLFW.glfwWindowHint(GLFW.GLFW_DEPTH_BITS, 16);
+					GLFW.glfwWindowHint(GLFW.GLFW_SAMPLES, 0);
+				}
+
+				window = GLFW.glfwCreateWindow(width, height, title, currentMonitor, share);
+				if (window != 0L) {
+					log().info("glfwCreateWindow succeeded on attempt " + attempt + " (window=" + window + ")");
+					return window;
+				}
+
+				String err = lastGlfwError.get();
+				log().warn("glfwCreateWindow attempt " + attempt + " failed. lastError=" + err + " (width=" + width
+						+ ", height=" + height + ", monitor=" + currentMonitor + ")");
+
+				if (currentMonitor != 0L) {
+					log().info("Falling back from fullscreen to windowed mode and retrying.");
+					currentMonitor = 0L;
+					continue;
+				}
+
+				if (!triedHiddenFallback) {
+					log().info("Attempting hidden-window fallback (GLFW_VISIBLE=false).");
+					triedHiddenFallback = true;
+					visible = false;
+					continue;
+				}
+
+				try {
+					long backoff = 50L * (1L << (attempt - 1));
+					Thread.sleep(Math.min(backoff, 500L));
+				} catch (InterruptedException ignored) {
+				}
+				GLFW.glfwPollEvents();
+			}
+
+			throw new RuntimeException("Failed to create GLFW window after " + maxRetries + " attempts. lastError="
+					+ lastGlfwError.get() + " (requested width=" + width + ", height=" + height + ", fullscreen="
+					+ config.fullscreen + ")");
+		} finally {
+			GLFW.glfwSetErrorCallback(prevCallback);
+		}
+	}
+
+	private boolean isFullscreenRequested(LSetting config) {
+		return config != null && config.fullscreen;
+	}
+
+	private void glfwSetErrorCallback(GLFWErrorCallback cb) {
+		GLFW.glfwSetErrorCallback(cb);
+	}
+
+	private boolean glfwInit() {
+		return GLFW.glfwInit();
+	}
+
+	private long glfwGetPrimaryMonitor() {
+		return GLFW.glfwGetPrimaryMonitor();
+	}
+
+	private GLFWVidMode glfwGetVideoMode(long monitor) {
+		return GLFW.glfwGetVideoMode(monitor);
+	}
+
+	private void glfwShowWindow(long window) {
+		GLFW.glfwShowWindow(window);
+	}
+
+	private void glfwMakeContextCurrent(long window) {
+		GLFW.glfwMakeContextCurrent(window);
+	}
+
+	private void glfwSwapInterval(int interval) {
+		GLFW.glfwSwapInterval(interval);
+	}
+
+	private void glfwPollEvents() {
+		GLFW.glfwPollEvents();
 	}
 
 	public long getWindowHandle() {
@@ -474,6 +574,7 @@ public class Lwjgl3Game extends LGame {
 		return support;
 	}
 
+	@SuppressWarnings("deprecation")
 	private static void browse(String url) throws Exception {
 		if (isMacOS()) {
 			Class<?> fileMgr = Class.forName("com.apple.eio.FileManager");
@@ -498,6 +599,7 @@ public class Lwjgl3Game extends LGame {
 		}
 	}
 
+	@SuppressWarnings("deprecation")
 	@Override
 	public void openURL(String url) {
 		try {

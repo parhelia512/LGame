@@ -764,7 +764,7 @@ public final class Desktop implements Visible, ZIndex, IArray, LRelease {
 
 	public void exitHoverComponent(LComponent hover) {
 		if (hover != null) {
-			if (!hover._component_selected && _hoverComponent != hover) {
+			if (!hover._component_selected) {
 				if (hover._tempDownClick) {
 					hover.processTouchReleased();
 					hover._tempDownClick = false;

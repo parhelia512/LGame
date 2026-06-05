@@ -47,7 +47,9 @@ public class ImageFormat {
 
 	public final static int RawData = 8;
 
-	public final static int Unknown = 9;
+	public final static int Ppm = 9;
+
+	public final static int Unknown = 10;
 
 	private ArrayByte buffer;
 
@@ -86,6 +88,8 @@ public class ImageFormat {
 			return "ico";
 		case RawData:
 			return "raw";
+		case Ppm:
+			return "ppm";
 		default:
 		case Unknown:
 			return LSystem.UNKNOWN;
@@ -138,6 +142,9 @@ public class ImageFormat {
 			header[i] = data[i] & 0xff;
 		}
 		if (dataLen >= 2) {
+			if (data[0] == 0x50 && data[1] == 0x36) {
+				return Ppm;
+			}
 			if (header[0] == 0xff && header[1] == 0xd8) {
 				return Jpg;
 			}

@@ -907,6 +907,41 @@ final public class StringUtils extends CharUtils {
 	}
 
 	/**
+	 * 解析冒号与逗号的分割组合
+	 * 
+	 * @param str
+	 * @return
+	 */
+	public static String[] splitColonComma(String str) {
+		if (str == null) {
+			return new String[0];
+		}
+		TArray<String> parts = new TArray<String>();
+		StringBuilder sbr = new StringBuilder();
+		boolean inQuote = false;
+		for (int i = 0; i < str.length(); i++) {
+			char ch = str.charAt(i);
+			if (ch == '"') {
+				inQuote = !inQuote;
+				continue;
+			}
+			if (ch == ',' && !inQuote) {
+				parts.add(sbr.toString().trim());
+				sbr.setLength(0);
+			} else {
+				sbr.append(ch);
+			}
+		}
+		parts.add(sbr.toString().trim());
+		final int len = parts.size;
+		String[] result = new String[len];
+		for (int i = 0; i < len; i++) {
+			result[i] = parts.get(i);
+		}
+		return result;
+	}
+
+	/**
 	 * 以指定大小过滤字符串，并返回切割后的数组
 	 * 
 	 * @param str
@@ -964,6 +999,27 @@ final public class StringUtils extends CharUtils {
 		} else {
 			return ch;
 		}
+	}
+
+	/**
+	 * 给指定序列删去引号单引号
+	 * 
+	 * @param cs
+	 * @return
+	 */
+	public static String stripQuotes(String cs) {
+		if (cs == null) {
+			return null;
+		}
+		cs = cs.trim();
+		if (cs.length() >= 2) {
+			char a = cs.charAt(0);
+			char b = cs.charAt(cs.length() - 1);
+			if ((a == '"' && b == '"') || (a == '\'' && b == '\'')) {
+				return cs.substring(1, cs.length() - 1);
+			}
+		}
+		return cs;
 	}
 
 	/**

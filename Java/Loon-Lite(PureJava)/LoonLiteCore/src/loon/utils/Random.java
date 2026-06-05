@@ -34,6 +34,54 @@ import loon.geom.Vector2f;
  */
 public final class Random {
 
+	public static byte[] KDF(byte[] master, byte[] salt, int rounds, int outLen) {
+		int stateLen = MathUtils.max(master.length + salt.length, outLen);
+		byte[] state = new byte[stateLen];
+		for (int i = 0; i < stateLen; i++) {
+			byte m = master[i % master.length];
+			byte s = salt[i % salt.length];
+			state[i] = (byte) (m ^ s);
+		}
+		for (int r = 0; r < rounds; r++) {
+			int carry = r & 0xFF;
+			for (int i = 0; i < stateLen; i++) {
+				int v = (state[i] & 0xFF);
+				v = v + ((state[(i + 1) % stateLen] & 0xFF) ^ carry);
+				v = ((v << 3) | (v >>> 5)) & 0xFF;
+				state[i] = (byte) v;
+				carry = (carry + v) & 0xFF;
+			}
+		}
+		byte[] out = new byte[outLen];
+		for (int i = 0; i < outLen; i++) {
+			out[i] = state[i % stateLen];
+		}
+		return out;
+	}
+
+	public static int[] buildPermutationFromSeed(byte[] seed, int n) {
+		long s = bytesToLong(seed);
+		Random rnd = new Random(s);
+		int[] perm = new int[n];
+		for (int i = 0; i < n; i++)
+			perm[i] = i;
+		for (int i = n - 1; i > 0; i--) {
+			int j = rnd.nextInt(i + 1);
+			int tmp = perm[i];
+			perm[i] = perm[j];
+			perm[j] = tmp;
+		}
+		return perm;
+	}
+
+	public static long bytesToLong(byte[] b) {
+		long v = 0;
+		for (int i = 0; i < MathUtils.min(8, b.length); i++) {
+			v = (v << 8) | (b[i] & 0xFF);
+		}
+		return v;
+	}
+
 	private final static float FLOAT_VALUE = 2.3283064E-10f;
 	private final static double DOUBLE_VALUE = 2.3283064E-10d;
 

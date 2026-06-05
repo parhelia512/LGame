@@ -31,6 +31,83 @@ import loon.canvas.LColor;
 
 public final class BufferUtils {
 
+	public static byte[] intToLittleEndian(int v) {
+		byte[] b = new byte[4];
+		b[0] = (byte) (v & 0xFF);
+		b[1] = (byte) ((v >> 8) & 0xFF);
+		b[2] = (byte) ((v >> 16) & 0xFF);
+		b[3] = (byte) ((v >> 24) & 0xFF);
+		return b;
+	}
+
+	public static int readSample(byte[] data, int pos, int bytesPerSample, boolean le) {
+		if (bytesPerSample == 1) {
+			return data[pos] & 0xFF;
+		}
+		int v = readShort(data, pos, le) & 0xFFFF;
+		return v;
+	}
+
+	public static int readInt(byte[] b, int off, boolean le) {
+		if (le) {
+			return (b[off] & 0xFF) | ((b[off + 1] & 0xFF) << 8) | ((b[off + 2] & 0xFF) << 16)
+					| ((b[off + 3] & 0xFF) << 24);
+		} else {
+			return ((b[off] & 0xFF) << 24) | ((b[off + 1] & 0xFF) << 16) | ((b[off + 2] & 0xFF) << 8)
+					| (b[off + 3] & 0xFF);
+		}
+	}
+
+	public static int readShort(byte[] b, int off, boolean le) {
+		if (le) {
+			return (b[off] & 0xFF) | ((b[off + 1] & 0xFF) << 8);
+		} else {
+			return ((b[off] & 0xFF) << 8) | (b[off + 1] & 0xFF);
+		}
+	}
+
+	public static int readIntBE(byte[] b, int off) {
+		return ((b[off] & 0xFF) << 24) | ((b[off + 1] & 0xFF) << 16) | ((b[off + 2] & 0xFF) << 8) | (b[off + 3] & 0xFF);
+	}
+
+	public static int readLEShort(byte[] b, int off) {
+		int lo = b[off] & 0xFF;
+		int hi = b[off + 1] & 0xFF;
+		return (hi << 8) | lo;
+	}
+
+	public static int readLEInt(byte[] b, int off) {
+		int b1 = b[off] & 0xFF;
+		int b2 = b[off + 1] & 0xFF;
+		int b3 = b[off + 2] & 0xFF;
+		int b4 = b[off + 3] & 0xFF;
+		return (b4 << 24) | (b3 << 16) | (b2 << 8) | b1;
+	}
+
+	public static int getPackedSample(byte[] line, int pixelIndex, int bitDepth) {
+		if (bitDepth == 8) {
+			return line[pixelIndex] & 0xFF;
+		}
+		if (bitDepth == 16) {
+			int byteIndex = pixelIndex * 2;
+			if (byteIndex + 1 >= line.length) {
+				return 0;
+			}
+			return ((line[byteIndex] & 0xFF) << 8) | (line[byteIndex + 1] & 0xFF);
+		}
+		int bitsPerPixel = bitDepth;
+		int bitOffset = pixelIndex * bitsPerPixel;
+		int byteIndex = bitOffset / 8;
+		int bitInByte = bitOffset % 8;
+		int b1 = (byteIndex < line.length) ? (line[byteIndex] & 0xFF) : 0;
+		int b2 = (byteIndex + 1 < line.length) ? (line[byteIndex + 1] & 0xFF) : 0;
+		int combined = (b1 << 8) | b2;
+		int shift = 16 - bitInByte - bitsPerPixel;
+		int mask = (1 << bitsPerPixel) - 1;
+		int val = (combined >> shift) & mask;
+		return val;
+	}
+
 	public final static int[] toColorKey(int[] buffer, int colors) {
 		if (LSystem.base() != null) {
 			return LSystem.base().support().toColorKey(buffer, colors);

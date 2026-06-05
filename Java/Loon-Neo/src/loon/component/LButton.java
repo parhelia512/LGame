@@ -92,7 +92,9 @@ public class LButton extends LComponent implements FontSet<LButton> {
 		if (img != null) {
 			this.setImages(img);
 		}
-		freeRes().add(img);
+		if (img != null) {
+			freeRes().add(img);
+		}
 	}
 
 	public LButton(int x, int y) {
@@ -115,47 +117,53 @@ public class LButton extends LComponent implements FontSet<LButton> {
 	}
 
 	public LButton setDefAndPress(LTexture defImage, LTexture pressImage) {
-		return setImages(defImage, defImage, pressImage);
+		return setImages(defImage, defImage, pressImage, defImage);
 	}
 
 	public LButton setImages(LTexture... images) {
-		LTexture[] buttons = null;
-		if (images != null) {
-			int size = images.length;
-			this._type = size;
-			if (size < 4) {
-				buttons = new LTexture[4];
-				switch (size) {
-				case 1:
-					buttons[0] = images[0];
-					buttons[1] = images[0];
-					buttons[2] = images[0];
-					buttons[3] = images[0];
-					break;
-				case 2:
-					buttons[0] = images[0];
-					buttons[1] = images[1];
-					buttons[2] = images[0];
-					buttons[3] = images[0];
-					break;
-				case 3:
-					buttons[0] = images[0];
-					buttons[1] = images[1];
-					buttons[2] = images[2];
-					buttons[3] = images[0];
-					break;
-				}
-			} else if (size == 4) {
-				buttons = images;
-			} else {
-				_clickException = true;
-			}
+		if (images == null || images.length == 0) {
+			this._clickException = true;
+			this._type = 0;
+			throw new LSysException("LButton setImages exception, images is null or empty");
 		}
-		if (!_clickException) {
-			this.setImageUI(buttons, true);
-		} else {
-			throw new LSysException("LButton setImages exception, buttons size =" + this._type);
+
+		int size = images.length;
+		this._type = size;
+
+		if (size > 4) {
+			this._clickException = true;
+			throw new LSysException("LButton setImages exception, buttons size = " + size + " (max 4)");
 		}
+
+		LTexture[] buttons = new LTexture[4];
+		switch (size) {
+		case 1:
+			buttons[0] = images[0];
+			buttons[1] = images[0];
+			buttons[2] = images[0];
+			buttons[3] = images[0];
+			break;
+		case 2:
+			buttons[0] = images[0];
+			buttons[1] = images[1];
+			buttons[2] = images[0];
+			buttons[3] = images[0];
+			break;
+		case 3:
+			buttons[0] = images[0];
+			buttons[1] = images[1];
+			buttons[2] = images[2];
+			buttons[3] = images[0];
+			break;
+		case 4:
+			System.arraycopy(images, 0, buttons, 0, 4);
+			break;
+		default:
+			throw new LSysException("LButton setImages unexpected size = " + size);
+		}
+
+		this._clickException = false;
+		this.setImageUI(buttons, true);
 		return this;
 	}
 
@@ -170,16 +178,22 @@ public class LButton extends LComponent implements FontSet<LButton> {
 				g.draw(_imageUI[1], x, y, _component_baseColor);
 			} else {
 				if (_type == 1) {
-					g.draw(_imageUI[0], x, y, _colorTemp.setColor(_component_baseColor == null ? LColor.gray.getARGB()
-							: LColor.combine(_component_baseColor, LColor.gray)));
+					int argb = _component_baseColor == null ? LColor.gray.getARGB()
+							: LColor.combine(_component_baseColor, LColor.gray);
+					g.draw(_imageUI[0], x, y, _colorTemp.setColor(argb));
 				} else {
 					g.draw(_imageUI[0], x, y, _component_baseColor);
 				}
 			}
 		}
-		if (_currentText != null) {
-			_font.drawString(g, _currentText, x + getOffsetLeft() + (getWidth() - _font.stringWidth(_currentText)) / 2,
-					y + getOffsetTop() + (getHeight() - _font.getHeight() - _font.getAscent()) / 2, _fontColor);
+
+		if (_currentText != null && _font != null) {
+			int textWidth = _font.stringWidth(_currentText);
+			float drawX = x + getOffsetLeft() + (getWidth() - textWidth) / 2;
+			int fontHeight = _font.getHeight();
+			float drawY = y + getOffsetTop() + (getHeight() - fontHeight) / 2;
+			LColor colorToUse = _fontColor != null ? _fontColor : LColor.white;
+			_font.drawString(g, _currentText, drawX, drawY, colorToUse);
 		}
 	}
 
@@ -224,15 +238,23 @@ public class LButton extends LComponent implements FontSet<LButton> {
 	@Override
 	protected void processTouchDragged() {
 		super.processTouchDragged();
-		this._clickOver = this.intersects(getUITouchX(), getUITouchY());
-		if (!_onTouch.isPressed()) {
-			this._onTouch.press();
+		boolean nowOver = this.intersects(getUITouchX(), getUITouchY());
+		this._clickOver = nowOver;
+		if (nowOver) {
+			if (!_onTouch.isPressed()) {
+				this._onTouch.press();
+			}
+		} else {
+			if (_onTouch.isPressed()) {
+				_onTouch.release();
+			}
 		}
 	}
 
 	@Override
 	protected void processTouchPressed() {
 		super.processTouchPressed();
+		this._clickOver = true;
 		if (!_onTouch.isPressed()) {
 			_onTouch.press();
 		}
@@ -241,15 +263,15 @@ public class LButton extends LComponent implements FontSet<LButton> {
 	@Override
 	protected void processTouchReleased() {
 		super.processTouchReleased();
-		if (_function != null) {
-			try {
-				_function.call(this);
-			} catch (Throwable t) {
-				LSystem.error("LClickButton call() exception", t);
-			}
-		}
 		if (_onTouch.isPressed()) {
 			_onTouch.release();
+			if (_function != null) {
+				try {
+					_function.call(this);
+				} catch (Throwable t) {
+					LSystem.error("LClickButton call() exception", t);
+				}
+			}
 		}
 	}
 
@@ -312,12 +334,12 @@ public class LButton extends LComponent implements FontSet<LButton> {
 
 	@Override
 	public LColor getFontColor() {
-		return _fontColor.cpy();
+		return _fontColor != null ? _fontColor.cpy() : LColor.white.cpy();
 	}
 
 	@Override
 	public LButton setFontColor(LColor c) {
-		this._fontColor = new LColor(c);
+		this._fontColor = (c != null) ? new LColor(c) : LColor.white.cpy();
 		return this;
 	}
 
@@ -346,7 +368,13 @@ public class LButton extends LComponent implements FontSet<LButton> {
 
 	@Override
 	public void destroy() {
-
+		_function = null;
+		_font = null;
+		_currentText = null;
+		_fontColor = null;
+		_clickOver = false;
+		_clickException = false;
+		_onTouch.release();
 	}
 
 }
